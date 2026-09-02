@@ -411,15 +411,7 @@
       "hitChance": 75,
       "video": "vacuum_hell_wheel.mp4"
     },
-    "A+I": {
-      "name": "Ridol Windmill Guard",
-      "type": "DEFENSE",
-      "chiCost": 3,
-      "baseDamage": 0,
-      "hitChance": 100,
-      "video": "windmill_guard.mp4",
-      "isSpecialGuard": true
-    },
+     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+L": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" }
