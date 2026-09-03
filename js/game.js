@@ -255,9 +255,9 @@
   }
 
   function updateTimerUI(seconds) {
-    const timerEl = document.getElementById('timer-value') || document.getElementById('round-timer');
+    const timerEl = document.getElementById('turn-timer') || document.getElementById('timer-value');
     if (timerEl) {
-      timerEl.textContent = seconds.toFixed(1);
+      timerEl.textContent = `TIME: ${seconds.toFixed(1)}s`;
     }
   }
 
@@ -269,18 +269,13 @@
     if (!player) return;
 
     // LP Display
-    const lpVal = document.querySelector(`#${slotKey}-lp .stat-value-styled`) || document.getElementById(`${slotKey}-lp-val`);
-    const lpFill = document.getElementById(`${slotKey}-lp-fill`);
-    if (lpVal) lpVal.textContent = Math.max(0, player.lp);
-    if (lpFill) {
-      const pct = Math.min(100, Math.max(0, (player.lp / (player.maxLp || 2300)) * 100));
-      lpFill.style.width = `${pct}%`;
-    }
+    const lpVal = document.getElementById(`${slotKey}-lp`);
+    if (lpVal) lpVal.textContent = `LP: ${Math.max(0, player.lp)} / ${player.maxLp || 2300}`;
 
     // Chi Display
-    const chiVal = document.querySelector(`#${slotKey}-chi .stat-value-styled`) || document.getElementById(`${slotKey}-chi-val`);
-    const chiFill = document.getElementById(`${slotKey}-chi-fill`);
-    if (chiVal) chiVal.textContent = `${player.chi} / ${player.maxChi || 16}`;
+    const chiVal = document.getElementById(`${slotKey}-chi`);
+    const chiFill = document.getElementById(`${slotKey}-chi-bar-fill`);
+    if (chiVal) chiVal.textContent = `CHI: ${player.chi} / ${player.maxChi || 16}`;
     if (chiFill) {
       const pct = Math.min(100, Math.max(0, (player.chi / (player.maxChi || 16)) * 100));
       chiFill.style.width = `${pct}%`;
@@ -294,43 +289,42 @@
       faintFill.style.width = `${pct}%`;
     }
 
-    // Status / Buff Badges
-    const badgeContainer = document.getElementById(`${slotKey}-buffs-container`);
-    if (badgeContainer) {
-      badgeContainer.innerHTML = '';
+    // Status & Buff Tray
+    const trayEl = document.getElementById(`${slotKey}-buff-tray`);
+    if (trayEl) {
+      trayEl.innerHTML = '';
       if (player.activeBuffs && player.activeBuffs.length > 0) {
         player.activeBuffs.forEach(buff => {
           const badge = document.createElement('span');
           badge.className = `buff-badge buff-${buff.type || 'generic'}`;
           badge.textContent = `${buff.label || buff.id} (${buff.roundsLeft}r)`;
-          badgeContainer.appendChild(badge);
+          trayEl.appendChild(badge);
         });
       }
     }
   }
 
   function updateCharacterMedia(slotKey, stateStr) {
-    const mediaEl = document.getElementById(`${slotKey}-character-media`) || document.getElementById(`${slotKey}-portrait`);
-    if (!mediaEl) return;
-
+    const videoEl = document.getElementById(`${slotKey}-video`);
+    const spriteEl = document.getElementById(`${slotKey}-sprite`);
     const player = window.gameState ? window.gameState[slotKey] : null;
     const charId = player ? player.id : 'ichigo';
-    const state = String(stateStr || 'IDLE').toUpperCase();
+    const state = String(stateStr || 'IDLE').toLowerCase();
 
-    if (mediaEl.tagName === 'IMG') {
-      mediaEl.src = `assets/images/${charId}_${state.toLowerCase()}.png`;
-    } else if (mediaEl.tagName === 'VIDEO') {
-      mediaEl.src = `assets/videos/${charId}_${state.toLowerCase()}.mp4`;
-      mediaEl.play().catch(() => {});
+    if (videoEl) {
+      videoEl.src = `assets/videos/${charId}_${state}.mp4`;
+      videoEl.play().catch(() => {});
+    } else if (spriteEl) {
+      spriteEl.src = `assets/images/${charId}_${state}.png`;
     }
   }
 
   async function playCenterVideo(slotKey, videoFile, labelText, callback, moveObj) {
-    const overlay = document.getElementById('center-video-overlay');
-    const videoEl = document.getElementById('center-video-player');
-    const labelEl = document.getElementById('center-video-label');
+    const centerBox = document.getElementById('center-box');
+    const videoEl = document.getElementById('center-video');
+    const labelEl = document.getElementById('center-action-label');
 
-    if (!overlay || !videoEl) {
+    if (!centerBox || !videoEl) {
       if (typeof callback === 'function') callback();
       return;
     }
@@ -340,7 +334,7 @@
       labelEl.hidden = !labelText;
     }
 
-    overlay.hidden = false;
+    centerBox.hidden = false;
     videoEl.src = `assets/videos/${videoFile}`;
 
     return new Promise((resolve) => {
@@ -366,13 +360,16 @@
   }
 
   function hideCenterScreen() {
-    const overlay = document.getElementById('center-video-overlay');
-    const videoEl = document.getElementById('center-video-player');
+    const centerBox = document.getElementById('center-box');
+    const videoEl = document.getElementById('center-video');
+    const labelEl = document.getElementById('center-action-label');
+
     if (videoEl) {
       videoEl.pause();
       videoEl.removeAttribute('src');
     }
-    if (overlay) overlay.hidden = true;
+    if (centerBox) centerBox.hidden = true;
+    if (labelEl) labelEl.hidden = true;
   }
 
   /* ==========================================================================
@@ -384,7 +381,7 @@
     const p1ActKeys = ['KeyI', 'KeyJ', 'KeyK', 'KeyL'];
 
     document.addEventListener('keydown', (e) => {
-      if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
+      if (!window.gameState) return;
 
       // Handle Game Over Reset
       if (window.gameState.roundPhase === 'GAME_OVER' && window.gameState.canContinueFromGameOver) {
@@ -395,6 +392,8 @@
         window.gameState.roundPhase = 'IDLE';
         return;
       }
+
+      if (window.gameState.roundPhase !== 'INPUT') return;
 
       // P1 Human Input Logic
       if (window.gameState.p1 && !window.gameState.p1.isCPU && !window.gameState.p1IsConfirmed) {
