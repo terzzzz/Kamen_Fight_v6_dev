@@ -174,8 +174,11 @@
 
       updatePlayerHUD('p1', window.gameState.p1);
       updatePlayerHUD('p2', window.gameState.p2);
-      updateCharacterMedia('p1', 'IDLE');
-      updateCharacterMedia('p2', 'IDLE');
+
+      if (typeof window.updateCharacterMedia === 'function') {
+        window.updateCharacterMedia('p1', 'IDLE');
+        window.updateCharacterMedia('p2', 'IDLE');
+      }
 
       launchRoundTimer();
     }, 1000);
@@ -199,7 +202,6 @@
     window.gameState.p1IsConfirmed = false;
     window.gameState.p2IsConfirmed = false;
 
-    // Reset Input states
     ['input', 'p2Input'].forEach(inputKey => {
       if (window.gameState[inputKey]) {
         window.gameState[inputKey].acceptingInputs = true;
@@ -217,7 +219,6 @@
     remainingRoundTime = timingCfg.baseRoundWindow || 8.0;
     updateTimerUI(remainingRoundTime);
 
-    // Trigger CPU AI if CPU players are participating
     if (window.gameState.p1 && window.gameState.p1.isCPU && typeof window.startCPUTurnRoutine === 'function') {
       window.startCPUTurnRoutine('p1');
     }
@@ -243,7 +244,6 @@
         clearInterval(roundTimerInterval);
         roundTimerInterval = null;
 
-        // Default missing inputs to 'DO_NOTHING'
         if (!window.gameState.p1SelectedMoveKey) window.gameState.p1SelectedMoveKey = 'DO_NOTHING';
         if (!window.gameState.p2SelectedMoveKey) window.gameState.p2SelectedMoveKey = 'DO_NOTHING';
 
@@ -262,17 +262,15 @@
   }
 
   /* ==========================================================================
-     3. HUD & MEDIA DISPLAY ENGINE WITH MULTI-PATH FALLBACKS
+     3. HUD DISPLAY ENGINE
      ========================================================================== */
 
   function updatePlayerHUD(slotKey, player) {
     if (!player) return;
 
-    // LP Display
     const lpVal = document.getElementById(`${slotKey}-lp`);
     if (lpVal) lpVal.textContent = `LP: ${Math.max(0, player.lp)} / ${player.maxLp || 2300}`;
 
-    // Chi Display
     const chiVal = document.getElementById(`${slotKey}-chi`);
     const chiFill = document.getElementById(`${slotKey}-chi-bar-fill`);
     if (chiVal) chiVal.textContent = `CHI: ${player.chi} / ${player.maxChi || 16}`;
@@ -281,7 +279,6 @@
       chiFill.style.width = `${pct}%`;
     }
 
-    // Faint Display
     const faintFill = document.getElementById(`${slotKey}-faint-fill`);
     if (faintFill) {
       const rules = window.COMBAT_RULES || { FAINT_THRESHOLD: 100 };
@@ -289,7 +286,6 @@
       faintFill.style.width = `${pct}%`;
     }
 
-    // Status & Buff Tray
     const trayEl = document.getElementById(`${slotKey}-buff-tray`);
     if (trayEl) {
       trayEl.innerHTML = '';
@@ -304,111 +300,6 @@
     }
   }
 
-  function updateCharacterMedia(slotKey, stateStr) {
-    const videoEl = document.getElementById(`${slotKey}-video`);
-    const spriteEl = document.getElementById(`${slotKey}-sprite`);
-    const player = window.gameState ? window.gameState[slotKey] : null;
-    const charId = player ? player.id : 'ichigo';
-    const state = String(stateStr || 'IDLE').toLowerCase();
-
-    if (!videoEl) return;
-
-    const primarySrc = `assets/videos/${charId}_${state}.mp4`;
-    const fallbackSrc = `assets/videos/${state}.mp4`;
-
-    videoEl.loop = (state === 'idle');
-
-    const showFallbackSprite = () => {
-      videoEl.hidden = true;
-      if (spriteEl) {
-        spriteEl.src = `assets/images/${charId}_${state}.png`;
-        spriteEl.hidden = false;
-      }
-    };
-
-    const handleError = () => {
-      videoEl.removeEventListener('error', handleError);
-      if (videoEl.src.includes(`${charId}_${state}`)) {
-        videoEl.src = fallbackSrc;
-        videoEl.play().catch(() => showFallbackSprite());
-      } else {
-        showFallbackSprite();
-      }
-    };
-
-    videoEl.hidden = false;
-    if (spriteEl) spriteEl.hidden = true;
-
-    videoEl.addEventListener('error', handleError);
-    videoEl.src = primarySrc;
-    videoEl.play().catch(() => {});
-  }
-
-  async function playCenterVideo(slotKey, videoFile, labelText, callback, moveObj) {
-    const centerBox = document.getElementById('center-box');
-    const videoEl = document.getElementById('center-video');
-    const labelEl = document.getElementById('center-action-label');
-
-    if (!centerBox || !videoEl) {
-      if (typeof callback === 'function') callback();
-      return;
-    }
-
-    if (labelEl) {
-      labelEl.textContent = labelText || '';
-      labelEl.hidden = !labelText;
-    }
-
-    centerBox.hidden = false;
-
-    // Direct path or character-prefixed path fallback
-    const player = window.gameState ? window.gameState[slotKey] : null;
-    const charId = player ? player.id : '';
-    const cleanFileName = String(videoFile || 'idle.mp4').replace(/^assets\/videos\//, '');
-
-    const primarySrc = `assets/videos/${cleanFileName}`;
-    const fallbackSrc = charId ? `assets/videos/${charId}_${cleanFileName}` : primarySrc;
-
-    return new Promise((resolve) => {
-      const finishSequence = () => {
-        videoEl.removeEventListener('ended', onEnded);
-        videoEl.removeEventListener('error', onError);
-        if (typeof callback === 'function') callback();
-        resolve();
-      };
-
-      const onEnded = () => finishSequence();
-
-      const onError = () => {
-        if (videoEl.src.endsWith(cleanFileName) && fallbackSrc !== primarySrc) {
-          videoEl.src = fallbackSrc;
-          videoEl.play().catch(() => finishSequence());
-        } else {
-          console.warn(`Video asset missing: ${cleanFileName}, skipping center video animation.`);
-          finishSequence();
-        }
-      };
-
-      videoEl.addEventListener('ended', onEnded);
-      videoEl.addEventListener('error', onError);
-      videoEl.src = primarySrc;
-      videoEl.play().catch(onError);
-    });
-  }
-
-  function hideCenterScreen() {
-    const centerBox = document.getElementById('center-box');
-    const videoEl = document.getElementById('center-video');
-    const labelEl = document.getElementById('center-action-label');
-
-    if (videoEl) {
-      videoEl.pause();
-      videoEl.removeAttribute('src');
-    }
-    if (centerBox) centerBox.hidden = true;
-    if (labelEl) labelEl.hidden = true;
-  }
-
   /* ==========================================================================
      4. KEYBOARD & INPUT EVENT LISTENERS
      ========================================================================== */
@@ -417,10 +308,12 @@
     const p1DirKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
     const p1ActKeys = ['KeyI', 'KeyJ', 'KeyK', 'KeyL'];
 
+    const p2DirKeys = ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'];
+    const p2ActKeys = ['Numpad5', 'Numpad1', 'Numpad2', 'Numpad3', 'Digit5', 'Digit1', 'Digit2', 'Digit3'];
+
     document.addEventListener('keydown', (e) => {
       if (!window.gameState) return;
 
-      // Handle Game Over Reset
       if (window.gameState.roundPhase === 'GAME_OVER' && window.gameState.canContinueFromGameOver) {
         const selectScreen = document.getElementById('vs-select-screen');
         const battleScreen = document.getElementById('battle-screen');
@@ -432,7 +325,6 @@
 
       if (window.gameState.roundPhase !== 'INPUT') return;
 
-      // P1 Human Input Logic
       if (window.gameState.p1 && !window.gameState.p1.isCPU && !window.gameState.p1IsConfirmed) {
         if (p1DirKeys.includes(e.code) && !window.gameState.input.heldDirection) {
           const dirMap = { KeyW: 'W', KeyA: 'A', KeyS: 'S', KeyD: 'D' };
@@ -452,6 +344,31 @@
           }
         }
       }
+
+      if (window.gameState.p2 && !window.gameState.p2.isCPU && !window.gameState.p2IsConfirmed) {
+        if (p2DirKeys.includes(e.code) && !window.gameState.p2Input.heldDirection) {
+          const p2DirMap = { ArrowUp: 'W', ArrowLeft: 'A', ArrowDown: 'S', ArrowRight: 'D' };
+          const dir = p2DirMap[e.code];
+          window.gameState.p2Input.heldDirection = dir;
+          window.gameState.p2Input.chargeStartTime = Date.now();
+        } else if (p2ActKeys.includes(e.code) && window.gameState.p2Input.heldDirection) {
+          const p2ActMap = {
+            Numpad5: 'I', Digit5: 'I',
+            Numpad1: 'J', Digit1: 'J',
+            Numpad2: 'K', Digit2: 'K',
+            Numpad3: 'L', Digit3: 'L'
+          };
+          const act = p2ActMap[e.code];
+          const moveKey = `${window.gameState.p2Input.heldDirection}+${act}`;
+
+          const moveData = window.gameState.p2Moves ? window.gameState.p2Moves[moveKey] : null;
+          if (moveData && (moveData.chiCost || 0) <= window.gameState.p2.chi) {
+            window.gameState.p2SelectedMoveKey = moveKey;
+            window.gameState.p2IsConfirmed = true;
+            window.gameState.p2Input.isConfirmed = true;
+          }
+        }
+      }
     });
 
     document.addEventListener('keyup', (e) => {
@@ -463,10 +380,16 @@
           window.gameState.input.heldDirection = null;
         }
       }
+
+      if (p2DirKeys.includes(e.code) && window.gameState.p2Input) {
+        const p2DirMap = { ArrowUp: 'W', ArrowLeft: 'A', ArrowDown: 'S', ArrowRight: 'D' };
+        if (p2DirMap[e.code] === window.gameState.p2Input.heldDirection) {
+          window.gameState.p2Input.heldDirection = null;
+        }
+      }
     });
   }
 
-  // Auto-initialize input listeners on load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', setupInputListeners);
   } else {
@@ -480,8 +403,6 @@
   window.startBattle = startBattle;
   window.launchRoundTimer = launchRoundTimer;
   window.updatePlayerHUD = updatePlayerHUD;
-  window.updateCharacterMedia = updateCharacterMedia;
-  window.playCenterVideo = playCenterVideo;
-  window.hideCenterScreen = hideCenterScreen;
 
 })(window);
+
