@@ -57,7 +57,15 @@ function selectCPUMoveSim(cpu, opp, moves, difficulty) {
   const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
 
   if (validKeys.length === 0) return 'DO_NOTHING';
+if (diff === 'master') {
+    const sMoves = validKeys.filter(k => k.startsWith('S'));
+    const aMoves = validKeys.filter(k => k.startsWith('A'));
+    const dMoves = validKeys.filter(k => k.startsWith('D'));
 
+    if (cpu.chi >= 7 && sMoves.length > 0 && Math.random() < 0.75) return sMoves[Math.floor(Math.random() * sMoves.length)];
+    if (opp.chi >= 6 && aMoves.length > 0 && Math.random() < 0.45) return aMoves[Math.floor(Math.random() * aMoves.length)];
+    if (dMoves.length > 0) return dMoves[Math.floor(Math.random() * dMoves.length)];
+  }
   if (diff === 'hard' || diff === 'normal') {
     const sMoves = validKeys.filter(k => k.startsWith('S'));
     const dMoves = validKeys.filter(k => k.startsWith('D'));
@@ -111,10 +119,13 @@ async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = '
 
     try {
       let p1MaxLp = p1Rider.maxLp || 2300;
-      if (p1Diff === 'hard') p1MaxLp = Math.floor(p1MaxLp * hpMultiplier);
+            if (p1Diff === 'hard') p1MaxLp = Math.floor(p1MaxLp * hpMultiplier);
+      if (p1Diff === 'master') p1MaxLp = Math.floor(p1MaxLp * (hpMultiplier + 0.08));
 
       let p2MaxLp = p2Rider.maxLp || 2500;
+ 
       if (p2Diff === 'hard') p2MaxLp = Math.floor(p2MaxLp * hpMultiplier);
+      if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * (hpMultiplier + 0.08));
 
       let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
       let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
