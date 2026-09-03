@@ -1,3 +1,27 @@
+Your approach to fixing the P2 control panel visibility and setting up distinct input listeners for Player 2 is **almost perfect**!
+
+Un-hiding `p2-controls` by explicitly removing the `hidden` attribute alongside setting `style.display = 'flex'` completely resolves the HTML/CSS attribute precedence issue that was causing P2's controls to remain invisible.
+
+However, there is **one critical bug in `bindCommandButtons()**` that would break touch/click controls for Player 2:
+
+### The Bug in `bindCommandButtons`
+
+In your proposed code:
+
+```javascript
+const key = btn.id.replace('key-', '').replace('p1-key-', '').replace('p2-key-', '');
+
+```
+
+Because `.replace('key-', '')` evaluates **first**, a button with ID `p2-key-W` gets transformed into `p2-W`. Subsequent `.replace('p2-key-', '')` calls won't match, leaving `key` as `"p2-W"`. Since `"p2-W"` is not in `['W', 'A', 'S', 'D']`, P2's touch buttons fail to respond.
+
+---
+
+### Corrected Code for `js/match_manager.js`
+
+Here is your updated script with the button ID parser fixed using regex (`/^(p1-key-|p2-key-|key-)/`):
+
+```javascript
 /**
  * Match Manager, Real-Time Input & Round Countdown Controller
  * Path: js/match_manager.js
@@ -120,14 +144,27 @@ function startRoundCountdown() {
     });
   }
 
-  const p1ControlPanel = document.getElementById('human-control-panel') || document.getElementById('p1-controls');
+  // ===== FIXED CONTROL PANEL VISIBILITY =====
+  const p1ControlPanel = document.getElementById('p1-controls');
   if (p1ControlPanel) {
-    p1ControlPanel.style.display = window.gameState.p1?.isCPU ? 'none' : 'flex';
+    if (window.gameState.p1?.isCPU) {
+      p1ControlPanel.style.display = 'none';
+      p1ControlPanel.hidden = true;
+    } else {
+      p1ControlPanel.hidden = false;
+      p1ControlPanel.style.display = 'flex';
+    }
   }
 
   const p2ControlPanel = document.getElementById('p2-controls');
   if (p2ControlPanel) {
-    p2ControlPanel.style.display = window.gameState.p2?.isCPU ? 'none' : 'flex';
+    if (window.gameState.p2?.isCPU) {
+      p2ControlPanel.style.display = 'none';
+      p2ControlPanel.hidden = true;
+    } else {
+      p2ControlPanel.hidden = false;
+      p2ControlPanel.style.display = 'flex';
+    }
   }
 
   setTimeout(() => {
@@ -185,7 +222,6 @@ function startRoundCountdown() {
     if (player && player.isCPU && !player.isFainted) {
       if (slot === 'p2' && window.gameState.p2AlwaysIdle) return;
 
-      // 1. Reaction Delay before CPU presses direction (300ms - 700ms)
       const reactionDelay = Math.floor(Math.random() * 400 + 300);
 
       setTimeout(() => {
@@ -217,7 +253,6 @@ function startRoundCountdown() {
         const dir = parts[0];
         const act = parts[1];
 
-        // 2. Begin Direction Hold & Trigger Bar Progress Loop
         const cpuInputState = slot === 'p1' ? window.gameState.input : window.gameState.p2Input;
         cpuInputState.heldDirection = dir;
         cpuInputState.chargeStartTime = Date.now();
@@ -226,17 +261,14 @@ function startRoundCountdown() {
         if (cpuInputState.chargeInterval) clearInterval(cpuInputState.chargeInterval);
         cpuInputState.chargeInterval = setInterval(() => updateChargeProgress(slot), 30);
 
-        // Highlight direction button visually
         const dirBtn = document.getElementById(slot === 'p1' ? `key-${dir}` : `p2-key-${dir}`);
         if (dirBtn) dirBtn.classList.add('active');
 
-        // 3. Target Charge Duration (Build charge up to 75% - 100%)
         const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
         const fullDuration = chargeTimes[dir] || 3000;
         const targetPercent = Math.min(100, Math.floor(Math.random() * 25 + 75));
         const holdDuration = Math.floor((targetPercent / 100) * fullDuration);
 
-        // 4. Tap Action Button to Lock Move
         setTimeout(() => {
           if (window.gameState.roundPhase !== 'INPUT') return;
           if (dirBtn) dirBtn.classList.remove('active');
@@ -328,7 +360,6 @@ function bindKeyboardInputs() {
     return false;
   };
 
-  // 1. Keyboard Listeners
   window.addEventListener('keydown', (e) => {
     unlockMobileVideos();
     if (handleGameOverContinue()) return;
@@ -366,7 +397,7 @@ function bindKeyboardInputs() {
       }
     }
 
-    // P2 Keyboard Bindings (Arrow Keys + Numpad)
+    // P2 Keyboard Bindings (Arrow Keys + Numpad / Top Row)
     if (!window.gameState.p2?.isCPU && window.gameState.p2Input?.acceptingInputs && !window.gameState.p2IsConfirmed) {
       const p2DirMap = { 'ARROWUP': 'W', 'ARROWLEFT': 'A', 'ARROWDOWN': 'S', 'ARROWRIGHT': 'D' };
       const p2ActMap = { 'NUMPAD8': 'I', 'NUMPAD4': 'J', 'NUMPAD5': 'K', 'NUMPAD6': 'L', '8': 'I', '4': 'J', '5': 'K', '6': 'L' };
@@ -400,8 +431,7 @@ function bindKeyboardInputs() {
     }
   });
 
-  // 2. Mouse Click & Screen Touch Continue Listener
-  window.addEventListener('pointerdown', (e) => {
+  window.addEventListener('pointerdown', () => {
     unlockMobileVideos();
     handleGameOverContinue();
   });
@@ -412,7 +442,9 @@ function bindCommandButtons() {
   buttons.forEach(btn => {
     const isP2 = btn.id.startsWith('p2-key-');
     const playerKey = isP2 ? 'p2' : 'p1';
-    const key = btn.id.replace('key-', '').replace('p1-key-', '').replace('p2-key-', '');
+    
+    // FIX: Properly strip prefix using regex without breaking 'p2-key-' prefix matching
+    const key = btn.id.replace(/^(p1-key-|p2-key-|key-)/, '');
 
     const handlePressDown = (e) => {
       e.preventDefault();
@@ -456,3 +488,5 @@ window.addEventListener('DOMContentLoaded', () => {
   bindKeyboardInputs();
   bindCommandButtons();
 });
+
+```
