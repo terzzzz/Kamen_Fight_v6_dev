@@ -28,13 +28,13 @@ function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
     target = Math.floor(Math.random() * 11) + 85;
   }
 
-  cpuPlayer.activeChargePercent = target;
+  // Do NOT set cpuPlayer.activeChargePercent here; let startCPUTurnRoutine animate it from 0%
   return target;
 }
 
 /**
  * Real-Time CPU Turn Orchestrator
- * Simulates human reaction delays and charges the UI bar over time.
+ * Animates charge progress bar dynamically from 0% to targetPct.
  */
 function startCPUTurnRoutine(slotKey) {
   if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
@@ -43,13 +43,22 @@ function startCPUTurnRoutine(slotKey) {
   const opponentPlayer = slotKey === 'p1' ? window.gameState.p2 : window.gameState.p1;
   if (!cpuPlayer || !cpuPlayer.isCPU) return;
 
+  const currentRound = window.gameState.roundCounter || 1;
+
+  // Prevent re-entrant triggers from resetting an in-progress charge during the same round
+  if (cpuPlayer.chargingRound === currentRound && window.cpuChargeIntervals[slotKey]) {
+    return;
+  }
+  cpuPlayer.chargingRound = currentRound;
+
   // Clear existing timers for this slot
   if (window.cpuChargeIntervals[slotKey]) {
     clearInterval(window.cpuChargeIntervals[slotKey]);
     window.cpuChargeIntervals[slotKey] = null;
   }
 
-  // Ensure move key and confirm status remain unconfirmed while charging
+  // Reset confirmation state & set initial charge to 0%
+  cpuPlayer.activeChargePercent = 0;
   if (slotKey === 'p1') {
     window.gameState.p1SelectedMoveKey = null;
     window.gameState.p1IsConfirmed = false;
@@ -71,7 +80,7 @@ function startCPUTurnRoutine(slotKey) {
   // 2. Calculate duration based on directional charge rules (CHARGE_TIMES)
   const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
   const baseDurationMs = chargeTimes[dir] || 3000;
-  const totalChargeTimeMs = Math.max(1200, Math.min(4500, (targetPct / 100) * (baseDurationMs * 0.6)));
+  const totalChargeTimeMs = Math.max(1000, Math.min(3500, (targetPct / 100) * (baseDurationMs * 0.5)));
 
   let currentPct = 0;
   const stepIntervalMs = 50;
@@ -79,7 +88,7 @@ function startCPUTurnRoutine(slotKey) {
 
   // 3. Reaction Delay before CPU starts charging
   const diff = String(cpuPlayer.difficulty || 'normal').toLowerCase();
-  const reactionDelay = diff === 'master' ? 200 : (diff === 'hard' ? 350 : 550);
+  const reactionDelay = diff === 'master' ? 150 : (diff === 'hard' ? 250 : 450);
 
   setTimeout(() => {
     if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
@@ -94,13 +103,14 @@ function startCPUTurnRoutine(slotKey) {
       currentPct = Math.min(targetPct, currentPct + pctIncrement);
       cpuPlayer.activeChargePercent = currentPct;
 
-      // Update HUD Charge Bar UI
-      const fillEl = document.getElementById(`${slotKey}-charge-fill`);
-      const textEl = document.getElementById(`${slotKey}-charge-text`);
+      // Update HUD Charge Bar UI elements
+      const fillEl = document.getElementById(`${slotKey}-charge-fill`) || document.getElementById(`${slotKey}-charge-bar-fill`);
+      const textEl = document.getElementById(`${slotKey}-charge-text`) || document.getElementById(`${slotKey}-charge-display`);
+
       if (fillEl) fillEl.style.width = `${currentPct}%`;
       if (textEl) textEl.textContent = `CHARGING [${dir}]: ${Math.floor(currentPct)}%`;
 
-      // 4. Lock in only when target charge percentage is reached
+      // 4. Lock in when target charge percentage is reached
       if (currentPct >= targetPct) {
         clearInterval(window.cpuChargeIntervals[slotKey]);
         window.cpuChargeIntervals[slotKey] = null;
@@ -113,7 +123,7 @@ function startCPUTurnRoutine(slotKey) {
           window.gameState.p2IsConfirmed = true;
         }
 
-        if (textEl) textEl.textContent = `LOCKED: ${chosenMoveKey}`;
+        if (textEl) textEl.textContent = `LOCKED: ${chosenMoveKey} (${Math.floor(targetPct)}%)`;
       }
     }, stepIntervalMs);
   }, reactionDelay);
