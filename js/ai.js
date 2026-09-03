@@ -134,10 +134,18 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
   // ========== HARD + MASTER : ForeseeEngine (deeper on Master) ==========
   if ((diff === 'hard' || diff === 'master') && window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
     try {
-      const depth = (diff === 'master') ? 4 : 3;
-      const options = (diff === 'master') ? { samples: 8, isMaster: true } : {};
-      let result = window.ForeseeEngine.getBestMove(cpuPlayer, opponentPlayer, availableMoves, depth, options);
+     const depth = (diff === 'master') ? 4 : 3;
+const result = window.ForeseeEngine.getBestMove(
+  cpuPlayer,
+  opponentPlayer,
+  availableMoves,
+  riderProfile,
+  depth,
+  (diff === 'master') ? { isMaster: true, samples: 8 } : {}
+);
+if (result && availableMoves[result]) return result;
 
+      
       // Support both return styles (string or { moveKey: ... })
       const chosenKey = (result && typeof result === 'object' && result.moveKey) ? result.moveKey : result;
       if (chosenKey && availableMoves[chosenKey]) {
