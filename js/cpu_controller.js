@@ -4,7 +4,7 @@
  */
 
 function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
-  if (!cpuPlayer) return;
+  if (!cpuPlayer) return 85;
 
   let target = 100;
   const keyStr = typeof moveKey === 'string' ? moveKey : 'D+J';
@@ -17,7 +17,7 @@ function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
   } else if (diff === 'hard') {
     target = Math.floor(Math.random() * 9) + 92;
   } else if (diff === 'master') {
-    // Master charges very precisely and high
+    // Master charges precisely based on move direction
     if (keyStr.startsWith('S')) target = Math.floor(Math.random() * 4) + 96;
     else if (keyStr.startsWith('W')) target = Math.floor(Math.random() * 6) + 90;
     else target = Math.floor(Math.random() * 5) + 94;
@@ -28,6 +28,7 @@ function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
   }
 
   cpuPlayer.activeChargePercent = target;
+  return target;
 }
 
 if (typeof window !== 'undefined') {
