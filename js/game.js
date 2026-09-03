@@ -34,6 +34,7 @@
   async function startBattle(matchConfig) {
     const cfg = matchConfig || {};
 
+    // Clear dangling CPU charge timers from previous matches
     if (window.cpuChargeIntervals) {
       if (window.cpuChargeIntervals.p1) {
         clearInterval(window.cpuChargeIntervals.p1);
@@ -295,30 +296,81 @@
   }
 
   /* ==========================================================================
-     4. HUD DISPLAY ENGINE
+     4. HUD DISPLAY ENGINE (WITH DYNAMIC CHI TIER VISUALS)
      ========================================================================== */
 
   function updatePlayerHUD(slotKey, player) {
     if (!player) return;
 
+    // LP Display
     const lpVal = document.getElementById(`${slotKey}-lp`);
     if (lpVal) lpVal.textContent = `LP: ${Math.max(0, player.lp)} / ${player.maxLp || 2300}`;
 
+    // Chi Display & Dynamic Tier Styling
     const chiVal = document.getElementById(`${slotKey}-chi`);
     const chiFill = document.getElementById(`${slotKey}-chi-bar-fill`);
-    if (chiVal) chiVal.textContent = `CHI: ${player.chi} / ${player.maxChi || 16}`;
+    const currentChi = player.chi || 0;
+    const maxChi = player.maxChi || 16;
+    const pct = Math.min(100, Math.max(0, (currentChi / maxChi) * 100));
+
     if (chiFill) {
-      const pct = Math.min(100, Math.max(0, (player.chi / (player.maxChi || 16)) * 100));
       chiFill.style.width = `${pct}%`;
+      chiFill.classList.remove('chi-tier-low', 'chi-tier-normal', 'chi-tier-max');
     }
 
+    if (chiVal) {
+      chiVal.classList.remove('chi-text-low', 'chi-text-normal', 'chi-text-max');
+    }
+
+    // TIER 1: FULL / MAX POWER CHI (15 - 16 Chi)
+    if (currentChi >= 15) {
+      if (chiVal) {
+        chiVal.textContent = `CHI: ${currentChi} / ${maxChi} [MAX POWER!]`;
+        chiVal.style.color = '#ffcc00'; // Glowing Gold
+        chiVal.classList.add('chi-text-max');
+      }
+      if (chiFill) {
+        chiFill.style.backgroundColor = '#ffcc00';
+        chiFill.style.boxShadow = '0 0 10px #ffcc00, 0 0 20px #ff9900';
+        chiFill.classList.add('chi-tier-max');
+      }
+    } 
+    // TIER 2: LOW CHI DANGER (< 5 Chi)
+    else if (currentChi < 5) {
+      if (chiVal) {
+        chiVal.textContent = `CHI: ${currentChi} / ${maxChi} (LOW CHI!)`;
+        chiVal.style.color = '#ff3366'; // Danger Red
+        chiVal.classList.add('chi-text-low');
+      }
+      if (chiFill) {
+        chiFill.style.backgroundColor = '#ff3366';
+        chiFill.style.boxShadow = '0 0 8px #ff3366';
+        chiFill.classList.add('chi-tier-low');
+      }
+    } 
+    // TIER 3: STANDARD CHI (5 - 14 Chi)
+    else {
+      if (chiVal) {
+        chiVal.textContent = `CHI: ${currentChi} / ${maxChi}`;
+        chiVal.style.color = '#00ffcc'; // Standard Neon Cyan
+        chiVal.classList.add('chi-text-normal');
+      }
+      if (chiFill) {
+        chiFill.style.backgroundColor = '#00ffcc';
+        chiFill.style.boxShadow = 'none';
+        chiFill.classList.add('chi-tier-normal');
+      }
+    }
+
+    // Faint Display
     const faintFill = document.getElementById(`${slotKey}-faint-fill`);
     if (faintFill) {
       const rules = window.COMBAT_RULES || { FAINT_THRESHOLD: 100 };
-      const pct = Math.min(100, Math.max(0, (player.faintMeter / rules.FAINT_THRESHOLD) * 100));
-      faintFill.style.width = `${pct}%`;
+      const faintPct = Math.min(100, Math.max(0, (player.faintMeter / rules.FAINT_THRESHOLD) * 100));
+      faintFill.style.width = `${faintPct}%`;
     }
 
+    // Status & Buff Tray
     const trayEl = document.getElementById(`${slotKey}-buff-tray`);
     if (trayEl) {
       trayEl.innerHTML = '';
