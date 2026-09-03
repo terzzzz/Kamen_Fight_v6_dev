@@ -6,23 +6,23 @@
 window.RIDER_AI_PROFILES = {
   ichigo: {
     archetype: 'Balanced',
-    weights: { W_LP: 1.0, W_CHI: 7.0, W_FAINT: 2.0 },
-    preferredChiGoal: 6
+    weights: { W_LP: 1.2, W_CHI: 4.0, W_FAINT: 2.0 },
+    preferredChiGoal: 4
   },
   nigo: {
     archetype: 'Heavy Power',
-    weights: { W_LP: 1.3, W_CHI: 5.0, W_FAINT: 1.5 },
-    preferredChiGoal: 15
+    weights: { W_LP: 1.5, W_CHI: 3.5, W_FAINT: 1.5 },
+    preferredChiGoal: 8
   },
   v3: {
     archetype: 'Combo / Fast Chi',
-    weights: { W_LP: 0.9, W_CHI: 9.0, W_FAINT: 2.5 },
-    preferredChiGoal: 10
+    weights: { W_LP: 1.1, W_CHI: 5.0, W_FAINT: 2.5 },
+    preferredChiGoal: 6
   },
   riderman: {
     archetype: 'Utility & Control',
-    weights: { W_LP: 0.8, W_CHI: 8.0, W_FAINT: 3.0 },
-    preferredChiGoal: 5
+    weights: { W_LP: 1.0, W_CHI: 4.5, W_FAINT: 3.0 },
+    preferredChiGoal: 4
   }
 };
 
@@ -98,7 +98,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
   const diff = String(difficulty).toLowerCase();
   const riderProfile = (window.RIDER_AI_PROFILES && window.RIDER_AI_PROFILES[cpuPlayer.id])
     ? window.RIDER_AI_PROFILES[cpuPlayer.id]
-    : { weights: { W_LP: 1.0, W_CHI: 8.0, W_FAINT: 2.0 }, preferredChiGoal: 6 };
+    : { weights: { W_LP: 1.0, W_CHI: 5.0, W_FAINT: 2.0 }, preferredChiGoal: 4 };
 
   // ========== EASY / NOVICE ==========
   if (diff === 'easy') {
@@ -115,7 +115,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
   if (!cpuPlayer.memory) {
     cpuPlayer.memory = {
       recentMoves: [],
-      targetChiGoal: riderProfile.preferredChiGoal || 6,
+      targetChiGoal: riderProfile.preferredChiGoal || 4,
       strategy: 'BALANCED'
     };
   }
@@ -127,9 +127,9 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
 
   if (currentChi >= mem.targetChiGoal) {
     mem.strategy = 'BURST';
-  } else if (currentChi <= 4) {
-    mem.targetChiGoal = Math.random() < 0.5 ? riderProfile.preferredChiGoal : 15;
-    mem.strategy = Math.random() < 0.4 ? 'BUFF_UP' : 'HOARD';
+  } else if (currentChi <= 2) {
+    mem.targetChiGoal = riderProfile.preferredChiGoal;
+    mem.strategy = 'BURST';
   }
 
   // ========== HARD + MASTER : ForeseeEngine (deeper on Master) ==========
@@ -186,17 +186,17 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     const hitRate = evalHitChance / 100;
     score += (evalDamage * hitRate) * riderProfile.weights.W_LP;
 
-    // 2. Chi Economy / leftover Chi penalty
+    // 2. Chi Economy
     const remainingChi = currentChi - cost;
-    if (remainingChi < 5 && (!opponentPlayer || evalDamage < opponentPlayer.lp)) {
-      score -= 60;
+    if (diff !== 'master' && remainingChi < 2 && (!opponentPlayer || evalDamage < opponentPlayer.lp)) {
+      score -= 20;
     }
 
     // 3. Strategy modifiers
     if (mem.strategy === 'HOARD' && isS && cost < mem.targetChiGoal) {
-      score -= 50;
-    } else if (mem.strategy === 'BURST' && isS) {
-      score += cost * 12;
+      if (diff !== 'master') score -= 30;
+    } else if ((mem.strategy === 'BURST' || diff === 'master') && isS) {
+      score += cost * 15;
     }
 
     // 4. Guard value vs high-Chi opponent
@@ -215,7 +215,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
 
     // 6. Anti-spam
     const timesUsed = mem.recentMoves.filter(k => k === key).length;
-    score -= timesUsed * 35;
+    score -= timesUsed * 25;
 
     score += Math.random() * 8;
 
@@ -231,10 +231,8 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
         if (oppProf.attackCount > oppProf.guardCount * 1.5 && isA) score += 45;
       }
 
-      if (isS && oppChi >= 7) score -= 30;
-      if (currentChi < mem.targetChiGoal - 2 && isD) score += 25;
-
-      score -= timesUsed * 15;
+      // Incentivize heavy Special moves on Master
+      if (isS && cost >= 4) score += 40;
     }
 
     if (score > bestScore) {
@@ -267,18 +265,10 @@ window.selectCPUMoveAndCharge = function(cpuPlayer, opponentPlayer, slotKey) {
 
   const chosenMoveKey = window.selectCPUMove(cpuPlayer, opponentPlayer, availableMoves, difficulty);
 
+  // Delegate charge target directly to Universal Charge Manager
   let targetChargePct = 85;
-
-  if (chosenMoveKey && chosenMoveKey.startsWith('A+')) {
-    targetChargePct = 15;
-  } else if (difficulty === 'easy') {
-    targetChargePct = Math.floor(Math.random() * 16) + 65;
-  } else if (difficulty === 'hard') {
-    targetChargePct = Math.floor(Math.random() * 9) + 92;
-  } else if (difficulty === 'master') {
-    targetChargePct = Math.floor(Math.random() * 5) + 95;
-  } else {
-    targetChargePct = Math.floor(Math.random() * 11) + 80;
+  if (typeof window.setUniversalChargeTarget === 'function') {
+    targetChargePct = window.setUniversalChargeTarget(cpuPlayer, chosenMoveKey, difficulty);
   }
 
   return { moveKey: chosenMoveKey, targetChargePct: targetChargePct };
