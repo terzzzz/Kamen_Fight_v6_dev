@@ -33,11 +33,12 @@ window.vsSelectionState = window.vsSelectionState || {
 
 function setDiffBadgeClasses(el, difficulty, isCPU) {
   if (!el) return;
-  el.classList.remove('easy', 'hard', 'master');
+  el.classList.remove('easy', 'normal', 'hard', 'master');
   if (!isCPU) return;
   if (difficulty === 'easy') el.classList.add('easy');
-  if (difficulty === 'hard') el.classList.add('hard');
-  if (difficulty === 'master') el.classList.add('master');
+  else if (difficulty === 'hard') el.classList.add('hard');
+  else if (difficulty === 'master') el.classList.add('master');
+  else el.classList.add('normal');
 }
 
 /* --- STEP ADVANCEMENT HANDLERS --- */
