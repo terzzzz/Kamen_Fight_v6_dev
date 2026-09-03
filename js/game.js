@@ -1,7 +1,26 @@
+/**
+ * Battle Setup & Transition Orchestration Engine
+ * Path: js/battle_setup.js
+ */
+
 async function startBattle(matchConfig) {
+  const cfg = matchConfig || {};
+
+  // Clear dangling CPU charge timers from previous matches
+  if (window.cpuChargeIntervals) {
+    if (window.cpuChargeIntervals.p1) {
+      clearInterval(window.cpuChargeIntervals.p1);
+      window.cpuChargeIntervals.p1 = null;
+    }
+    if (window.cpuChargeIntervals.p2) {
+      clearInterval(window.cpuChargeIntervals.p2);
+      window.cpuChargeIntervals.p2 = null;
+    }
+  }
+
   if (!window.gameState) window.gameState = {};
   
-  window.gameState.matchConfig = matchConfig || {};
+  window.gameState.matchConfig = cfg;
   if (!window.gameState.videoCache) window.gameState.videoCache = {};
   
   window.gameState.p1SelectedMoveKey = null;
@@ -39,15 +58,15 @@ async function startBattle(matchConfig) {
 
   if (selectScreen) selectScreen.hidden = true;
   if (splashNames) {
-    const p1Title = matchConfig.p1Rider?.name || 'P1';
-    const p2Title = matchConfig.p2Rider?.name || 'P2';
+    const p1Title = cfg.p1Rider?.name || 'P1';
+    const p2Title = cfg.p2Rider?.name || 'P2';
     splashNames.textContent = `${p1Title.toUpperCase()} VS ${p2Title.toUpperCase()}`;
   }
   if (splashRound) splashRound.textContent = "GET READY FOR THE FIGHT!";
   if (transitionScreen) transitionScreen.hidden = false;
 
-  const p1Id = matchConfig.p1Rider?.id || 'ichigo';
-  const p2Id = matchConfig.p2Rider?.id || 'nigo';
+  const p1Id = cfg.p1Rider?.id || 'ichigo';
+  const p2Id = cfg.p2Rider?.id || 'nigo';
 
   const fallbackMoves = window.FALLBACK_ICHIGO_MOVES || {};
   window.gameState.p1Moves = fallbackMoves;
@@ -67,27 +86,30 @@ async function startBattle(matchConfig) {
   }
 
   const rules = window.COMBAT_RULES || { STARTING_CHI: 8, MAX_CHI: 16 };
-  const config = window.GAME_CONFIG || { HARD_CPU_HP_MULTIPLIER: 1.10, MASTER_CPU_HP_MULTIPLIER: 1.18 };
-  const hpMultHard = config.HARD_CPU_HP_MULTIPLIER || 1.10;
-  const hpMultMaster = config.MASTER_CPU_HP_MULTIPLIER || 1.18;
+  const gameConfig = window.GAME_CONFIG || { HARD_CPU_HP_MULTIPLIER: 1.10, MASTER_CPU_HP_MULTIPLIER: 1.18 };
+  const hpMultHard = gameConfig.HARD_CPU_HP_MULTIPLIER || 1.10;
+  const hpMultMaster = gameConfig.MASTER_CPU_HP_MULTIPLIER || 1.18;
 
-  let p1MaxLp = matchConfig.p1Rider?.maxLp || 2300;
-  if (matchConfig.p1IsCPU) {
-    if (matchConfig.p1Difficulty === 'hard') p1MaxLp = Math.floor(p1MaxLp * hpMultHard);
-    if (matchConfig.p1Difficulty === 'master') p1MaxLp = Math.floor(p1MaxLp * hpMultMaster);
+  const p1Diff = String(cfg.p1Difficulty || 'normal').toLowerCase();
+  const p2Diff = String(cfg.p2Difficulty || 'normal').toLowerCase();
+
+  let p1MaxLp = cfg.p1Rider?.maxLp || 2300;
+  if (cfg.p1IsCPU) {
+    if (p1Diff === 'hard') p1MaxLp = Math.floor(p1MaxLp * hpMultHard);
+    if (p1Diff === 'master') p1MaxLp = Math.floor(p1MaxLp * hpMultMaster);
   }
 
-  let p2MaxLp = matchConfig.p2Rider?.maxLp || 2500;
-  if (matchConfig.p2IsCPU) {
-    if (matchConfig.p2Difficulty === 'hard') p2MaxLp = Math.floor(p2MaxLp * hpMultHard);
-    if (matchConfig.p2Difficulty === 'master') p2MaxLp = Math.floor(p2MaxLp * hpMultMaster);
+  let p2MaxLp = cfg.p2Rider?.maxLp || 2500;
+  if (cfg.p2IsCPU) {
+    if (p2Diff === 'hard') p2MaxLp = Math.floor(p2MaxLp * hpMultHard);
+    if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * hpMultMaster);
   }
 
   window.gameState.p1 = {
     id: p1Id,
-    name: matchConfig.p1Rider?.name || 'Kamen Rider Ichigo',
-    isCPU: !!matchConfig.p1IsCPU,
-    difficulty: matchConfig.p1Difficulty || 'normal',
+    name: cfg.p1Rider?.name || 'Kamen Rider Ichigo',
+    isCPU: !!cfg.p1IsCPU,
+    difficulty: p1Diff,
     maxLp: p1MaxLp,
     lp: p1MaxLp,
     chi: rules.STARTING_CHI || 8,
@@ -100,9 +122,9 @@ async function startBattle(matchConfig) {
 
   window.gameState.p2 = {
     id: p2Id,
-    name: matchConfig.p2Rider?.name || 'Kamen Rider Nigo',
-    isCPU: !!matchConfig.p2IsCPU,
-    difficulty: matchConfig.p2Difficulty || 'normal',
+    name: cfg.p2Rider?.name || 'Kamen Rider Nigo',
+    isCPU: !!cfg.p2IsCPU,
+    difficulty: p2Diff,
     maxLp: p2MaxLp,
     lp: p2MaxLp,
     chi: rules.STARTING_CHI || 8,
@@ -137,4 +159,8 @@ async function startBattle(matchConfig) {
       window.launchRoundTimer();
     }
   }, 1000);
+}
+
+if (typeof window !== 'undefined') {
+  window.startBattle = startBattle;
 }
