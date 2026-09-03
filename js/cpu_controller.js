@@ -19,7 +19,6 @@ function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
   } else if (diff === 'hard') {
     target = Math.floor(Math.random() * 9) + 92;
   } else if (diff === 'master') {
-    // Master charges precisely based on move direction
     if (keyStr.startsWith('S')) target = Math.floor(Math.random() * 4) + 96;
     else if (keyStr.startsWith('W')) target = Math.floor(Math.random() * 6) + 90;
     else target = Math.floor(Math.random() * 5) + 94;
@@ -50,7 +49,7 @@ function startCPUTurnRoutine(slotKey) {
     window.cpuChargeIntervals[slotKey] = null;
   }
 
-  // Ensure move key is unconfirmed while charging
+  // Ensure move key and confirm status remain unconfirmed while charging
   if (slotKey === 'p1') {
     window.gameState.p1SelectedMoveKey = null;
     window.gameState.p1IsConfirmed = false;
@@ -72,7 +71,7 @@ function startCPUTurnRoutine(slotKey) {
   // 2. Calculate duration based on directional charge rules (CHARGE_TIMES)
   const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
   const baseDurationMs = chargeTimes[dir] || 3000;
-  const totalChargeTimeMs = Math.max(600, Math.min(5000, (targetPct / 100) * (baseDurationMs * 0.5)));
+  const totalChargeTimeMs = Math.max(1200, Math.min(4500, (targetPct / 100) * (baseDurationMs * 0.6)));
 
   let currentPct = 0;
   const stepIntervalMs = 50;
@@ -80,7 +79,7 @@ function startCPUTurnRoutine(slotKey) {
 
   // 3. Reaction Delay before CPU starts charging
   const diff = String(cpuPlayer.difficulty || 'normal').toLowerCase();
-  const reactionDelay = diff === 'master' ? 150 : (diff === 'hard' ? 250 : 450);
+  const reactionDelay = diff === 'master' ? 200 : (diff === 'hard' ? 350 : 550);
 
   setTimeout(() => {
     if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
