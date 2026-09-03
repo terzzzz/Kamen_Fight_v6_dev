@@ -262,7 +262,7 @@
   }
 
   /* ==========================================================================
-     3. HUD & MEDIA DISPLAY ENGINE
+     3. HUD & MEDIA DISPLAY ENGINE WITH MULTI-PATH FALLBACKS
      ========================================================================== */
 
   function updatePlayerHUD(slotKey, player) {
@@ -311,12 +311,37 @@
     const charId = player ? player.id : 'ichigo';
     const state = String(stateStr || 'IDLE').toLowerCase();
 
-    if (videoEl) {
-      videoEl.src = `assets/videos/${charId}_${state}.mp4`;
-      videoEl.play().catch(() => {});
-    } else if (spriteEl) {
-      spriteEl.src = `assets/images/${charId}_${state}.png`;
-    }
+    if (!videoEl) return;
+
+    const primarySrc = `assets/videos/${charId}_${state}.mp4`;
+    const fallbackSrc = `assets/videos/${state}.mp4`;
+
+    videoEl.loop = (state === 'idle');
+
+    const showFallbackSprite = () => {
+      videoEl.hidden = true;
+      if (spriteEl) {
+        spriteEl.src = `assets/images/${charId}_${state}.png`;
+        spriteEl.hidden = false;
+      }
+    };
+
+    const handleError = () => {
+      videoEl.removeEventListener('error', handleError);
+      if (videoEl.src.includes(`${charId}_${state}`)) {
+        videoEl.src = fallbackSrc;
+        videoEl.play().catch(() => showFallbackSprite());
+      } else {
+        showFallbackSprite();
+      }
+    };
+
+    videoEl.hidden = false;
+    if (spriteEl) spriteEl.hidden = true;
+
+    videoEl.addEventListener('error', handleError);
+    videoEl.src = primarySrc;
+    videoEl.play().catch(() => {});
   }
 
   async function playCenterVideo(slotKey, videoFile, labelText, callback, moveObj) {
@@ -335,26 +360,38 @@
     }
 
     centerBox.hidden = false;
-    videoEl.src = `assets/videos/${videoFile}`;
+
+    // Direct path or character-prefixed path fallback
+    const player = window.gameState ? window.gameState[slotKey] : null;
+    const charId = player ? player.id : '';
+    const cleanFileName = String(videoFile || 'idle.mp4').replace(/^assets\/videos\//, '');
+
+    const primarySrc = `assets/videos/${cleanFileName}`;
+    const fallbackSrc = charId ? `assets/videos/${charId}_${cleanFileName}` : primarySrc;
 
     return new Promise((resolve) => {
-      const onEnded = () => {
+      const finishSequence = () => {
         videoEl.removeEventListener('ended', onEnded);
         videoEl.removeEventListener('error', onError);
         if (typeof callback === 'function') callback();
         resolve();
       };
 
+      const onEnded = () => finishSequence();
+
       const onError = () => {
-        videoEl.removeEventListener('ended', onEnded);
-        videoEl.removeEventListener('error', onError);
-        console.warn(`Video asset missing: ${videoFile}, skipping sequence.`);
-        if (typeof callback === 'function') callback();
-        resolve();
+        if (videoEl.src.endsWith(cleanFileName) && fallbackSrc !== primarySrc) {
+          videoEl.src = fallbackSrc;
+          videoEl.play().catch(() => finishSequence());
+        } else {
+          console.warn(`Video asset missing: ${cleanFileName}, skipping center video animation.`);
+          finishSequence();
+        }
       };
 
       videoEl.addEventListener('ended', onEnded);
       videoEl.addEventListener('error', onError);
+      videoEl.src = primarySrc;
       videoEl.play().catch(onError);
     });
   }
