@@ -107,6 +107,12 @@ async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = '
     p1EndChiSum: 0,
     p2EndChiSum: 0
   };
+  // FIX: Apply Master damage multiplier in batch simulation loops
+let baseDmg = mFirst.baseDamage || 60;
+if (first.chi > 14) baseDmg *= 1.20;
+if (second.chi < 5) baseDmg *= 1.25;
+if (first.difficulty === 'master') baseDmg *= 1.15;
+else if (first.difficulty === 'hard') baseDmg *= 1.10;
 
   for (let matchIndex = 0; matchIndex < count; matchIndex++) {
     if (matchIndex % 5 === 0) {
