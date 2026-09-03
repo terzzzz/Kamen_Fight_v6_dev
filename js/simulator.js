@@ -131,7 +131,7 @@ async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = '
       let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
 
       let roundCounter = 1;
-      const MAX_ROUNDS = 30;
+      const MAX_ROUNDS = 50;
 
       while (p1.lp > 0 && p2.lp > 0 && roundCounter <= MAX_ROUNDS) {
         if (roundCounter > 1) {
