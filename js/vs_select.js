@@ -10,7 +10,8 @@ window.currentVolume = typeof window.currentVolume === 'number' ? window.current
 const DIFF_LABELS = {
   easy: 'NOVICE',
   normal: 'BALANCED',
-  hard: 'AGGRESSIVE'
+  hard: 'AGGRESSIVE',
+  master: 'MASTER'
 };
 
 window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
@@ -148,7 +149,7 @@ window.toggleControlType = function(playerKey) {
 };
 
 window.toggleDifficulty = function(playerKey) {
-  const nextDiff = { 'easy': 'normal', 'normal': 'hard', 'hard': 'easy' };
+  const nextDiff = { 'easy': 'normal', 'normal': 'hard', 'hard': 'master', 'master': 'easy' };
   const state = window.vsSelectionState;
   const currentStep = parseInt(state.step, 10) || 1;
 
@@ -182,15 +183,16 @@ window.updateSelectionUI = function() {
   const p1TypeEl = document.getElementById('p1-type-display');
   if (p1TypeEl) p1TypeEl.textContent = state.p1IsCPU ? 'CPU' : 'HUMAN';
 
-  const p1DiffDisplay = document.getElementById('p1-diff-display');
+const p1DiffDisplay = document.getElementById('p1-diff-display');
   if (p1DiffDisplay) {
     if (!state.p1IsCPU) {
       p1DiffDisplay.textContent = 'N/A';
-      p1DiffDisplay.classList.remove('hard', 'easy');
+      p1DiffDisplay.classList.remove('hard', 'easy', 'master');
     } else {
       p1DiffDisplay.textContent = DIFF_LABELS[state.p1Difficulty] || 'BALANCED';
       p1DiffDisplay.classList.toggle('hard', state.p1Difficulty === 'hard');
       p1DiffDisplay.classList.toggle('easy', state.p1Difficulty === 'easy');
+      p1DiffDisplay.classList.toggle('master', state.p1Difficulty === 'master');
     }
   }
 
@@ -206,15 +208,16 @@ window.updateSelectionUI = function() {
   const p2TypeEl = document.getElementById('p2-type-display');
   if (p2TypeEl) p2TypeEl.textContent = state.p2IsCPU ? 'CPU' : 'HUMAN';
 
-  const p2DiffDisplay = document.getElementById('p2-diff-display');
+const p2DiffDisplay = document.getElementById('p2-diff-display');
   if (p2DiffDisplay) {
     if (!state.p2IsCPU) {
       p2DiffDisplay.textContent = 'N/A';
-      p2DiffDisplay.classList.remove('hard', 'easy');
+      p2DiffDisplay.classList.remove('hard', 'easy', 'master');
     } else {
       p2DiffDisplay.textContent = DIFF_LABELS[state.p2Difficulty] || 'BALANCED';
       p2DiffDisplay.classList.toggle('hard', state.p2Difficulty === 'hard');
       p2DiffDisplay.classList.toggle('easy', state.p2Difficulty === 'easy');
+      p2DiffDisplay.classList.toggle('master', state.p2Difficulty === 'master');
     }
   }
 
