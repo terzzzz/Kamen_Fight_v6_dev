@@ -19,7 +19,7 @@ window.GAME_CONFIG = window.GAME_CONFIG || {
   ROUND_TIME_LIMIT: 8.0,
   CHARGE_TIME_REQUIRED: 2.5,
   LATE_EXTENSION_BONUS: 1.0,
-  LATE_DECISION_THRESHOLD: 7.0,
+  LATE_DECISION_THRESHOLD: 7.0, // 7.0s elapsed out of 8.0s round window
   HARD_CPU_HP_MULTIPLIER: 1.10,
   HARD_CPU_DMG_MULTIPLIER: 1.10,
   MASTER_CPU_HP_MULTIPLIER: 1.18,
@@ -67,5 +67,29 @@ function getMatchTimingConfig() {
   return { baseRoundWindow, chargeTimeRequired, extensionBonus, lateThreshold };
 }
 
+/**
+ * Calculates elapsed time in seconds from the remaining countdown value
+ * @param {number} remainingTime - Current countdown value (e.g. 7.9 down to 0)
+ * @returns {number} Seconds elapsed in round (e.g. 8.0 - 7.9 = 0.1s elapsed)
+ */
+function getElapsedTime(remainingTime) {
+  const { baseRoundWindow } = getMatchTimingConfig();
+  const rem = typeof remainingTime === 'number' ? remainingTime : baseRoundWindow;
+  return Math.max(0, baseRoundWindow - rem);
+}
+
+/**
+ * Evaluates whether the round has reached the late decision phase (Option A)
+ * @param {number} remainingTime - Current countdown value
+ * @returns {boolean} True if elapsed time >= lateThreshold (e.g. >= 7.0s elapsed / <= 1.0s remaining)
+ */
+function isLateRound(remainingTime) {
+  const { lateThreshold } = getMatchTimingConfig();
+  const elapsedTime = getElapsedTime(remainingTime);
+  return elapsedTime >= lateThreshold;
+}
+
 window.getOpponentMovesData = getOpponentMovesData;
 window.getMatchTimingConfig = getMatchTimingConfig;
+window.getElapsedTime = getElapsedTime;
+window.isLateRound = isLateRound;
