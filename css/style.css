@@ -723,8 +723,19 @@ body {
   flex-direction: column;
 }
 
-.player-box.blanked video {
+.player-box.blanked video,
+.player-box.blanked img {
   opacity: 0.15;
+}
+
+.player-box video,
+.player-box img.rider-media {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: #000;
+  flex: 1;
 }
 
 .player-box video {
@@ -788,6 +799,7 @@ body {
   white-space: nowrap;
 }
 
+/* P2 color remap ONLY. Do not put scaleX here. */
 .p2-mirror-palette {
   filter: hue-rotate(180deg) saturate(1.4);
 }
@@ -804,7 +816,8 @@ body {
   overflow: hidden;
 }
 
-.center-action-box video {
+.center-action-box video,
+.center-action-box img.rider-media {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -812,17 +825,32 @@ body {
   background: #000;
 }
 
-/* DYNAMIC CHARACTER FLIPPING & MIRRORING CLASSES */
-.mirror-flip,
-.face-right-flip,
-.face-left-flip {
-  transform: scaleX(-1);
+/* ==========================================================================
+   RIDER FACING (JS-owned)
+   Native clips: all riders except Ichigo face RIGHT (P1).
+   Ichigo faces LEFT (P2), unless a clip in moves.json overrides.
+   Apply .mirror-flip on the <video> / <img> only — never on .player-box
+   or .center-action-box (center box needs translateX(-50%)).
+   Never auto-flip from filename / src (no [src*="v3"] rules).
+   ========================================================================== */
+.player-box video,
+.player-box img,
+.center-action-box video,
+.center-action-box img,
+.portrait-box video,
+.portrait-box img {
+  transform: none;
 }
 
-#p1-box video[src*="v3"],
-#p1-box img[src*="v3"],
-.v3-p1-flip {
-  transform: scaleX(-1);
+.player-box video.mirror-flip,
+.player-box img.mirror-flip,
+.center-action-box video.mirror-flip,
+.center-action-box img.mirror-flip,
+.portrait-box video.mirror-flip,
+.portrait-box img.mirror-flip,
+video.mirror-flip,
+img.mirror-flip {
+  transform: scaleX(-1) !important;
 }
 
 /* FLOATING DAMAGE POPUPS */
