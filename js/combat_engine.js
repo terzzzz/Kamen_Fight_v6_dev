@@ -712,7 +712,7 @@ async function executeTurnResolutionPhase() {
   let defender1WasInterrupted = false;
   let defender1GuardDeducted = false;
 
-  // STEP 1 EXECUTION
+  // --- STEP 1 EXECUTION ---
   if (move1.type !== 'IDLE' && key1 !== 'DO_NOTHING') {
     if (move1.buff) applyBuff(attacker1, move1.buff.id, move1.buff.label, move1.buff.type, move1.buff.duration);
     if (move1.debuff) applyBuff(defender1, move1.debuff.id, move1.debuff.label, move1.debuff.type, move1.debuff.duration);
@@ -722,6 +722,17 @@ async function executeTurnResolutionPhase() {
       const recovered = Math.min(attacker1.faintMeter, move1.faintRecovery);
       attacker1.faintMeter = Math.max(0, attacker1.faintMeter - move1.faintRecovery);
       triggerFloatingText(atkKey1, `FAINT -${recovered}`, 'heal');
+    }
+
+    // Added LP Recovery support (e.g. Kaizorg Vitality)
+    if (move1.lpRecovery) {
+      const maxLp = attacker1.maxLp || 2300;
+      const oldLp = attacker1.lp;
+      attacker1.lp = Math.min(maxLp, attacker1.lp + move1.lpRecovery);
+      const actualHeal = attacker1.lp - oldLp;
+      if (actualHeal > 0) {
+        triggerFloatingNumber(atkKey1, actualHeal, true);
+      }
     }
 
     attacker1.chi = Math.max(0, attacker1.chi - (move1.chiCost || 0));
@@ -835,7 +846,7 @@ async function executeTurnResolutionPhase() {
     }
   }
 
-  // STEP 2 EXECUTION
+  // --- STEP 2 EXECUTION ---
   if (defender2.lp > 0 && !attacker2.isFainted && !defender1WasInterrupted && move2.type !== 'IDLE' && key2 !== 'DO_NOTHING' && move2.type !== 'DEFENSE') {
     if (move2.buff) applyBuff(attacker2, move2.buff.id, move2.buff.label, move2.buff.type, move2.buff.duration);
     if (move2.debuff) applyBuff(defender2, move2.debuff.id, move2.debuff.label, move2.debuff.type, move2.debuff.duration);
@@ -845,6 +856,17 @@ async function executeTurnResolutionPhase() {
       const recovered = Math.min(attacker2.faintMeter, move2.faintRecovery);
       attacker2.faintMeter = Math.max(0, attacker2.faintMeter - move2.faintRecovery);
       triggerFloatingText(atkKey2, `FAINT -${recovered}`, 'heal');
+    }
+
+    // Added LP Recovery support (e.g. Kaizorg Vitality)
+    if (move2.lpRecovery) {
+      const maxLp = attacker2.maxLp || 2300;
+      const oldLp = attacker2.lp;
+      attacker2.lp = Math.min(maxLp, attacker2.lp + move2.lpRecovery);
+      const actualHeal = attacker2.lp - oldLp;
+      if (actualHeal > 0) {
+        triggerFloatingNumber(atkKey2, actualHeal, true);
+      }
     }
 
     attacker2.chi = Math.max(0, attacker2.chi - (move2.chiCost || 0));
