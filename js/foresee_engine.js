@@ -3,9 +3,9 @@
  * Path: js/foresee_engine.js
  *
  * Compatible calls:
- *   ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 3)
- *   ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 4, { isMaster: true })
- *   ForeseeEngine.getBestMove(cpu, opp, availableMoves, 4, { isMaster: true, samples: 8 })
+ *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 3)
+ *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 4, { isMaster: true })
+ *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, 4, { isMaster: true, samples: 8 })
  */
 (function (window) {
   'use strict';
@@ -241,18 +241,14 @@
     }
 
     if (isMaster) {
-      // Finish the round when opponent is low
       const oppHpRatio = oppState.lp / (oppState.maxLp || 2300);
       if (oppHpRatio < 0.25) score += (0.25 - oppHpRatio) * 400;
 
-      // Don't sit on a huge faint meter
       if (selfState.faintMeter >= 70) score -= 40;
       if (oppState.faintMeter >= 70) score += 35;
 
-      // Prefer having enough chi for a follow-up special
       if (selfState.chi >= 6 && selfState.chi <= 10) score += 18;
 
-      // Live charge: if they are dumping, being able to tank next turn is good
       if ((oppState.activeChargePercent || 0) >= 88 && selfState.chi >= 0) {
         score += 12;
       }
@@ -305,7 +301,6 @@
       } else {
         w = 0.8 + attackRatio * 1.2;
       }
-      // Prefer affordable moves
       if ((m.chiCost || 0) > (opponentPlayer.chi || 0)) w = 0.05;
       weights[k] = w;
       total += w;
@@ -378,9 +373,9 @@
     const isOpponentLocked = !!searchOptions.isOpponentLocked;
     const lockedOpponentMoveKey = searchOptions.lockedOpponentMoveKey || null;
 
-    const selfBeam = searchOptions.selfBeam || (isMaster ? 6 : 8);
-    const oppBeam = searchOptions.oppBeam || (isMaster ? 5 : 8);
-    const nodeLimit = searchOptions.nodeLimit || (isMaster ? 2200 : 900);
+    const selfBeam = searchOptions.selfBeam || (isMaster ? 4 : 8);
+    const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
+    const nodeLimit = searchOptions.nodeLimit || (isMaster ? 3500 : 900);
 
     let nodes = 0;
 
@@ -471,24 +466,23 @@
       const options = parsed.options || {};
       const isMaster = !!(options.isMaster || options.master);
 
-     // FIX: Optimize Master beam width so all move choices are evaluated within node limit
-if (isMaster) {
-  depth = Math.min(Math.max(depth, 3), 4);
-} else {
-  depth = Math.min(depth, 3);
-}
+      if (isMaster) {
+        depth = Math.min(Math.max(depth, 3), 4);
+      } else {
+        depth = Math.min(depth, 3);
+      }
 
-const oppMovesData = resolveOppMoves(opponentPlayer);
-const result = runForeseeSearch(cpuPlayer, opponentPlayer, availableMoves, oppMovesData, {
-  maxDepth: depth,
-  characterWeights: profile.weights || options.characterWeights || {},
-  isMaster: isMaster,
-  isOpponentLocked: options.isOpponentLocked,
-  lockedOpponentMoveKey: options.lockedOpponentMoveKey,
-  selfBeam: options.selfBeam || (isMaster ? 4 : 8), // Reduced from 6 to 4 for depth 4 stability
-  oppBeam: options.oppBeam || (isMaster ? 3 : 8),   // Reduced from 5 to 3 for depth 4 stability
-  nodeLimit: options.nodeLimit || (isMaster ? 3500 : 900)
-});
+      const oppMovesData = resolveOppMoves(opponentPlayer);
+      const result = runForeseeSearch(cpuPlayer, opponentPlayer, availableMoves, oppMovesData, {
+        maxDepth: depth,
+        characterWeights: profile.weights || options.characterWeights || {},
+        isMaster: isMaster,
+        isOpponentLocked: options.isOpponentLocked,
+        lockedOpponentMoveKey: options.lockedOpponentMoveKey,
+        selfBeam: options.selfBeam || (isMaster ? 4 : 8),
+        oppBeam: options.oppBeam || (isMaster ? 2 : 8),
+        nodeLimit: options.nodeLimit || (isMaster ? 3500 : 900)
+      });
 
       window.ForeseeEngine.lastResult = result;
       return result.moveKey;
