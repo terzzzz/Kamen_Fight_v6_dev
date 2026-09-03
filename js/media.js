@@ -3,27 +3,38 @@
  * Path: js/media.js
  */
 
-// Orientation Resolver (Corrected facing flip logic for P1 / P2)
+/**
+ * Native clip facing:
+ *   "right" = rider looks toward P2 (P1-native) — Nigo / V3 / Riderman default
+ *   "left"  = rider looks toward P1 (P2-native) — Ichigo default
+ *
+ * Stage:
+ *   P1 (left box) must look right
+ *   P2 (right box) must look left
+ *
+ * Priority: move.sourceFacing → player.sourceFacing → rider default
+ * moves.json "unmirrored": true  = never flip that clip
+ */
 function getTransformFlip(player, playerKey, moveObj = null) {
-  // 1. If move explicitly specifies unmirrored, force native orientation
   if (moveObj && moveObj.unmirrored === true) {
     return 'scaleX(1)';
   }
 
-  const riderId = (player && player.id) ? player.id : (playerKey === 'p1' ? 'ichigo' : 'nigo');
-  const defaultFacing = (riderId === 'nigo') ? 'right' : 'left';
+  const riderId = String(
+    (player && player.id) || (playerKey === 'p1' ? 'ichigo' : 'nigo')
+  ).toLowerCase();
 
-  const nativeFacing = (moveObj && moveObj.sourceFacing) 
-    ? moveObj.sourceFacing 
-    : ((player && player.sourceFacing) ? player.sourceFacing : defaultFacing);
+  // Match data/riders.json. Only Ichigo is P2-native.
+  const defaultFacing = (riderId === 'ichigo') ? 'left' : 'right';
 
-  // P1 stands on the left and must face RIGHT; P2 stands on the right and must face LEFT
+  const nativeFacing = (
+    (moveObj && moveObj.sourceFacing) ||
+    (player && player.sourceFacing) ||
+    defaultFacing
+  );
+
   const targetFacing = (playerKey === 'p1') ? 'right' : 'left';
-
-  // Flip only if native video orientation does not match the target facing direction
-  const shouldFlip = (nativeFacing !== targetFacing);
-
-  return shouldFlip ? 'scaleX(-1)' : 'scaleX(1)';
+  return (nativeFacing !== targetFacing) ? 'scaleX(-1)' : 'scaleX(1)';
 }
 
 // Side Character Video Updater (Idle, Mid-Air, Faint, Victory, KO)
