@@ -53,7 +53,7 @@ function getSimStanceTier(key) {
 function selectCPUMoveSim(cpu, opp, moves, difficulty) {
   if (cpu.isFainted) return 'DO_NOTHING';
 
-  // FIX: Use full AI decision engine when available
+  // Use full AI decision engine when available
   if (typeof window.selectCPUMove === 'function') {
     return window.selectCPUMove(cpu, opp, moves, difficulty);
   }
@@ -62,11 +62,7 @@ function selectCPUMoveSim(cpu, opp, moves, difficulty) {
   const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
   if (validKeys.length === 0) return 'DO_NOTHING';
 
-  return validKeys[Math.floor(Math.random() * validKeys.length)];
-}
-
-  if (validKeys.length === 0) return 'DO_NOTHING';
-if (diff === 'master') {
+  if (diff === 'master') {
     const sMoves = validKeys.filter(k => k.startsWith('S'));
     const aMoves = validKeys.filter(k => k.startsWith('A'));
     const dMoves = validKeys.filter(k => k.startsWith('D'));
@@ -75,6 +71,7 @@ if (diff === 'master') {
     if (opp.chi >= 6 && aMoves.length > 0 && Math.random() < 0.45) return aMoves[Math.floor(Math.random() * aMoves.length)];
     if (dMoves.length > 0) return dMoves[Math.floor(Math.random() * dMoves.length)];
   }
+
   if (diff === 'hard' || diff === 'normal') {
     const sMoves = validKeys.filter(k => k.startsWith('S'));
     const dMoves = validKeys.filter(k => k.startsWith('D'));
@@ -97,7 +94,11 @@ if (diff === 'master') {
 async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = 'normal', p2Difficulty = 'normal', progressCallback = null) {
   const allMoves = await loadSimulatorMoves();
   const rules = window.COMBAT_RULES || { STARTING_CHI: 8, MAX_CHI: 16, FAINT_THRESHOLD: 100, HIT_BUILDUP: 25 };
-  const hpMultiplier = (window.GAME_CONFIG && window.GAME_CONFIG.HARD_CPU_HP_MULTIPLIER) || 1.10;
+  
+  const hardHpMult = (window.GAME_CONFIG && window.GAME_CONFIG.HARD_CPU_HP_MULTIPLIER) || 1.10;
+  const masterHpMult = (window.GAME_CONFIG && window.GAME_CONFIG.MASTER_CPU_HP_MULTIPLIER) || 1.18;
+  const hardDmgMult = (window.GAME_CONFIG && window.GAME_CONFIG.HARD_CPU_DMG_MULTIPLIER) || 1.10;
+  const masterDmgMult = (window.GAME_CONFIG && window.GAME_CONFIG.MASTER_CPU_DMG_MULTIPLIER) || 1.15;
 
   const p1Diff = String(p1Difficulty || 'normal').toLowerCase();
   const p2Diff = String(p2Difficulty || 'normal').toLowerCase();
@@ -116,12 +117,6 @@ async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = '
     p1EndChiSum: 0,
     p2EndChiSum: 0
   };
-  // FIX: Apply Master damage multiplier in batch simulation loops
-let baseDmg = mFirst.baseDamage || 60;
-if (first.chi > 14) baseDmg *= 1.20;
-if (second.chi < 5) baseDmg *= 1.25;
-if (first.difficulty === 'master') baseDmg *= 1.15;
-else if (first.difficulty === 'hard') baseDmg *= 1.10;
 
   for (let matchIndex = 0; matchIndex < count; matchIndex++) {
     if (matchIndex % 5 === 0) {
@@ -134,13 +129,12 @@ else if (first.difficulty === 'hard') baseDmg *= 1.10;
 
     try {
       let p1MaxLp = p1Rider.maxLp || 2300;
-            if (p1Diff === 'hard') p1MaxLp = Math.floor(p1MaxLp * hpMultiplier);
-      if (p1Diff === 'master') p1MaxLp = Math.floor(p1MaxLp * (hpMultiplier + 0.08));
+      if (p1Diff === 'hard') p1MaxLp = Math.floor(p1MaxLp * hardHpMult);
+      if (p1Diff === 'master') p1MaxLp = Math.floor(p1MaxLp * masterHpMult);
 
       let p2MaxLp = p2Rider.maxLp || 2500;
- 
-      if (p2Diff === 'hard') p2MaxLp = Math.floor(p2MaxLp * hpMultiplier);
-      if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * (hpMultiplier + 0.08));
+      if (p2Diff === 'hard') p2MaxLp = Math.floor(p2MaxLp * hardHpMult);
+      if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * masterHpMult);
 
       let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
       let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
@@ -249,7 +243,8 @@ else if (first.difficulty === 'hard') baseDmg *= 1.10;
             let baseDmg = mFirst.baseDamage || 60;
             if (first.chi > 14) baseDmg *= 1.20;
             if (second.chi < 5) baseDmg *= 1.25;
-            if (first.difficulty === 'hard') baseDmg *= 1.10;
+            if (first.difficulty === 'master') baseDmg *= masterDmgMult;
+            else if (first.difficulty === 'hard') baseDmg *= hardDmgMult;
 
             let dmg = Math.floor(baseDmg * damageMult);
             second.lp = Math.max(0, second.lp - dmg);
@@ -314,7 +309,8 @@ else if (first.difficulty === 'hard') baseDmg *= 1.10;
             let baseDmg = mSecond.baseDamage || 60;
             if (second.chi > 14) baseDmg *= 1.20;
             if (first.chi < 5) baseDmg *= 1.25;
-            if (second.difficulty === 'hard') baseDmg *= 1.10;
+            if (second.difficulty === 'master') baseDmg *= masterDmgMult;
+            else if (second.difficulty === 'hard') baseDmg *= hardDmgMult;
 
             let dmg = Math.floor(baseDmg * damageMult);
             first.lp = Math.max(0, first.lp - dmg);
@@ -373,6 +369,4 @@ else if (first.difficulty === 'hard') baseDmg *= 1.10;
   };
 }
 
-window.runBatchSimulation = runBatchSimulation; 
-
-
+window.runBatchSimulation = runBatchSimulation;
