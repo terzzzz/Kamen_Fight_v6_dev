@@ -1,7 +1,6 @@
 async function startBattle(matchConfig) {
   if (!window.gameState) window.gameState = {};
   
-  // Re-initialize input structures to prevent null reference errors
   window.gameState.matchConfig = matchConfig || {};
   if (!window.gameState.videoCache) window.gameState.videoCache = {};
   
@@ -68,17 +67,20 @@ async function startBattle(matchConfig) {
   }
 
   const rules = window.COMBAT_RULES || { STARTING_CHI: 8, MAX_CHI: 16 };
-  const config = window.GAME_CONFIG || { HARD_CPU_HP_MULTIPLIER: 1.10 };
-  const hpMult = config.HARD_CPU_HP_MULTIPLIER || 1.10;
+  const config = window.GAME_CONFIG || { HARD_CPU_HP_MULTIPLIER: 1.10, MASTER_CPU_HP_MULTIPLIER: 1.18 };
+  const hpMultHard = config.HARD_CPU_HP_MULTIPLIER || 1.10;
+  const hpMultMaster = config.MASTER_CPU_HP_MULTIPLIER || 1.18;
 
   let p1MaxLp = matchConfig.p1Rider?.maxLp || 2300;
-  if (matchConfig.p1IsCPU && matchConfig.p1Difficulty === 'hard') {
-    p1MaxLp = Math.floor(p1MaxLp * hpMult);
+  if (matchConfig.p1IsCPU) {
+    if (matchConfig.p1Difficulty === 'hard') p1MaxLp = Math.floor(p1MaxLp * hpMultHard);
+    if (matchConfig.p1Difficulty === 'master') p1MaxLp = Math.floor(p1MaxLp * hpMultMaster);
   }
 
   let p2MaxLp = matchConfig.p2Rider?.maxLp || 2500;
-  if (matchConfig.p2IsCPU && matchConfig.p2Difficulty === 'hard') {
-    p2MaxLp = Math.floor(p2MaxLp * hpMult);
+  if (matchConfig.p2IsCPU) {
+    if (matchConfig.p2Difficulty === 'hard') p2MaxLp = Math.floor(p2MaxLp * hpMultHard);
+    if (matchConfig.p2Difficulty === 'master') p2MaxLp = Math.floor(p2MaxLp * hpMultMaster);
   }
 
   window.gameState.p1 = {
