@@ -13,7 +13,7 @@
  *   P2 (right box) must look left
  *
  * Priority: move.sourceFacing → player.sourceFacing → rider default
- * moves.json "unmirrored": true  = never flip that clip
+ * moves.json "unmirrored": true = never flip that clip
  */
 function getTransformFlip(player, playerKey, moveObj = null) {
   if (moveObj && moveObj.unmirrored === true) {
@@ -24,7 +24,6 @@ function getTransformFlip(player, playerKey, moveObj = null) {
     (player && player.id) || (playerKey === 'p1' ? 'ichigo' : 'nigo')
   ).toLowerCase();
 
-  // Match data/riders.json. Only Ichigo is P2-native.
   const defaultFacing = (riderId === 'ichigo') ? 'left' : 'right';
 
   const nativeFacing = (
@@ -46,50 +45,99 @@ function updateCharacterMedia(playerKey, stateType = 'IDLE') {
   const player = window.gameState ? window.gameState[playerKey] : null;
   const riderId = (player && player.id) ? player.id : (playerKey === 'p1' ? 'ichigo' : 'nigo');
 
-  let fileName = stateType;
-  if (stateType === 'IDLE') {
+  let state = String(stateType || 'IDLE').toLowerCase();
+  let fileName = state;
+
+  if (state === 'idle') {
     if (player && player.isFainted) {
-      fileName = 'faint.mp4';
+      fileName = 'faint';
     } else if (player && player.airborneTicks > 0) {
-      fileName = 'mid-air.mp4';
+      fileName = 'mid-air';
     } else {
-      fileName = 'idle.mp4';
+      fileName = 'idle';
     }
-  } else if (stateType === 'VICTORY' || stateType === 'victory') {
-    fileName = Math.random() < 0.5 ? 'victory.mp4' : 'victory2.mp4';
-  } else if (stateType === 'KO' || stateType === 'ko') {
-    fileName = 'ko.mp4';
+  } else if (state === 'victory') {
+    fileName = Math.random() < 0.5 ? 'victory' : 'victory2';
+  } else if (state === 'ko') {
+    fileName = 'ko';
   }
 
-  if (!fileName.endsWith('.mp4') && !fileName.endsWith('.webm')) {
-    fileName += '.mp4';
-  }
+  const cleanFile = fileName.replace(/\.(mp4|webm)$/i, '');
 
-  const videoUrl = `assets/videos/${riderId}/${fileName}`;
+  const videoCandidates = [
+    `assets/videos/${riderId}/${cleanFile}.mp4`,
+    `assets/videos/${riderId}_${cleanFile}.mp4`,
+    `assets/videos/${cleanFile}.mp4`,
+    `assets/videos/${riderId}/idle.mp4`,
+    `assets/videos/${riderId}_idle.mp4`
+  ];
+
+  const imageCandidates = [
+    `assets/images/icons/${riderId}.png`,
+    `assets/images/${riderId}.png`,
+    `assets/images/icons/ichigo.png`
+  ];
 
   videoEl.style.transform = getTransformFlip(player, playerKey);
   videoEl.muted = true;
+  videoEl.defaultMuted = true;
   videoEl.playsInline = true;
   videoEl.setAttribute('playsinline', '');
   videoEl.setAttribute('webkit-playsinline', '');
 
-  const isLoopingState = ['idle.mp4', 'mid-air.mp4', 'faint.mp4'].includes(fileName);
+  const isLoopingState = ['idle', 'mid-air', 'faint'].includes(cleanFile);
   videoEl.loop = isLoopingState;
 
-  if (videoEl.getAttribute('src') !== videoUrl) {
-    videoEl.src = videoUrl;
-    videoEl.load();
-    const playPromise = videoEl.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(() => {});
+  let candidateIdx = 0;
+
+  function tryNextVideo() {
+    if (candidateIdx >= videoCandidates.length) {
+      tryImageFallback();
+      return;
     }
-  } else if (videoEl.paused && isLoopingState) {
-    videoEl.play().catch(() => {});
+
+    const src = videoCandidates[candidateIdx++];
+
+    videoEl.onerror = () => tryNextVideo();
+    videoEl.onplaying = () => {
+      videoEl.hidden = false;
+      videoEl.style.display = 'block';
+      if (spriteEl) spriteEl.hidden = true;
+    };
+
+    videoEl.src = src;
+    videoEl.load();
+
+    const p = videoEl.play();
+    if (p !== undefined) {
+      p.then(() => {
+        videoEl.hidden = false;
+        videoEl.style.display = 'block';
+        if (spriteEl) spriteEl.hidden = true;
+      }).catch(() => tryNextVideo());
+    }
   }
 
-  if (spriteEl) spriteEl.hidden = true;
-  videoEl.hidden = false;
-  videoEl.style.display = 'block';
+  function tryImageFallback() {
+    videoEl.hidden = true;
+    videoEl.style.display = 'none';
+    if (!spriteEl) return;
+
+    let imgIdx = 0;
+    function tryNextImg() {
+      if (imgIdx >= imageCandidates.length) return;
+      const imgSrc = imageCandidates[imgIdx++];
+      spriteEl.onerror = () => tryNextImg();
+      spriteEl.onload = () => {
+        spriteEl.hidden = false;
+        spriteEl.style.display = 'block';
+      };
+      spriteEl.src = imgSrc;
+    }
+    tryNextImg();
+  }
+
+  tryNextVideo();
 }
 
 // Action Cutscene Video Player (Center Box)
@@ -98,7 +146,7 @@ function playCenterVideo(playerKey, videoFile, actionName = '', maxDurationMs = 
     const centerBox = document.getElementById('center-box');
     const centerVid = document.getElementById('center-video');
     const actionLabel = document.getElementById('center-action-label');
-    
+
     if (!centerBox || !centerVid) {
       resolve();
       return;
@@ -117,11 +165,11 @@ function playCenterVideo(playerKey, videoFile, actionName = '', maxDurationMs = 
     centerBox.style.display = 'flex';
 
     centerVid.muted = true;
+    centerVid.defaultMuted = true;
     centerVid.playsInline = true;
     centerVid.setAttribute('playsinline', '');
     centerVid.setAttribute('webkit-playsinline', '');
-    
-    // Explicitly calculate and set transform
+
     centerVid.style.transform = getTransformFlip(player, playerKey, moveObj);
 
     let resolved = false;
@@ -132,9 +180,8 @@ function playCenterVideo(playerKey, videoFile, actionName = '', maxDurationMs = 
       resolved = true;
       if (fallbackTimer) clearTimeout(fallbackTimer);
 
-      centerVid.removeEventListener('ended', cleanUpAndResolve);
-      centerVid.removeEventListener('error', cleanUpAndResolve);
-      centerVid.removeEventListener('loadedmetadata', setupDynamicTimeout);
+      centerVid.onended = null;
+      centerVid.onerror = null;
 
       centerVid.pause();
       centerVid.style.transform = 'none';
@@ -144,33 +191,39 @@ function playCenterVideo(playerKey, videoFile, actionName = '', maxDurationMs = 
       resolve();
     };
 
-    const setupDynamicTimeout = () => {
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      if (maxDurationMs) {
-        fallbackTimer = setTimeout(cleanUpAndResolve, maxDurationMs);
-      } else if (centerVid.duration && !isNaN(centerVid.duration) && centerVid.duration > 0) {
-        fallbackTimer = setTimeout(cleanUpAndResolve, Math.ceil(centerVid.duration * 1000) + 1000);
-      } else {
-        fallbackTimer = setTimeout(cleanUpAndResolve, 8000);
+    const cleanFileName = String(videoFile || 'idle.mp4').replace(/^assets\/videos\//, '').replace(/\.(mp4|webm)$/i, '');
+
+    const candidates = [
+      `assets/videos/${riderId}/${cleanFileName}.mp4`,
+      `assets/videos/${riderId}_${cleanFileName}.mp4`,
+      `assets/videos/${cleanFileName}.mp4`,
+      `assets/videos/${riderId}/idle.mp4`
+    ];
+
+    let candidateIdx = 0;
+
+    function tryNextCenterVideo() {
+      if (candidateIdx >= candidates.length || resolved) {
+        cleanUpAndResolve();
+        return;
       }
-    };
 
-    centerVid.addEventListener('ended', cleanUpAndResolve);
-    centerVid.addEventListener('error', cleanUpAndResolve);
-    centerVid.addEventListener('loadedmetadata', setupDynamicTimeout);
+      const src = candidates[candidateIdx++];
 
-    const videoUrl = `assets/videos/${riderId}/${videoFile}`;
-    centerVid.src = videoUrl;
-    centerVid.load();
+      centerVid.onended = () => cleanUpAndResolve();
+      centerVid.onerror = () => tryNextCenterVideo();
 
-    const playPromise = centerVid.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(() => {
-        setTimeout(cleanUpAndResolve, 1200);
-      });
+      centerVid.src = src;
+      centerVid.load();
+
+      const p = centerVid.play();
+      if (p !== undefined) {
+        p.catch(() => tryNextCenterVideo());
+      }
     }
 
     fallbackTimer = setTimeout(cleanUpAndResolve, maxDurationMs || 8000);
+    tryNextCenterVideo();
   });
 }
 
@@ -205,3 +258,4 @@ window.updateCharacterMedia = updateCharacterMedia;
 window.playCenterVideo = playCenterVideo;
 window.hideCenterScreen = hideCenterScreen;
 window.unlockMobileVideos = unlockMobileVideos;
+
