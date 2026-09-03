@@ -121,9 +121,10 @@ window.startCPUTurnRoutine = function(slotKey) {
 
   simulateCPUDirectionButton(slotKey, dirKey, true);
 
-  // Directional Charge Speed Calculation (Human Parity)
-  const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
-  const totalChargeMs = chargeTimes[dirKey] || 3000;
+  // Directional Charge Speed Calculation (Supports both Seconds or Milliseconds)
+  const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
+  let rawTime = chargeTimes[dirKey] !== undefined ? chargeTimes[dirKey] : 3.0;
+  const totalChargeMs = rawTime < 50 ? rawTime * 1000 : rawTime;
   const intervalMs = 50;
   const pctIncrement = (intervalMs / totalChargeMs) * 100;
 
@@ -715,13 +716,18 @@ async function executeTurnResolutionPhase() {
       if (p1Stance !== p2Stance) {
         p1GoesFirst = p1Stance > p2Stance;
       } else {
-        const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
+        const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
 
         let p1Dir = (typeof p1MoveKey === 'string' && p1MoveKey.includes('+')) ? p1MoveKey.split('+')[0] : 'D';
         let p2Dir = (typeof p2MoveKey === 'string' && p2MoveKey.includes('+')) ? p2MoveKey.split('+')[0] : 'D';
 
-        let p1Elapsed = (p1Charge / 100) * ((chargeTimes[p1Dir] || 3000) / 1000);
-        let p2Elapsed = (p2Charge / 100) * ((chargeTimes[p2Dir] || 3000) / 1000);
+        let p1Raw = chargeTimes[p1Dir] !== undefined ? chargeTimes[p1Dir] : 3.0;
+        let p1TotalMs = p1Raw < 50 ? p1Raw * 1000 : p1Raw;
+        let p1Elapsed = (p1Charge / 100) * (p1TotalMs / 1000);
+
+        let p2Raw = chargeTimes[p2Dir] !== undefined ? chargeTimes[p2Dir] : 3.0;
+        let p2TotalMs = p2Raw < 50 ? p2Raw * 1000 : p2Raw;
+        let p2Elapsed = (p2Charge / 100) * (p2TotalMs / 1000);
 
         if (p1Elapsed !== p2Elapsed) {
           p1GoesFirst = p1Elapsed < p2Elapsed;
