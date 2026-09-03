@@ -13,57 +13,57 @@
 
   <!-- CHARACTER SELECTION SCREEN (VISIBLE ON BOOT) -->
   <div id="vs-select-screen" class="screen-container">
-    <div class="bgm-volume-control"
-      style="position: absolute; top: 15px; right: 20px; display: flex; align-items: center; gap: 8px; font-family: monospace; color: #00ffcc; z-index: 50;">
+    <div class="bgm-volume-control">
       <label for="bgm-slider">🔊 BGM:</label>
-      <input type="range" id="bgm-slider" min="0" max="1" step="0.05" value="0.5" oninput="changeBGMVolume(this.value)"
-        style="cursor: pointer; accent-color: #00ffcc;">
+      <input type="range" id="bgm-slider" min="0" max="1" step="0.05" value="0.5" oninput="changeBGMVolume(this.value)">
     </div>
-    
-    <h1 id="select-step-title" class="vs-header-title">STEP 1: SELECT PLAYER 1 RIDER</h1>
 
-    <div class="selection-layout">
-      <!-- P1 Selection Card -->
-      <div id="p1-card" class="rider-card active-slot">
-        <h2>PLAYER 1</h2>
-        <div class="portrait-box">
-          <img id="p1-img" src="assets/images/icons/ichigo.png" alt="Player 1 Rider">
+    <div class="vs-select-stage">
+      <h1 id="select-step-title" class="vs-header-title">STEP 1: SELECT PLAYER 1 RIDER</h1>
+
+      <div class="selection-layout">
+        <!-- P1 Selection Card -->
+        <div id="p1-card" class="rider-card active-slot">
+          <h2>PLAYER 1</h2>
+          <div class="portrait-box">
+            <img id="p1-img" src="assets/images/icons/ichigo.png" alt="Player 1 Rider">
+          </div>
+          <h3 id="p1-name-display">Kamen Rider Ichigo</h3>
+          <div class="card-controls">
+            <button id="p1-left-btn" onclick="cycleRider('p1', -1)">&lt;</button>
+            <span id="p1-type-display" class="type-badge" onclick="toggleControlType('p1')">HUMAN</span>
+            <button id="p1-right-btn" onclick="cycleRider('p1', 1)">&gt;</button>
+          </div>
+          <div class="difficulty-control-group">
+            <span class="diff-label">DIFFICULTY:</span>
+            <span id="p1-diff-display" class="diff-badge" onclick="toggleDifficulty('p1')">N/A</span>
+          </div>
         </div>
-        <h3 id="p1-name-display">Kamen Rider Ichigo</h3>
-        <div class="card-controls">
-          <button id="p1-left-btn" onclick="cycleRider('p1', -1)">&lt;</button>
-          <span id="p1-type-display" class="type-badge" onclick="toggleControlType('p1')">HUMAN</span>
-          <button id="p1-right-btn" onclick="cycleRider('p1', 1)">&gt;</button>
-        </div>
-        <div class="difficulty-control-group">
-          <span class="diff-label">DIFFICULTY:</span>
-          <span id="p1-diff-display" class="diff-badge" onclick="toggleDifficulty('p1')">N/A</span>
+
+        <div class="vs-divider">VS</div>
+
+        <!-- P2 Selection Card -->
+        <div id="p2-card" class="rider-card locked-slot">
+          <h2>PLAYER 2</h2>
+          <div class="portrait-box">
+            <img id="p2-img" src="assets/images/icons/ichigo.png" alt="Player 2 Rider">
+          </div>
+          <h3 id="p2-name-display">Kamen Rider Ichigo</h3>
+          <div class="card-controls">
+            <button id="p2-left-btn" onclick="cycleRider('p2', -1)" disabled>&lt;</button>
+            <span id="p2-type-display" class="type-badge" onclick="toggleControlType('p2')">CPU</span>
+            <button id="p2-right-btn" onclick="cycleRider('p2', 1)">&gt;</button>
+          </div>
+          <div class="difficulty-control-group">
+            <span class="diff-label">DIFFICULTY:</span>
+            <span id="p2-diff-display" class="diff-badge" onclick="toggleDifficulty('p2')">BALANCED</span>
+          </div>
         </div>
       </div>
 
-      <div class="vs-divider">VS</div>
-
-      <!-- P2 Selection Card -->
-      <div id="p2-card" class="rider-card locked-slot">
-        <h2>PLAYER 2</h2>
-        <div class="portrait-box">
-          <img id="p2-img" src="assets/images/icons/ichigo.png" alt="Player 2 Rider">
-        </div>
-        <h3 id="p2-name-display">Kamen Rider Ichigo</h3>
-        <div class="card-controls">
-          <button id="p2-left-btn" onclick="cycleRider('p2', -1)" disabled>&lt;</button>
-          <span id="p2-type-display" class="type-badge" onclick="toggleControlType('p2')">CPU</span>
-          <button id="p2-right-btn" onclick="cycleRider('p2', 1)">&gt;</button>
-        </div>
-        <div class="difficulty-control-group">
-          <span class="diff-label">DIFFICULTY:</span>
-          <span id="p2-diff-display" class="diff-badge" onclick="toggleDifficulty('p2')">NORMAL</span>
-        </div>
+      <div id="vs-error-banner" class="error-banner" hidden>
+        AT LEAST ONE PLAYER MUST BE SET TO CPU FOR LOCAL VS MODE!
       </div>
-    </div>
-
-    <div id="vs-error-banner" class="error-banner" hidden>
-      AT LEAST ONE PLAYER MUST BE SET TO CPU FOR LOCAL VS MODE!
     </div>
 
     <div class="selection-actions">
@@ -71,16 +71,13 @@
       <button id="confirm-btn" class="action-btn" onclick="handleConfirmStep()">CONFIRM P1</button>
       <button id="start-game-btn" class="action-btn start-glow" onclick="validateAndStartMatch()" hidden>START GAME</button>
 
-      <!-- SIMULATION CONTROLS -->
-      <div class="sim-controls" style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px;">
-        <select id="sim-count-select"
-          style="padding: 8px 12px; background: #000; color: #00ffcc; border: 1px solid #00ffcc; font-family: monospace; font-size: 14px; border-radius: 4px;">
+      <div class="sim-controls">
+        <select id="sim-count-select">
           <option value="10">10 Matches</option>
           <option value="20" selected>20 Matches</option>
           <option value="50">50 Matches</option>
         </select>
-        <button id="btn-simulate-matches" class="action-btn"
-          style="background: #ffaa00; color: #000; font-weight: bold;" disabled>⚡ SIMULATE</button>
+        <button id="btn-simulate-matches" class="action-btn sim-btn" disabled>⚡ SIMULATE</button>
       </div>
     </div>
   </div>
@@ -249,7 +246,6 @@
   <script src="js/combat_engine.js"></script>
   <script src="js/match_manager.js"></script>
   <script src="js/ui.js"></script>
-    
   <script src="js/vs_select.js"></script>
   <script src="js/game.js"></script>
 </body>
