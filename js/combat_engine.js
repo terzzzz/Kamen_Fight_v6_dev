@@ -21,7 +21,9 @@ window.GAME_CONFIG = window.GAME_CONFIG || {
   LATE_EXTENSION_BONUS: 1.0,
   LATE_DECISION_THRESHOLD: 7.0,
   HARD_CPU_HP_MULTIPLIER: 1.10,
-  HARD_CPU_DMG_MULTIPLIER: 1.10
+  HARD_CPU_DMG_MULTIPLIER: 1.10,
+  MASTER_CPU_HP_MULTIPLIER: 1.18,
+  MASTER_CPU_DMG_MULTIPLIER: 1.15
 };
 
 var DO_NOTHING_MOVE = window.DO_NOTHING_MOVE || {
@@ -104,7 +106,9 @@ window.startCPUTurnRoutine = function(slotKey) {
   }
 
   const diff = playerObj.difficulty || 'normal';
-  const baseTarget = isZeroChiGuard ? 100 : (diff === 'hard' ? 95 : (diff === 'easy' ? 70 : 85));
+  const baseTarget = isZeroChiGuard 
+    ? 100 
+    : (diff === 'master' ? 98 : (diff === 'hard' ? 95 : (diff === 'easy' ? 70 : 85)));
   const variance = isZeroChiGuard ? 0 : (Math.floor(Math.random() * 11) - 5);
   const targetChargePct = Math.min(100, Math.max(25, baseTarget + variance));
 
@@ -602,10 +606,15 @@ function resolveAttack(attacker, defender, atkMove, atkMoveKey, defMove, defMove
 
   let fullPowerMultiplier = attacker.chi > 14 ? 1.20 : 1.0;
   let lowPowerDefMultiplier = defender.chi < 5 ? 1.25 : 1.0;
-  let hardDmgMultiplier = (attacker.isCPU && attacker.difficulty === 'hard') ? 1.10 : 1.0;
+
+  let cpuDmgMultiplier = 1.0;
+  if (attacker.isCPU) {
+    if (attacker.difficulty === 'master') cpuDmgMultiplier = (window.GAME_CONFIG && window.GAME_CONFIG.MASTER_CPU_DMG_MULTIPLIER) || 1.15;
+    else if (attacker.difficulty === 'hard') cpuDmgMultiplier = (window.GAME_CONFIG && window.GAME_CONFIG.HARD_CPU_DMG_MULTIPLIER) || 1.10;
+  }
 
   let baseDamage = atkMove.baseDamage || 0;
-  let calculatedDmg = baseDamage * chargeFactor * typhoonMultiplier * focusMultiplier * jumpAtkMultiplier * fullPowerMultiplier * lowPowerDefMultiplier * hardDmgMultiplier * damageRatio;
+  let calculatedDmg = baseDamage * chargeFactor * typhoonMultiplier * focusMultiplier * jumpAtkMultiplier * fullPowerMultiplier * lowPowerDefMultiplier * cpuDmgMultiplier * damageRatio;
 
   let finalDmg = (isGlancing && calculatedDmg > 0) ? Math.max(1, Math.floor(calculatedDmg * 0.20)) : Math.floor(calculatedDmg);
 
@@ -724,7 +733,6 @@ async function executeTurnResolutionPhase() {
       triggerFloatingText(atkKey1, `FAINT -${recovered}`, 'heal');
     }
 
-    // Added LP Recovery support (e.g. Kaizorg Vitality)
     if (move1.lpRecovery) {
       const maxLp = attacker1.maxLp || 2300;
       const oldLp = attacker1.lp;
@@ -858,7 +866,6 @@ async function executeTurnResolutionPhase() {
       triggerFloatingText(atkKey2, `FAINT -${recovered}`, 'heal');
     }
 
-    // Added LP Recovery support (e.g. Kaizorg Vitality)
     if (move2.lpRecovery) {
       const maxLp = attacker2.maxLp || 2300;
       const oldLp = attacker2.lp;
