@@ -174,6 +174,7 @@
 
       updatePlayerHUD('p1', window.gameState.p1);
       updatePlayerHUD('p2', window.gameState.p2);
+      updateControlPanelsVisibility();
 
       if (typeof window.updateCharacterMedia === 'function') {
         window.updateCharacterMedia('p1', 'IDLE');
@@ -185,7 +186,30 @@
   }
 
   /* ==========================================================================
-     2. ROUND TIMER & INPUT PHASE CONTROL
+     2. CONTROL PANEL VISIBILITY TOGGLE (SPECTATOR MODE SUPPORT)
+     ========================================================================== */
+
+  function updateControlPanelsVisibility() {
+    if (!window.gameState) return;
+    const p1IsCPU = !!(window.gameState.p1 && window.gameState.p1.isCPU);
+    const p2IsCPU = !!(window.gameState.p2 && window.gameState.p2.isCPU);
+
+    const p1ControlEls = document.querySelectorAll('#p1-controls, #p1-input-card, #p1-keypad, .p1-controls, #p1-touch-pad, #p1-card-controls, .p1-input-box');
+    const p2ControlEls = document.querySelectorAll('#p2-controls, #p2-input-card, #p2-keypad, .p2-controls, #p2-touch-pad, #p2-card-controls, .p2-input-box');
+
+    p1ControlEls.forEach(el => {
+      el.hidden = p1IsCPU;
+      el.style.display = p1IsCPU ? 'none' : '';
+    });
+
+    p2ControlEls.forEach(el => {
+      el.hidden = p2IsCPU;
+      el.style.display = p2IsCPU ? 'none' : '';
+    });
+  }
+
+  /* ==========================================================================
+     3. ROUND TIMER & INPUT PHASE CONTROL
      ========================================================================== */
 
   function launchRoundTimer() {
@@ -201,6 +225,8 @@
     window.gameState.p2SelectedMoveKey = null;
     window.gameState.p1IsConfirmed = false;
     window.gameState.p2IsConfirmed = false;
+
+    updateControlPanelsVisibility();
 
     ['input', 'p2Input'].forEach(inputKey => {
       if (window.gameState[inputKey]) {
@@ -237,8 +263,9 @@
       remainingRoundTime -= (timerStepMs / 1000);
       updateTimerUI(Math.max(0, remainingRoundTime));
 
-      const p1Ready = window.gameState.p1.isCPU ? !!window.gameState.p1SelectedMoveKey : window.gameState.p1IsConfirmed;
-      const p2Ready = window.gameState.p2.isCPU ? !!window.gameState.p2SelectedMoveKey : window.gameState.p2IsConfirmed;
+      // Fixed: Both CPU and Human must have p1IsConfirmed === true before lock-in
+      const p1Ready = window.gameState.p1IsConfirmed;
+      const p2Ready = window.gameState.p2IsConfirmed;
 
       if ((p1Ready && p2Ready) || remainingRoundTime <= 0) {
         clearInterval(roundTimerInterval);
@@ -262,7 +289,7 @@
   }
 
   /* ==========================================================================
-     3. HUD DISPLAY ENGINE
+     4. HUD DISPLAY ENGINE
      ========================================================================== */
 
   function updatePlayerHUD(slotKey, player) {
@@ -301,7 +328,7 @@
   }
 
   /* ==========================================================================
-     4. KEYBOARD & INPUT EVENT LISTENERS
+     5. KEYBOARD & INPUT EVENT LISTENERS
      ========================================================================== */
 
   function setupInputListeners() {
@@ -397,12 +424,12 @@
   }
 
   /* ==========================================================================
-     5. EXPORTS
+     6. EXPORTS
      ========================================================================== */
 
   window.startBattle = startBattle;
   window.launchRoundTimer = launchRoundTimer;
   window.updatePlayerHUD = updatePlayerHUD;
+  window.updateControlPanelsVisibility = updateControlPanelsVisibility;
 
 })(window);
-
