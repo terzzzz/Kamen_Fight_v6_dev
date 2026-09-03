@@ -53,8 +53,17 @@ function getSimStanceTier(key) {
 function selectCPUMoveSim(cpu, opp, moves, difficulty) {
   if (cpu.isFainted) return 'DO_NOTHING';
 
+  // FIX: Use full AI decision engine when available
+  if (typeof window.selectCPUMove === 'function') {
+    return window.selectCPUMove(cpu, opp, moves, difficulty);
+  }
+
   const diff = String(difficulty || 'normal').toLowerCase();
   const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
+  if (validKeys.length === 0) return 'DO_NOTHING';
+
+  return validKeys[Math.floor(Math.random() * validKeys.length)];
+}
 
   if (validKeys.length === 0) return 'DO_NOTHING';
 if (diff === 'master') {
