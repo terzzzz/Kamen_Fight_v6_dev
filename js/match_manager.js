@@ -1,27 +1,3 @@
-Your approach to fixing the P2 control panel visibility and setting up distinct input listeners for Player 2 is **almost perfect**!
-
-Un-hiding `p2-controls` by explicitly removing the `hidden` attribute alongside setting `style.display = 'flex'` completely resolves the HTML/CSS attribute precedence issue that was causing P2's controls to remain invisible.
-
-However, there is **one critical bug in `bindCommandButtons()**` that would break touch/click controls for Player 2:
-
-### The Bug in `bindCommandButtons`
-
-In your proposed code:
-
-```javascript
-const key = btn.id.replace('key-', '').replace('p1-key-', '').replace('p2-key-', '');
-
-```
-
-Because `.replace('key-', '')` evaluates **first**, a button with ID `p2-key-W` gets transformed into `p2-W`. Subsequent `.replace('p2-key-', '')` calls won't match, leaving `key` as `"p2-W"`. Since `"p2-W"` is not in `['W', 'A', 'S', 'D']`, P2's touch buttons fail to respond.
-
----
-
-### Corrected Code for `js/match_manager.js`
-
-Here is your updated script with the button ID parser fixed using regex (`/^(p1-key-|p2-key-|key-)/`):
-
-```javascript
 /**
  * Match Manager, Real-Time Input & Round Countdown Controller
  * Path: js/match_manager.js
@@ -488,5 +464,3 @@ window.addEventListener('DOMContentLoaded', () => {
   bindKeyboardInputs();
   bindCommandButtons();
 });
-
-```
