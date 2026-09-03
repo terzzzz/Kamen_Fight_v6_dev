@@ -34,7 +34,6 @@
   async function startBattle(matchConfig) {
     const cfg = matchConfig || {};
 
-    // Clear dangling CPU charge timers from previous matches
     if (window.cpuChargeIntervals) {
       if (window.cpuChargeIntervals.p1) {
         clearInterval(window.cpuChargeIntervals.p1);
@@ -194,22 +193,28 @@
     const p1IsCPU = !!(window.gameState.p1 && window.gameState.p1.isCPU);
     const p2IsCPU = !!(window.gameState.p2 && window.gameState.p2.isCPU);
 
-    // Hide human keypads/touch buttons for CPUs, but keep the Charge Display visible!
-    const p1ButtonEls = document.querySelectorAll('#p1-keypad, #p1-touch-pad, .p1-control-buttons, #p1-card .control-buttons');
-    const p2ButtonEls = document.querySelectorAll('#p2-keypad, #p2-touch-pad, .p2-control-buttons, #p2-card .control-buttons');
+    // Hide entire human button interface and cards if slot is CPU
+    const p1ControlEls = document.querySelectorAll(
+      '#p1-controls, #p1-input-card, #p1-keypad, #p1-touch-pad, .p1-controls, #p1-card-controls, .p1-input-box, #p1-control-panel, .p1-keypad, .p1-control-buttons'
+    );
+    const p2ControlEls = document.querySelectorAll(
+      '#p2-controls, #p2-input-card, #p2-keypad, #p2-touch-pad, .p2-controls, #p2-card-controls, .p2-input-box, #p2-control-panel, .p2-keypad, .p2-control-buttons'
+    );
 
-    p1ButtonEls.forEach(el => {
+    p1ControlEls.forEach(el => {
       el.hidden = p1IsCPU;
       el.style.display = p1IsCPU ? 'none' : '';
     });
 
-    p2ButtonEls.forEach(el => {
+    p2ControlEls.forEach(el => {
       el.hidden = p2IsCPU;
       el.style.display = p2IsCPU ? 'none' : '';
     });
 
-    // Ensure Charge Meters are ALWAYS visible for CPU spectators
-    const chargeMeterEls = document.querySelectorAll('#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, .charge-meter');
+    // Ensure Charge Display Box stays visible for spectators
+    const chargeMeterEls = document.querySelectorAll(
+      '#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, .charge-meter'
+    );
     chargeMeterEls.forEach(el => {
       el.hidden = false;
       el.style.display = 'block';
@@ -326,7 +331,7 @@
     if (currentChi >= 15) {
       if (chiVal) {
         chiVal.textContent = `CHI: ${currentChi} / ${maxChi} [MAX POWER!]`;
-        chiVal.style.color = '#ffcc00'; // Glowing Gold
+        chiVal.style.color = '#ffcc00';
         chiVal.classList.add('chi-text-max');
       }
       if (chiFill) {
@@ -339,7 +344,7 @@
     else if (currentChi < 5) {
       if (chiVal) {
         chiVal.textContent = `CHI: ${currentChi} / ${maxChi} (LOW CHI!)`;
-        chiVal.style.color = '#ff3366'; // Danger Red
+        chiVal.style.color = '#ff3366';
         chiVal.classList.add('chi-text-low');
       }
       if (chiFill) {
@@ -352,7 +357,7 @@
     else {
       if (chiVal) {
         chiVal.textContent = `CHI: ${currentChi} / ${maxChi}`;
-        chiVal.style.color = '#00ffcc'; // Standard Neon Cyan
+        chiVal.style.color = '#00ffcc';
         chiVal.classList.add('chi-text-normal');
       }
       if (chiFill) {
