@@ -56,7 +56,7 @@ var FALLBACK_ICHIGO_MOVES = window.FALLBACK_ICHIGO_MOVES || {
 
 window.cpuChargeIntervals = window.cpuChargeIntervals || {};
 
-/* --- REAL-TIME CPU ROUTINE WITH REACTIVE GUARD LOGIC --- */
+/* --- REAL-TIME CPU ROUTINE WITH VISUAL ACCUMULATION & HUMAN SPEED --- */
 
 window.startCPUTurnRoutine = function(slotKey) {
   const playerObj = window.gameState ? window.gameState[slotKey] : null;
@@ -70,7 +70,16 @@ window.startCPUTurnRoutine = function(slotKey) {
     window.cpuChargeIntervals[slotKey] = null;
   }
 
+  // Reset charge and selection states
   playerObj.activeChargePercent = 0;
+  if (slotKey === 'p1') {
+    window.gameState.p1SelectedMoveKey = null;
+    window.gameState.p1IsConfirmed = false;
+  } else {
+    window.gameState.p2SelectedMoveKey = null;
+    window.gameState.p2IsConfirmed = false;
+  }
+
   syncChargeBarUI(slotKey, 0, '');
 
   let moveKey = 'DO_NOTHING';
@@ -82,10 +91,16 @@ window.startCPUTurnRoutine = function(slotKey) {
   const move = (moves && moves[moveKey]) ? moves[moveKey] : null;
 
   if (!moveKey || moveKey === 'DO_NOTHING' || !move) {
-    if (slotKey === 'p1') window.gameState.p1SelectedMoveKey = 'DO_NOTHING';
-    if (slotKey === 'p2') window.gameState.p2SelectedMoveKey = 'DO_NOTHING';
+    if (slotKey === 'p1') {
+      window.gameState.p1SelectedMoveKey = 'DO_NOTHING';
+      window.gameState.p1IsConfirmed = true;
+    }
+    if (slotKey === 'p2') {
+      window.gameState.p2SelectedMoveKey = 'DO_NOTHING';
+      window.gameState.p2IsConfirmed = true;
+    }
     playerObj.activeChargePercent = 0;
-    syncChargeBarUI(slotKey, 0, 'DO_NOTHING');
+    syncChargeBarUI(slotKey, 0, 'DO_NOTHING', true);
     return;
   }
 
@@ -97,14 +112,6 @@ window.startCPUTurnRoutine = function(slotKey) {
 
   const isZeroChiGuard = (dirKey === 'A' && (move.chiCost || 0) === 0);
 
-  if (!isZeroChiGuard) {
-    if (slotKey === 'p1') window.gameState.p1SelectedMoveKey = moveKey;
-    if (slotKey === 'p2') window.gameState.p2SelectedMoveKey = moveKey;
-  } else {
-    if (slotKey === 'p1') window.gameState.p1SelectedMoveKey = 'DO_NOTHING';
-    if (slotKey === 'p2') window.gameState.p2SelectedMoveKey = 'DO_NOTHING';
-  }
-
   const diff = playerObj.difficulty || 'normal';
   const baseTarget = isZeroChiGuard 
     ? 100 
@@ -114,61 +121,80 @@ window.startCPUTurnRoutine = function(slotKey) {
 
   simulateCPUDirectionButton(slotKey, dirKey, true);
 
+  // Directional Charge Speed Calculation (Human Parity)
   const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
-  const totalChargeMs = chargeTimes[dirKey] || 2200;
+  const totalChargeMs = chargeTimes[dirKey] || 3000;
   const intervalMs = 50;
   const pctIncrement = (intervalMs / totalChargeMs) * 100;
 
-  window.cpuChargeIntervals[slotKey] = setInterval(() => {
-    if (!window.gameState || window.gameState.roundPhase !== 'INPUT') {
-      clearInterval(window.cpuChargeIntervals[slotKey]);
-      window.cpuChargeIntervals[slotKey] = null;
-      simulateCPUDirectionButton(slotKey, dirKey, false);
-      return;
-    }
+  const reactionDelay = diff === 'master' ? 120 : (diff === 'hard' ? 200 : 350);
 
-    let oppConfirmed = false;
-    if (oppKey === 'p1') {
-      oppConfirmed = !!(window.gameState.p1IsConfirmed || (window.gameState.input && window.gameState.input.isConfirmed && window.gameState.input.selectedMoveKey && window.gameState.input.selectedMoveKey !== 'DO_NOTHING'));
-    } else {
-      oppConfirmed = !!(window.gameState.p2IsConfirmed || (window.gameState.p2SelectedMoveKey && window.gameState.p2SelectedMoveKey !== 'DO_NOTHING'));
-    }
+  setTimeout(() => {
+    if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
 
-    if (playerObj.activeChargePercent < targetChargePct) {
-      playerObj.activeChargePercent = Math.min(targetChargePct, (playerObj.activeChargePercent || 0) + pctIncrement);
-    }
-
-    const currentPct = Math.min(100, Math.round(playerObj.activeChargePercent));
-    syncChargeBarUI(slotKey, currentPct, isZeroChiGuard ? 'A' : moveKey);
-
-    if (isZeroChiGuard) {
-      if (currentPct >= targetChargePct && oppConfirmed) {
+    window.cpuChargeIntervals[slotKey] = setInterval(() => {
+      if (!window.gameState || window.gameState.roundPhase !== 'INPUT') {
         clearInterval(window.cpuChargeIntervals[slotKey]);
         window.cpuChargeIntervals[slotKey] = null;
-
-        playerObj.activeChargePercent = currentPct;
-        if (slotKey === 'p1') window.gameState.p1SelectedMoveKey = moveKey;
-        if (slotKey === 'p2') window.gameState.p2SelectedMoveKey = moveKey;
-
         simulateCPUDirectionButton(slotKey, dirKey, false);
-        simulateCPUActionButton(slotKey, actKey);
-        syncChargeBarUI(slotKey, currentPct, moveKey, true);
+        return;
       }
-    } else {
-      if (currentPct >= targetChargePct) {
-        clearInterval(window.cpuChargeIntervals[slotKey]);
-        window.cpuChargeIntervals[slotKey] = null;
 
-        playerObj.activeChargePercent = currentPct;
-        if (slotKey === 'p1') window.gameState.p1SelectedMoveKey = moveKey;
-        if (slotKey === 'p2') window.gameState.p2SelectedMoveKey = moveKey;
-
-        simulateCPUDirectionButton(slotKey, dirKey, false);
-        simulateCPUActionButton(slotKey, actKey);
-        syncChargeBarUI(slotKey, currentPct, moveKey, true);
+      let oppConfirmed = false;
+      if (oppKey === 'p1') {
+        oppConfirmed = !!(window.gameState.p1IsConfirmed || (window.gameState.input && window.gameState.input.isConfirmed && window.gameState.input.selectedMoveKey && window.gameState.input.selectedMoveKey !== 'DO_NOTHING'));
+      } else {
+        oppConfirmed = !!(window.gameState.p2IsConfirmed || (window.gameState.p2SelectedMoveKey && window.gameState.p2SelectedMoveKey !== 'DO_NOTHING'));
       }
-    }
-  }, intervalMs);
+
+      if (playerObj.activeChargePercent < targetChargePct) {
+        playerObj.activeChargePercent = Math.min(targetChargePct, (playerObj.activeChargePercent || 0) + pctIncrement);
+      }
+
+      const currentPct = Math.min(100, Math.round(playerObj.activeChargePercent));
+      syncChargeBarUI(slotKey, currentPct, isZeroChiGuard ? 'A' : moveKey);
+
+      const isChargeComplete = currentPct >= targetChargePct;
+
+      if (isZeroChiGuard) {
+        if (isChargeComplete && oppConfirmed) {
+          clearInterval(window.cpuChargeIntervals[slotKey]);
+          window.cpuChargeIntervals[slotKey] = null;
+
+          playerObj.activeChargePercent = currentPct;
+          if (slotKey === 'p1') {
+            window.gameState.p1SelectedMoveKey = moveKey;
+            window.gameState.p1IsConfirmed = true;
+          } else {
+            window.gameState.p2SelectedMoveKey = moveKey;
+            window.gameState.p2IsConfirmed = true;
+          }
+
+          simulateCPUDirectionButton(slotKey, dirKey, false);
+          simulateCPUActionButton(slotKey, actKey);
+          syncChargeBarUI(slotKey, currentPct, moveKey, true);
+        }
+      } else {
+        if (isChargeComplete) {
+          clearInterval(window.cpuChargeIntervals[slotKey]);
+          window.cpuChargeIntervals[slotKey] = null;
+
+          playerObj.activeChargePercent = currentPct;
+          if (slotKey === 'p1') {
+            window.gameState.p1SelectedMoveKey = moveKey;
+            window.gameState.p1IsConfirmed = true;
+          } else {
+            window.gameState.p2SelectedMoveKey = moveKey;
+            window.gameState.p2IsConfirmed = true;
+          }
+
+          simulateCPUDirectionButton(slotKey, dirKey, false);
+          simulateCPUActionButton(slotKey, actKey);
+          syncChargeBarUI(slotKey, currentPct, moveKey, true);
+        }
+      }
+    }, intervalMs);
+  }, reactionDelay);
 };
 
 /* Visual Button Press Simulators */
@@ -209,23 +235,25 @@ if (typeof window.simulateCPUButtonPress !== 'function') {
 /* --- VISUAL EFFECTS & HUD HELPERS --- */
 
 function syncChargeBarUI(slotKey, percent, moveKey, isLocked = false) {
-  const fillEl = document.getElementById(`${slotKey}-charge-fill`);
-  const textEl = document.getElementById(`${slotKey}-charge-text`);
   const roundedPct = Math.min(100, Math.max(0, Math.round(percent)));
   const dirPrefix = (typeof moveKey === 'string' && moveKey.includes('+')) ? moveKey.split('+')[0] : (moveKey || '');
 
-  if (fillEl) {
+  const fillEls = document.querySelectorAll(`#${slotKey}-charge-fill, #${slotKey}-charge-bar-fill, .${slotKey}-charge-fill, .${slotKey}-charge-bar-fill`);
+  const textEls = document.querySelectorAll(`#${slotKey}-charge-text, #${slotKey}-charge-display, .${slotKey}-charge-text, .${slotKey}-charge-display`);
+
+  fillEls.forEach(fillEl => {
     fillEl.style.width = `${roundedPct}%`;
     if (isLocked) fillEl.classList.add('locked');
     else fillEl.classList.remove('locked');
-  }
-  if (textEl) {
+  });
+
+  textEls.forEach(textEl => {
     if (isLocked) {
       textEl.textContent = dirPrefix ? `CHARGING [${dirPrefix}]: ${roundedPct}%` : `LOCKED: ${roundedPct}%`;
     } else {
       textEl.textContent = dirPrefix ? `CHARGING [${dirPrefix}]: ${roundedPct}%` : `${roundedPct}%`;
     }
-  }
+  });
 }
 
 function triggerLPFlash(slotKey, isHeal = false) {
