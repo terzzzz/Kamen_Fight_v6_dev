@@ -34,7 +34,6 @@
   async function startBattle(matchConfig) {
     const cfg = matchConfig || {};
 
-    // Clear dangling CPU charge timers from previous matches
     if (window.cpuChargeIntervals) {
       if (window.cpuChargeIntervals.p1) {
         clearInterval(window.cpuChargeIntervals.p1);
@@ -263,7 +262,6 @@
       remainingRoundTime -= (timerStepMs / 1000);
       updateTimerUI(Math.max(0, remainingRoundTime));
 
-      // Fixed: Both CPU and Human must have p1IsConfirmed === true before lock-in
       const p1Ready = window.gameState.p1IsConfirmed;
       const p2Ready = window.gameState.p2IsConfirmed;
 
