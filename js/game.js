@@ -193,17 +193,25 @@
     const p1IsCPU = !!(window.gameState.p1 && window.gameState.p1.isCPU);
     const p2IsCPU = !!(window.gameState.p2 && window.gameState.p2.isCPU);
 
-    const p1ControlEls = document.querySelectorAll('#p1-controls, #p1-input-card, #p1-keypad, .p1-controls, #p1-touch-pad, #p1-card-controls, .p1-input-box');
-    const p2ControlEls = document.querySelectorAll('#p2-controls, #p2-input-card, #p2-keypad, .p2-controls, #p2-touch-pad, #p2-card-controls, .p2-input-box');
+    // Hide human keypads/touch buttons for CPUs, but keep the Charge Display visible!
+    const p1ButtonEls = document.querySelectorAll('#p1-keypad, #p1-touch-pad, .p1-control-buttons, #p1-card .control-buttons');
+    const p2ButtonEls = document.querySelectorAll('#p2-keypad, #p2-touch-pad, .p2-control-buttons, #p2-card .control-buttons');
 
-    p1ControlEls.forEach(el => {
+    p1ButtonEls.forEach(el => {
       el.hidden = p1IsCPU;
       el.style.display = p1IsCPU ? 'none' : '';
     });
 
-    p2ControlEls.forEach(el => {
+    p2ButtonEls.forEach(el => {
       el.hidden = p2IsCPU;
       el.style.display = p2IsCPU ? 'none' : '';
+    });
+
+    // Ensure Charge Meters are ALWAYS visible for CPU spectators
+    const chargeMeterEls = document.querySelectorAll('#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, .charge-meter');
+    chargeMeterEls.forEach(el => {
+      el.hidden = false;
+      el.style.display = 'block';
     });
   }
 
