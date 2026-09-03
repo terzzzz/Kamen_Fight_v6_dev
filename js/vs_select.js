@@ -31,17 +31,26 @@ window.vsSelectionState = window.vsSelectionState || {
   p2Difficulty: 'normal'
 };
 
+function setDiffBadgeClasses(el, difficulty, isCPU) {
+  if (!el) return;
+  el.classList.remove('easy', 'hard', 'master');
+  if (!isCPU) return;
+  if (difficulty === 'easy') el.classList.add('easy');
+  if (difficulty === 'hard') el.classList.add('hard');
+  if (difficulty === 'master') el.classList.add('master');
+}
+
 /* --- STEP ADVANCEMENT HANDLERS --- */
 
 window.confirmStep = function(e) {
   if (e && e.preventDefault) e.preventDefault();
   const state = window.vsSelectionState;
   let currentStep = parseInt(state.step, 10) || 1;
-  
+
   if (currentStep === 1) {
-    state.step = 2; // Advance to P2 Selection
+    state.step = 2;
   } else if (currentStep === 2) {
-    state.step = 3; // Advance to Ready For Battle
+    state.step = 3;
   }
   window.updateSelectionUI();
 };
@@ -50,7 +59,7 @@ window.goBackStep = function(e) {
   if (e && e.preventDefault) e.preventDefault();
   const state = window.vsSelectionState;
   let currentStep = parseInt(state.step, 10) || 1;
-  
+
   if (currentStep === 2) {
     state.step = 1;
   } else if (currentStep === 3) {
@@ -59,7 +68,9 @@ window.goBackStep = function(e) {
   window.updateSelectionUI();
 };
 
-// Global function aliases for HTML inline onclick handlers
+window.handleConfirmStep = window.confirmStep;
+window.handleBackStep = window.goBackStep;
+
 window.confirmP1 = function(e) { window.vsSelectionState.step = 2; window.updateSelectionUI(); };
 window.confirmP2 = function(e) { window.vsSelectionState.step = 3; window.updateSelectionUI(); };
 window.confirmSelection = window.confirmStep;
@@ -149,7 +160,7 @@ window.toggleControlType = function(playerKey) {
 };
 
 window.toggleDifficulty = function(playerKey) {
-  const nextDiff = { 'easy': 'normal', 'normal': 'hard', 'hard': 'master', 'master': 'easy' };
+  const nextDiff = { easy: 'normal', normal: 'hard', hard: 'master', master: 'easy' };
   const state = window.vsSelectionState;
   const currentStep = parseInt(state.step, 10) || 1;
 
@@ -176,24 +187,21 @@ window.updateSelectionUI = function() {
 
   const p1ImgEl = document.getElementById('p1-img');
   if (p1ImgEl) p1ImgEl.src = p1.icon;
-  
+
   const p1NameEl = document.getElementById('p1-name-display');
   if (p1NameEl) p1NameEl.textContent = p1.name;
 
   const p1TypeEl = document.getElementById('p1-type-display');
   if (p1TypeEl) p1TypeEl.textContent = state.p1IsCPU ? 'CPU' : 'HUMAN';
 
-const p1DiffDisplay = document.getElementById('p1-diff-display');
+  const p1DiffDisplay = document.getElementById('p1-diff-display');
   if (p1DiffDisplay) {
     if (!state.p1IsCPU) {
       p1DiffDisplay.textContent = 'N/A';
-      p1DiffDisplay.classList.remove('hard', 'easy', 'master');
     } else {
       p1DiffDisplay.textContent = DIFF_LABELS[state.p1Difficulty] || 'BALANCED';
-      p1DiffDisplay.classList.toggle('hard', state.p1Difficulty === 'hard');
-      p1DiffDisplay.classList.toggle('easy', state.p1Difficulty === 'easy');
-      p1DiffDisplay.classList.toggle('master', state.p1Difficulty === 'master');
     }
+    setDiffBadgeClasses(p1DiffDisplay, state.p1Difficulty, state.p1IsCPU);
   }
 
   const p2ImgEl = document.getElementById('p2-img');
@@ -208,24 +216,20 @@ const p1DiffDisplay = document.getElementById('p1-diff-display');
   const p2TypeEl = document.getElementById('p2-type-display');
   if (p2TypeEl) p2TypeEl.textContent = state.p2IsCPU ? 'CPU' : 'HUMAN';
 
-const p2DiffDisplay = document.getElementById('p2-diff-display');
+  const p2DiffDisplay = document.getElementById('p2-diff-display');
   if (p2DiffDisplay) {
     if (!state.p2IsCPU) {
       p2DiffDisplay.textContent = 'N/A';
-      p2DiffDisplay.classList.remove('hard', 'easy', 'master');
     } else {
       p2DiffDisplay.textContent = DIFF_LABELS[state.p2Difficulty] || 'BALANCED';
-      p2DiffDisplay.classList.toggle('hard', state.p2Difficulty === 'hard');
-      p2DiffDisplay.classList.toggle('easy', state.p2Difficulty === 'easy');
-      p2DiffDisplay.classList.toggle('master', state.p2Difficulty === 'master');
     }
+    setDiffBadgeClasses(p2DiffDisplay, state.p2Difficulty, state.p2IsCPU);
   }
 
   const p1Card = document.getElementById('p1-card');
   const p2Card = document.getElementById('p2-card');
   const headerText = document.getElementById('select-step-title') || document.getElementById('vs-header-text');
-  
-  // Target all possible button element IDs and classes
+
   const confirmBtns = document.querySelectorAll('#confirm-btn, #confirm-p1-btn, #confirm-p2-btn, .btn-confirm, .confirm-btn');
   const startBtn = document.getElementById('start-game-btn') || document.querySelector('.btn-start');
   const backBtn = document.getElementById('back-btn') || document.querySelector('.btn-back');
@@ -252,7 +256,7 @@ const p2DiffDisplay = document.getElementById('p2-diff-display');
 
     confirmBtns.forEach(btn => {
       btn.hidden = false;
-      btn.style.display = 'inline-block';
+      btn.style.display = '';
       btn.textContent = 'CONFIRM P1';
       btn.disabled = false;
     });
@@ -275,7 +279,7 @@ const p2DiffDisplay = document.getElementById('p2-diff-display');
 
     confirmBtns.forEach(btn => {
       btn.hidden = false;
-      btn.style.display = 'inline-block';
+      btn.style.display = '';
       btn.textContent = 'CONFIRM P2';
       btn.disabled = false;
     });
@@ -303,7 +307,7 @@ const p2DiffDisplay = document.getElementById('p2-diff-display');
 
     if (startBtn) {
       startBtn.hidden = false;
-      startBtn.style.display = 'inline-block';
+      startBtn.style.display = '';
       startBtn.disabled = false;
     }
     if (backBtn) backBtn.disabled = false;
@@ -467,6 +471,7 @@ window.validateAndStartMatch = function() {
 };
 
 /* --- GLOBAL EVENT DELEGATION LISTENER --- */
+/* HTML already uses onclick for confirm/back/start, so those IDs are not re-handled here. */
 
 document.addEventListener('click', (e) => {
   const p1Btn = e.target.closest('#confirm-p1-btn, #btn-confirm-p1');
@@ -480,24 +485,6 @@ document.addEventListener('click', (e) => {
   if (p2Btn) {
     window.vsSelectionState.step = 3;
     window.updateSelectionUI();
-    return;
-  }
-
-  const confirmBtn = e.target.closest('#confirm-btn, .btn-confirm, .confirm-btn, [data-action="confirm"]');
-  if (confirmBtn) {
-    window.confirmStep(e);
-    return;
-  }
-
-  const backBtn = e.target.closest('#back-btn, .btn-back');
-  if (backBtn) {
-    window.goBackStep(e);
-    return;
-  }
-
-  const startBtn = e.target.closest('#start-game-btn, .btn-start');
-  if (startBtn) {
-    window.validateAndStartMatch();
     return;
   }
 });
