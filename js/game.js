@@ -185,7 +185,7 @@
   }
 
   /* ==========================================================================
-     2. CONTROL PANEL VISIBILITY TOGGLE (SPECTATOR MODE SUPPORT)
+     2. CONTROL PANEL VISIBILITY TOGGLE (COMPREHENSIVE SPECTATOR MODE SUPPORT)
      ========================================================================== */
 
   function updateControlPanelsVisibility() {
@@ -193,31 +193,68 @@
     const p1IsCPU = !!(window.gameState.p1 && window.gameState.p1.isCPU);
     const p2IsCPU = !!(window.gameState.p2 && window.gameState.p2.isCPU);
 
-    // Hide entire human button interface and cards if slot is CPU
-    const p1ControlEls = document.querySelectorAll(
-      '#p1-controls, #p1-input-card, #p1-keypad, #p1-touch-pad, .p1-controls, #p1-card-controls, .p1-input-box, #p1-control-panel, .p1-keypad, .p1-control-buttons'
-    );
-    const p2ControlEls = document.querySelectorAll(
-      '#p2-controls, #p2-input-card, #p2-keypad, #p2-touch-pad, .p2-controls, #p2-card-controls, .p2-input-box, #p2-control-panel, .p2-keypad, .p2-control-buttons'
-    );
+    const p1Selectors = [
+      '#p1-controls', '#p1-input-card', '#p1-keypad', '#p1-touch-pad',
+      '#p1-card-controls', '.p1-controls', '.p1-input-box', '#p1-control-panel',
+      '.p1-keypad', '.p1-control-buttons', '#p1-touch-controls', '#p1-card',
+      '#p1-input-container', '.p1-card', '#p1-pad', '.p1-touch-pad',
+      '.player-controls-container', '.control-card'
+    ];
 
-    p1ControlEls.forEach(el => {
-      el.hidden = p1IsCPU;
-      el.style.display = p1IsCPU ? 'none' : '';
+    const p2Selectors = [
+      '#p2-controls', '#p2-input-card', '#p2-keypad', '#p2-touch-pad',
+      '#p2-card-controls', '.p2-controls', '.p2-input-box', '#p2-control-panel',
+      '.p2-keypad', '.p2-control-buttons', '#p2-touch-controls', '#p2-card',
+      '#p2-input-container', '.p2-card', '#p2-pad', '.p2-touch-pad'
+    ];
+
+    // Hide P1 Human Interface if CPU
+    p1Selectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        if (!el.id?.includes('charge') && !el.className?.includes('charge')) {
+          el.style.setProperty('display', p1IsCPU ? 'none' : '', 'important');
+          el.hidden = p1IsCPU;
+        }
+      });
     });
 
-    p2ControlEls.forEach(el => {
-      el.hidden = p2IsCPU;
-      el.style.display = p2IsCPU ? 'none' : '';
+    // Hide P2 Human Interface if CPU
+    p2Selectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        if (!el.id?.includes('charge') && !el.className?.includes('charge')) {
+          el.style.setProperty('display', p2IsCPU ? 'none' : '', 'important');
+          el.hidden = p2IsCPU;
+        }
+      });
     });
 
-    // Ensure Charge Display Box stays visible for spectators
+    // Content-Detection Fallback: Catch any container rendering human instruction text
+    document.querySelectorAll('div, section, article').forEach(el => {
+      const txt = el.textContent || '';
+      if (txt.includes('TAP DIRECTION TO CHARGE') || txt.includes('[W-A-S-D + I-J-K-L]')) {
+        if (!el.id?.includes('charge') && !el.className?.includes('charge')) {
+          const isP1Box = txt.includes('PLAYER 1') || txt.includes('P1') || el.querySelector('#key-W, .key-W, #p1-keypad');
+          const isP2Box = txt.includes('PLAYER 2') || txt.includes('P2') || el.querySelector('#p2-key-W, .p2-key-W, #p2-keypad');
+
+          if (isP1Box && p1IsCPU) {
+            el.style.setProperty('display', 'none', 'important');
+            el.hidden = true;
+          }
+          if (isP2Box && p2IsCPU) {
+            el.style.setProperty('display', 'none', 'important');
+            el.hidden = true;
+          }
+        }
+      }
+    });
+
+    // Ensure Charge Meters remain explicitly visible for CPU Spectators
     const chargeMeterEls = document.querySelectorAll(
-      '#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, .charge-meter'
+      '#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, .charge-meter, .charge-box'
     );
     chargeMeterEls.forEach(el => {
       el.hidden = false;
-      el.style.display = 'block';
+      el.style.setProperty('display', 'block', 'important');
     });
   }
 
