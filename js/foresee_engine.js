@@ -471,24 +471,24 @@
       const options = parsed.options || {};
       const isMaster = !!(options.isMaster || options.master);
 
-      // Hard stays snappy; Master looks a bit further but is beam-capped
-      if (isMaster) {
-        depth = Math.min(Math.max(depth, 3), 4);
-      } else {
-        depth = Math.min(depth, 3);
-      }
+     // FIX: Optimize Master beam width so all move choices are evaluated within node limit
+if (isMaster) {
+  depth = Math.min(Math.max(depth, 3), 4);
+} else {
+  depth = Math.min(depth, 3);
+}
 
-      const oppMovesData = resolveOppMoves(opponentPlayer);
-      const result = runForeseeSearch(cpuPlayer, opponentPlayer, availableMoves, oppMovesData, {
-        maxDepth: depth,
-        characterWeights: profile.weights || options.characterWeights || {},
-        isMaster: isMaster,
-        isOpponentLocked: options.isOpponentLocked,
-        lockedOpponentMoveKey: options.lockedOpponentMoveKey,
-        selfBeam: options.selfBeam || (isMaster ? 6 : 8),
-        oppBeam: options.oppBeam || (isMaster ? 5 : (options.samples || 8)),
-        nodeLimit: options.nodeLimit || (isMaster ? 2200 : 900)
-      });
+const oppMovesData = resolveOppMoves(opponentPlayer);
+const result = runForeseeSearch(cpuPlayer, opponentPlayer, availableMoves, oppMovesData, {
+  maxDepth: depth,
+  characterWeights: profile.weights || options.characterWeights || {},
+  isMaster: isMaster,
+  isOpponentLocked: options.isOpponentLocked,
+  lockedOpponentMoveKey: options.lockedOpponentMoveKey,
+  selfBeam: options.selfBeam || (isMaster ? 4 : 8), // Reduced from 6 to 4 for depth 4 stability
+  oppBeam: options.oppBeam || (isMaster ? 3 : 8),   // Reduced from 5 to 3 for depth 4 stability
+  nodeLimit: options.nodeLimit || (isMaster ? 3500 : 900)
+});
 
       window.ForeseeEngine.lastResult = result;
       return result.moveKey;
