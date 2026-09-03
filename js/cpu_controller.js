@@ -28,13 +28,12 @@ function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
     target = Math.floor(Math.random() * 11) + 85;
   }
 
-  // Do NOT set cpuPlayer.activeChargePercent here; let startCPUTurnRoutine animate it from 0%
   return target;
 }
 
 /**
  * Real-Time CPU Turn Orchestrator
- * Animates charge progress bar dynamically from 0% to targetPct.
+ * Visually accumulates charge percentage frame-by-frame like a human player holding a direction key.
  */
 function startCPUTurnRoutine(slotKey) {
   if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
@@ -45,7 +44,7 @@ function startCPUTurnRoutine(slotKey) {
 
   const currentRound = window.gameState.roundCounter || 1;
 
-  // Prevent re-entrant triggers from resetting an in-progress charge during the same round
+  // Prevent re-entrant triggers from overriding an active charge loop
   if (cpuPlayer.chargingRound === currentRound && window.cpuChargeIntervals[slotKey]) {
     return;
   }
@@ -57,7 +56,7 @@ function startCPUTurnRoutine(slotKey) {
     window.cpuChargeIntervals[slotKey] = null;
   }
 
-  // Reset confirmation state & set initial charge to 0%
+  // Reset confirmation state & start active charge at 0%
   cpuPlayer.activeChargePercent = 0;
   if (slotKey === 'p1') {
     window.gameState.p1SelectedMoveKey = null;
@@ -77,16 +76,28 @@ function startCPUTurnRoutine(slotKey) {
   const targetPct = choice.targetChargePct || 85;
   const dir = chosenMoveKey.split('+')[0] || 'D';
 
-  // 2. Calculate duration based on directional charge rules (CHARGE_TIMES)
+  // 2. Ensure charge meter UI elements are unhidden and initialized to 0%
+  const chargeBoxEls = document.querySelectorAll(`#${slotKey}-charge-box, #${slotKey}-charge-container, .${slotKey}-charge-display`);
+  chargeBoxEls.forEach(el => {
+    el.hidden = false;
+    el.style.display = 'block';
+  });
+
+  const fillEls = document.querySelectorAll(`#${slotKey}-charge-fill, #${slotKey}-charge-bar-fill, .${slotKey}-charge-fill`);
+  const textEls = document.querySelectorAll(`#${slotKey}-charge-text, #${slotKey}-charge-display, .${slotKey}-charge-text`);
+
+  fillEls.forEach(el => { el.style.width = '0%'; });
+  textEls.forEach(el => { el.textContent = `CHARGING [${dir}]: 0%`; });
+
+  // 3. Calculate human-equivalent holding speed (CHARGE_TIMES)
   const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
   const baseDurationMs = chargeTimes[dir] || 3000;
-  const totalChargeTimeMs = Math.max(1000, Math.min(3500, (targetPct / 100) * (baseDurationMs * 0.5)));
+  const totalChargeTimeMs = Math.max(1200, Math.min(3800, (targetPct / 100) * (baseDurationMs * 0.55)));
 
   let currentPct = 0;
-  const stepIntervalMs = 50;
+  const stepIntervalMs = 20; // 50 updates per second for smooth visual animation
   const pctIncrement = targetPct / (totalChargeTimeMs / stepIntervalMs);
 
-  // 3. Reaction Delay before CPU starts charging
   const diff = String(cpuPlayer.difficulty || 'normal').toLowerCase();
   const reactionDelay = diff === 'master' ? 150 : (diff === 'hard' ? 250 : 450);
 
@@ -103,14 +114,11 @@ function startCPUTurnRoutine(slotKey) {
       currentPct = Math.min(targetPct, currentPct + pctIncrement);
       cpuPlayer.activeChargePercent = currentPct;
 
-      // Update HUD Charge Bar UI elements
-      const fillEl = document.getElementById(`${slotKey}-charge-fill`) || document.getElementById(`${slotKey}-charge-bar-fill`);
-      const textEl = document.getElementById(`${slotKey}-charge-text`) || document.getElementById(`${slotKey}-charge-display`);
+      // Real-time visual updating of the charge bar and readout text
+      fillEls.forEach(el => { el.style.width = `${currentPct}%`; });
+      textEls.forEach(el => { el.textContent = `CHARGING [${dir}]: ${Math.floor(currentPct)}%`; });
 
-      if (fillEl) fillEl.style.width = `${currentPct}%`;
-      if (textEl) textEl.textContent = `CHARGING [${dir}]: ${Math.floor(currentPct)}%`;
-
-      // 4. Lock in when target charge percentage is reached
+      // 4. Lock in move once charge threshold is reached
       if (currentPct >= targetPct) {
         clearInterval(window.cpuChargeIntervals[slotKey]);
         window.cpuChargeIntervals[slotKey] = null;
@@ -123,7 +131,7 @@ function startCPUTurnRoutine(slotKey) {
           window.gameState.p2IsConfirmed = true;
         }
 
-        if (textEl) textEl.textContent = `LOCKED: ${chosenMoveKey} (${Math.floor(targetPct)}%)`;
+        textEls.forEach(el => { el.textContent = `LOCKED: ${chosenMoveKey} (${Math.floor(targetPct)}%)`; });
       }
     }, stepIntervalMs);
   }, reactionDelay);
