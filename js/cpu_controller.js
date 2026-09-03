@@ -15,6 +15,11 @@ function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
     target = Math.floor(Math.random() * 16) + 65;
   } else if (difficulty === 'hard') {
     target = Math.floor(Math.random() * 9) + 92;
+  } else if (difficulty === 'master') {
+    // Master charges very precisely and high
+    if (keyStr.startsWith('S')) target = Math.floor(Math.random() * 4) + 96;
+    else if (keyStr.startsWith('W')) target = Math.floor(Math.random() * 6) + 90;
+    else target = Math.floor(Math.random() * 5) + 94;
   } else if (keyStr.startsWith('D')) {
     target = Math.floor(Math.random() * 11) + 85;
   } else {
