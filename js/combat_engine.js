@@ -111,17 +111,19 @@ window.startCPUTurnRoutine = function(slotKey) {
   const actKey = parts[1];
 
   const isZeroChiGuard = (dirKey === 'A' && (move.chiCost || 0) === 0);
-
   const diff = playerObj.difficulty || 'normal';
-  const baseTarget = isZeroChiGuard 
-    ? 100 
-    : (diff === 'master' ? 98 : (diff === 'hard' ? 95 : (diff === 'easy' ? 70 : 85)));
-  const variance = isZeroChiGuard ? 0 : (Math.floor(Math.random() * 11) - 5);
-  const targetChargePct = Math.min(100, Math.max(25, baseTarget + variance));
+
+  let targetChargePct = playerObj._chosenTargetChargePct;
+  if (targetChargePct === undefined) {
+    const baseTarget = isZeroChiGuard 
+      ? 100 
+      : (diff === 'master' ? 98 : (diff === 'hard' ? 95 : (diff === 'easy' ? 70 : 85)));
+    const variance = isZeroChiGuard ? 0 : (Math.floor(Math.random() * 11) - 5);
+    targetChargePct = Math.min(100, Math.max(25, baseTarget + variance));
+  }
 
   simulateCPUDirectionButton(slotKey, dirKey, true);
 
-  // Directional Charge Speed Calculation (Supports both Seconds or Milliseconds)
   const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
   let rawTime = chargeTimes[dirKey] !== undefined ? chargeTimes[dirKey] : 3.0;
   const totalChargeMs = rawTime < 50 ? rawTime * 1000 : rawTime;
@@ -141,12 +143,7 @@ window.startCPUTurnRoutine = function(slotKey) {
         return;
       }
 
-      let oppConfirmed = false;
-      if (oppKey === 'p1') {
-        oppConfirmed = !!(window.gameState.p1IsConfirmed || (window.gameState.input && window.gameState.input.isConfirmed && window.gameState.input.selectedMoveKey && window.gameState.input.selectedMoveKey !== 'DO_NOTHING'));
-      } else {
-        oppConfirmed = !!(window.gameState.p2IsConfirmed || (window.gameState.p2SelectedMoveKey && window.gameState.p2SelectedMoveKey !== 'DO_NOTHING'));
-      }
+      const oppConfirmed = oppKey === 'p1' ? !!window.gameState.p1IsConfirmed : !!window.gameState.p2IsConfirmed;
 
       if (playerObj.activeChargePercent < targetChargePct) {
         playerObj.activeChargePercent = Math.min(targetChargePct, (playerObj.activeChargePercent || 0) + pctIncrement);
@@ -443,6 +440,16 @@ function getFaintDamageForMove(move) {
   return (window.COMBAT_RULES || COMBAT_RULES).HIT_BUILDUP || 25;
 }
 
+async function safePlayVideo(slotKey, videoName, labelText, altName, moveData) {
+  if (typeof window.playCenterVideo === 'function') {
+    try {
+      await window.playCenterVideo(slotKey, videoName, labelText, altName, moveData);
+    } catch (err) {
+      console.warn("Media playback error bypassed:", err);
+    }
+  }
+}
+
 async function applyFaintBuildUp(player, playerKey, customAmount = null) {
   if (!player || player.lp <= 0 || player.isFainted) return;
 
@@ -465,9 +472,7 @@ async function applyFaintBuildUp(player, playerKey, customAmount = null) {
 
     triggerFloatingText(playerKey, 'FAINTED!!', 'scratch');
 
-    if (typeof window.playCenterVideo === 'function') {
-      await window.playCenterVideo(playerKey, 'faint.mp4', 'FAINTED!');
-    }
+    await safePlayVideo(playerKey, 'faint.mp4', 'FAINTED!');
 
     if (typeof window.updateCharacterMedia === 'function') {
       window.updateCharacterMedia(playerKey, 'IDLE');
@@ -657,6 +662,14 @@ async function executeTurnResolutionPhase() {
   const rules = window.COMBAT_RULES || COMBAT_RULES;
   window.gameState.roundPhase = 'RESOLUTION';
 
+  // Defensive cleanup: Ensure background CPU charging loops stop
+  ['p1', 'p2'].forEach(slot => {
+    if (window.cpuChargeIntervals && window.cpuChargeIntervals[slot]) {
+      clearInterval(window.cpuChargeIntervals[slot]);
+      window.cpuChargeIntervals[slot] = null;
+    }
+  });
+
   const p1StartLp = window.gameState.p1.lp;
   const p2StartLp = window.gameState.p2.lp;
   const p1StartFaint = window.gameState.p1.faintMeter;
@@ -786,13 +799,11 @@ async function executeTurnResolutionPhase() {
         await applyFaintBuildUp(attacker1, atkKey1, rules.FAINT_PENALTY_IDLE_GUARD);
       }
 
-      if (!isOpponentOffensive && typeof window.playCenterVideo === 'function') {
-        await window.playCenterVideo(atkKey1, move1.video || 'guard.mp4', move1.name, null, move1);
+      if (!isOpponentOffensive) {
+        await safePlayVideo(atkKey1, move1.video || 'guard.mp4', move1.name, null, move1);
       }
     } else {
-      if (typeof window.playCenterVideo === 'function') {
-        await window.playCenterVideo(atkKey1, move1.video || 'idle.mp4', move1.name, null, move1);
-      }
+      await safePlayVideo(atkKey1, move1.video || 'idle.mp4', move1.name, null, move1);
 
       let result = resolveAttack(attacker1, defender1, move1, key1, move2, key2, defKey1);
 
@@ -804,9 +815,7 @@ async function executeTurnResolutionPhase() {
 
           if (result.guardSuccess) {
             const guardVid = move2.video || 'guard.mp4';
-            if (typeof window.playCenterVideo === 'function') {
-              await window.playCenterVideo(defKey1, guardVid, 'GUARDED!', null, move2);
-            }
+            await safePlayVideo(defKey1, guardVid, 'GUARDED!', null, move2);
 
             if (result.finalDmg === 0) {
               triggerFloatingText(defKey1, 'BLOCKED!', 'heal');
@@ -828,9 +837,7 @@ async function executeTurnResolutionPhase() {
             defender1WasInterrupted = true;
 
             const hitVid = (typeof key1 === 'string' && key1.startsWith('S')) ? 'hit.mp4' : 'hit_physical.mp4';
-            if (typeof window.playCenterVideo === 'function') {
-              await window.playCenterVideo(defKey1, hitVid, 'TAKING DAMAGE');
-            }
+            await safePlayVideo(defKey1, hitVid, 'TAKING DAMAGE');
 
             defender1.lp = Math.max(0, defender1.lp - result.finalDmg);
             updateHUD();
@@ -843,14 +850,10 @@ async function executeTurnResolutionPhase() {
             await applyFaintBuildUp(defender1, defKey1, getFaintDamageForMove(move1));
           }
         } else if (!result.hitLanded) {
-          if (typeof window.playCenterVideo === 'function') {
-            await window.playCenterVideo(defKey1, 'dodge.mp4', 'DODGED!');
-          }
+          await safePlayVideo(defKey1, 'dodge.mp4', 'DODGED!');
           triggerFloatingText(defKey1, 'MISS!!', 'miss');
         } else if (result.isGlancing) {
-          if (typeof window.playCenterVideo === 'function') {
-            await window.playCenterVideo(defKey1, 'hit_physical.mp4', 'SCRATCH!');
-          }
+          await safePlayVideo(defKey1, 'hit_physical.mp4', 'SCRATCH!');
           defender1.lp = Math.max(0, defender1.lp - result.finalDmg);
           updateHUD();
 
@@ -864,9 +867,7 @@ async function executeTurnResolutionPhase() {
           defender1WasInterrupted = true;
 
           const hitVid = (typeof key1 === 'string' && key1.startsWith('S')) ? 'hit.mp4' : 'hit_physical.mp4';
-          if (typeof window.playCenterVideo === 'function') {
-            await window.playCenterVideo(defKey1, hitVid, 'TAKING DAMAGE');
-          }
+          await safePlayVideo(defKey1, hitVid, 'TAKING DAMAGE');
 
           defender1.lp = Math.max(0, defender1.lp - result.finalDmg);
 
@@ -913,18 +914,14 @@ async function executeTurnResolutionPhase() {
     attacker2.chi = Math.max(0, attacker2.chi - (move2.chiCost || 0));
     updateHUD();
 
-    if (typeof window.playCenterVideo === 'function') {
-      await window.playCenterVideo(atkKey2, move2.video || 'idle.mp4', move2.name, null, move2);
-    }
+    await safePlayVideo(atkKey2, move2.video || 'idle.mp4', move2.name, null, move2);
     let result = resolveAttack(attacker2, defender2, move2, key2, move1, key1, defKey2);
 
     if (result.isOffensive) {
       if (move1.type === 'DEFENSE' && !defender2.isFainted) {
         if (result.guardSuccess) {
           const guardVid = move1.video || 'guard.mp4';
-          if (typeof window.playCenterVideo === 'function') {
-            await window.playCenterVideo(defKey2, guardVid, 'GUARDED!', null, move1);
-          }
+          await safePlayVideo(defKey2, guardVid, 'GUARDED!', null, move1);
 
           if (result.finalDmg === 0) {
             triggerFloatingText(defKey2, 'BLOCKED!', 'heal');
@@ -944,9 +941,7 @@ async function executeTurnResolutionPhase() {
           updateHUD();
         } else {
           const hitVid = (typeof key2 === 'string' && key2.startsWith('S')) ? 'hit.mp4' : 'hit_physical.mp4';
-          if (typeof window.playCenterVideo === 'function') {
-            await window.playCenterVideo(defKey2, hitVid, 'TAKING DAMAGE');
-          }
+          await safePlayVideo(defKey2, hitVid, 'TAKING DAMAGE');
 
           defender2.lp = Math.max(0, defender2.lp - result.finalDmg);
           updateHUD();
@@ -959,14 +954,10 @@ async function executeTurnResolutionPhase() {
           await applyFaintBuildUp(defender2, defKey2, getFaintDamageForMove(move2));
         }
       } else if (!result.hitLanded) {
-        if (typeof window.playCenterVideo === 'function') {
-          await window.playCenterVideo(defKey2, 'dodge.mp4', 'DODGED!');
-        }
+        await safePlayVideo(defKey2, 'dodge.mp4', 'DODGED!');
         triggerFloatingText(defKey2, 'MISS!!', 'miss');
       } else if (result.isGlancing) {
-        if (typeof window.playCenterVideo === 'function') {
-          await window.playCenterVideo(defKey2, 'hit_physical.mp4', 'SCRATCH!');
-        }
+        await safePlayVideo(defKey2, 'hit_physical.mp4', 'SCRATCH!');
         defender2.lp = Math.max(0, defender2.lp - result.finalDmg);
         updateHUD();
 
@@ -978,9 +969,7 @@ async function executeTurnResolutionPhase() {
         await applyFaintBuildUp(defender2, defKey2, 10);
       } else {
         const hitVid = (typeof key2 === 'string' && key2.startsWith('S')) ? 'hit.mp4' : 'hit_physical.mp4';
-        if (typeof window.playCenterVideo === 'function') {
-          await window.playCenterVideo(defKey2, hitVid, 'TAKING DAMAGE');
-        }
+        await safePlayVideo(defKey2, hitVid, 'TAKING DAMAGE');
 
         defender2.lp = Math.max(0, defender2.lp - result.finalDmg);
 
