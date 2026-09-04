@@ -42,5 +42,16 @@
     "videoFolder": "assets/videos/riderman/",
     "finisher": "Hook Finisher",
     "active": true
+  },
+  {
+    "id": "x",
+    "name": "Kamen Rider X",
+    "sourceFacing": "right",
+    "maxLp": 3100,
+    "archetype": "Ridol Weapon Specialist",
+    "icon": "assets/images/icons/x.png",
+    "videoFolder": "assets/videos/x/",
+    "finisher": "Vacuum Hell Wheel",
+    "active": true
   }
 ]
