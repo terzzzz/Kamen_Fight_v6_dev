@@ -6,10 +6,7 @@
 (function (window) {
   'use strict';
 
-  /* ==========================================================================
-     1. REAL-TIME CHARGE PROGRESS ENGINE (HUMAN & CPU VISUALIZER)
-     ========================================================================== */
-
+  /* Real-Time Charge Progress Engine (Human & CPU Visualizer) */
   function updateChargeProgress(playerKey = 'p1') {
     if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return 0;
 
@@ -26,25 +23,24 @@
     const calculatedPct = Math.min(100, Math.max(0, Math.floor((elapsedMs / durationMs) * 100)));
     inputState.currentPercent = calculatedPct;
 
-    // Update Player Object State
     const playerObj = window.gameState[playerKey];
     if (playerObj) {
       playerObj.activeChargePercent = calculatedPct;
     }
 
-    // 1. Update Player Box Charge Bar Fill (Always visible for CPU and Human)
+    // Update Player Box Charge Bar Fill (Visible for both Human & CPU)
     const fillEls = document.querySelectorAll(`#${playerKey}-charge-fill, .${playerKey}-charge-fill`);
     fillEls.forEach(fillEl => {
       fillEl.style.width = `${calculatedPct}%`;
     });
 
-    // 2. Update Box Text Overlay
+    // Update Box Text Overlay
     const textEls = document.querySelectorAll(`#${playerKey}-charge-text, .${playerKey}-charge-text`);
     textEls.forEach(textEl => {
       textEl.textContent = `CHARGING [${dir}]: ${calculatedPct}%`;
     });
 
-    // 3. Update Control Panel Status Display
+    // Update Control Panel Status Display
     const statusEl = document.getElementById(isP1 ? 'charge-status-display' : 'p2-charge-status-display');
     if (statusEl) {
       statusEl.textContent = `CHARGING [${dir}]: ${calculatedPct}%`;
@@ -53,10 +49,6 @@
 
     return calculatedPct;
   }
-
-  /* ==========================================================================
-     2. INPUT STATE & UI RESET
-     ========================================================================== */
 
   function resetTurnInputState() {
     if (!window.gameState) return;
@@ -130,10 +122,6 @@
     }
   }
 
-  /* ==========================================================================
-     3. UNIFIED ROUND COUNTDOWN & TIMER
-     ========================================================================== */
-
   function startRoundCountdown() {
     if (!window.gameState) return;
 
@@ -154,7 +142,6 @@
       });
     }
 
-    // Keep HUD status displays visible, hide manual touch d-pads for CPU
     const p1Pad = document.querySelector('#p1-controls .pad-container');
     if (p1Pad) p1Pad.style.visibility = window.gameState.p1?.isCPU ? 'hidden' : 'visible';
 
@@ -216,7 +203,6 @@
       }
     }, timerStepMs);
 
-    // Delegate CPU Turn Routines to Master Controllers
     ['p1', 'p2'].forEach(slot => {
       const player = window.gameState[slot];
       if (player && player.isCPU && !player.isFainted) {
@@ -239,10 +225,6 @@
   function launchRoundTimer() {
     startRoundCountdown();
   }
-
-  /* ==========================================================================
-     4. CONFIRMATION & TURN RESOLUTION HANDLER
-     ========================================================================== */
 
   function confirmPlayerAction(moveKey, playerKey = 'p1') {
     unlockMobileVideos();
@@ -326,10 +308,6 @@
     return true;
   }
 
-  /* ==========================================================================
-     5. KEYBOARD & TOUCH BINDINGS
-     ========================================================================== */
-
   function bindKeyboardInputs() {
     if (window.__matchManagerListenersInstalled) return;
     window.__matchManagerListenersInstalled = true;
@@ -364,7 +342,6 @@
       if (handleGameOverContinue()) return;
       if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
 
-      // P1 Keyboard Controls
       if (window.gameState.p1 && !window.gameState.p1.isCPU && !window.gameState.p1IsConfirmed) {
         if (p1DirKeys.includes(e.code)) {
           const dirMap = { KeyW: 'W', KeyA: 'A', KeyS: 'S', KeyD: 'D' };
@@ -392,7 +369,6 @@
         }
       }
 
-      // P2 Keyboard Controls
       if (window.gameState.p2 && !window.gameState.p2.isCPU && !window.gameState.p2IsConfirmed) {
         if (p2DirKeys.includes(e.code)) {
           const p2DirMap = { ArrowUp: 'W', ArrowLeft: 'A', ArrowDown: 'S', ArrowRight: 'D' };
@@ -475,10 +451,6 @@
       btn.addEventListener('touchstart', handlePressDown, { passive: false });
     });
   }
-
-  /* ==========================================================================
-     6. EXPORTS & INITIALIZATION
-     ========================================================================== */
 
   window.startRoundCountdown = startRoundCountdown;
   window.launchRoundTimer = launchRoundTimer;
