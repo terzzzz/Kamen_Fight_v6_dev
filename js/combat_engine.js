@@ -1073,6 +1073,11 @@ async function executeTurnResolutionPhase() {
           if (stunOverlay) stunOverlay.hidden = true;
 
           triggerFloatingText(slot, 'RECOVERED!', 'heal');
+
+          // Explicitly restore side HUD video back to idle.mp4 upon recovery
+          if (typeof window.updateCharacterMedia === 'function') {
+            window.updateCharacterMedia(slot, 'IDLE');
+          }
         }
       } else if (!player.tookCleanHitThisRound && player.faintMeter > 0) {
         player.faintMeter = Math.max(0, player.faintMeter - rules.ROUND_RECOVERY);
