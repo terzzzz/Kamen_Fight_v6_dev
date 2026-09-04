@@ -741,6 +741,7 @@ async function executeTurnResolutionPhase() {
   let p2IsIdle = p2MoveKey === 'DO_NOTHING' || p2Move.type === 'IDLE';
   let p1GoesFirst = false;
 
+  /* Priority Hierarchy: Range -> Stance Tier -> 50/50 Coin Flip */
   if (!p1IsIdle && p2IsIdle) {
     p1GoesFirst = true;
   } else if (p1IsIdle && !p2IsIdle) {
@@ -760,20 +761,7 @@ async function executeTurnResolutionPhase() {
       if (p1Stance !== p2Stance) {
         p1GoesFirst = p1Stance > p2Stance;
       } else {
-        let p1Dir = (typeof p1MoveKey === 'string' && p1MoveKey.includes('+')) ? p1MoveKey.split('+')[0] : 'D';
-        let p2Dir = (typeof p2MoveKey === 'string' && p2MoveKey.includes('+')) ? p2MoveKey.split('+')[0] : 'D';
-
-        let p1TotalMs = getChargeDurationMs(p1Dir);
-        let p1Elapsed = (p1Charge / 100) * (p1TotalMs / 1000);
-
-        let p2TotalMs = getChargeDurationMs(p2Dir);
-        let p2Elapsed = (p2Charge / 100) * (p2TotalMs / 1000);
-
-        if (p1Elapsed !== p2Elapsed) {
-          p1GoesFirst = p1Elapsed < p2Elapsed;
-        } else {
-          p1GoesFirst = Math.random() < 0.5;
-        }
+        p1GoesFirst = Math.random() < 0.5;
       }
     }
   }
