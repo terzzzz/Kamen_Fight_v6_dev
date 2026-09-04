@@ -73,25 +73,41 @@
     const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
     if (validKeys.length === 0) return 'DO_NOTHING';
 
-    if (diff === 'master') {
-      const sMoves = validKeys.filter(k => k.startsWith('S'));
-      const aMoves = validKeys.filter(k => k.startsWith('A'));
-      const dMoves = validKeys.filter(k => k.startsWith('D'));
+    const sMoves = validKeys.filter(k => k.startsWith('S'));
+    const dMoves = validKeys.filter(k => k.startsWith('D'));
+    const aMoves = validKeys.filter(k => k.startsWith('A'));
 
-      if (cpu.chi >= 7 && sMoves.length > 0 && Math.random() < 0.75) return sMoves[Math.floor(Math.random() * sMoves.length)];
-      if (opp.chi >= 6 && aMoves.length > 0 && Math.random() < 0.45) return aMoves[Math.floor(Math.random() * aMoves.length)];
-      if (dMoves.length > 0) return dMoves[Math.floor(Math.random() * dMoves.length)];
+    if (diff === 'master') {
+      // 1. Instantly capitalize on a fainted opponent with high-damage moves
+      if (opp.isFainted || opp.faintMeter >= 100) {
+        if (sMoves.length > 0) return sMoves[0];
+        if (dMoves.length > 0) return dMoves[Math.floor(Math.random() * dMoves.length)];
+      }
+
+      // 2. Aggressive S-move execution starting at 5 Chi
+      if (cpu.chi >= 5 && sMoves.length > 0 && Math.random() < 0.80) {
+        return sMoves[Math.floor(Math.random() * sMoves.length)];
+      }
+
+      // 3. Selective Guarding: Guard ONLY if faint meter is safe (<50) and opponent has high Chi
+      if (opp.chi >= 7 && cpu.faintMeter < 50 && aMoves.length > 0 && Math.random() < 0.20) {
+        return aMoves[Math.floor(Math.random() * aMoves.length)];
+      }
+
+      // 4. Default to heavy physical pressure (D-moves) to maintain Chi momentum
+      if (dMoves.length > 0) {
+        return dMoves[Math.floor(Math.random() * dMoves.length)];
+      }
     }
 
     if (diff === 'hard' || diff === 'normal') {
-      const sMoves = validKeys.filter(k => k.startsWith('S'));
-      const dMoves = validKeys.filter(k => k.startsWith('D'));
-      const aMoves = validKeys.filter(k => k.startsWith('A'));
-
-      if (cpu.chi >= 6 && sMoves.length > 0 && Math.random() < 0.60) {
+      if (opp.isFainted || opp.faintMeter >= 100) {
+        if (sMoves.length > 0) return sMoves[0];
+      }
+      if (cpu.chi >= 6 && sMoves.length > 0 && Math.random() < 0.65) {
         return sMoves[Math.floor(Math.random() * sMoves.length)];
       }
-      if (opp.chi >= 6 && aMoves.length > 0 && Math.random() < 0.35) {
+      if (opp.chi >= 6 && aMoves.length > 0 && Math.random() < 0.30) {
         return aMoves[Math.floor(Math.random() * aMoves.length)];
       }
       if (dMoves.length > 0 && Math.random() < 0.70) {
