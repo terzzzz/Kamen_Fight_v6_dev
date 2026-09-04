@@ -6,10 +6,6 @@
 (function (window) {
   'use strict';
 
-  /**
-   * Calculates transform scaleX flip based on rider direction and move unmirrored properties
-   * Priority: move.sourceFacing -> player.sourceFacing -> rider default
-   */
   function getTransformFlip(player, playerKey, moveObj = null) {
     if (moveObj && moveObj.unmirrored === true) {
       return 'scaleX(1)';
@@ -58,6 +54,22 @@
     }
 
     const cleanFile = fileName.replace(/\.(mp4|webm)$/i, '');
+
+    // Check if video element is already loaded with target source to prevent redundant reloads
+    const currentSrc = videoEl.src || '';
+    if (currentSrc.includes(`/${cleanFile}.mp4`) || currentSrc.includes(`_${cleanFile}.mp4`)) {
+      videoEl.hidden = false;
+      videoEl.style.display = 'block';
+      if (spriteEl) spriteEl.hidden = true;
+      videoEl.style.transform = getTransformFlip(player, playerKey);
+
+      try {
+        videoEl.currentTime = 0;
+        const p = videoEl.play();
+        if (p !== undefined) p.catch(() => {});
+      } catch (e) {}
+      return;
+    }
 
     const videoCandidates = [
       `assets/videos/${riderId}/${cleanFile}.mp4`,
@@ -139,7 +151,6 @@
     tryNextVideo();
   }
 
-  // Action Cutscene Video Player (Center Box)
   function playCenterVideo(playerKey, videoFile, actionName = '', maxDurationMs = null, moveObj = null) {
     return new Promise((resolve) => {
       const centerBox = document.getElementById('center-box');
@@ -190,6 +201,11 @@
         centerBox.hidden = true;
         centerBox.style.display = 'none';
         if (actionLabel) actionLabel.hidden = true;
+
+        // Resume player side idle videos when cutscene ends
+        updateCharacterMedia('p1', 'IDLE');
+        updateCharacterMedia('p2', 'IDLE');
+
         resolve();
       };
 
@@ -247,11 +263,10 @@
       centerBox.hidden = true;
       centerBox.style.display = 'none';
     }
+    updateCharacterMedia('p1', 'IDLE');
+    updateCharacterMedia('p2', 'IDLE');
   }
 
-  /**
-   * Universal Mobile Autoplay Video Unlocker
-   */
   function unlockMobileVideos() {
     const vids = document.querySelectorAll('video');
     vids.forEach(v => {
