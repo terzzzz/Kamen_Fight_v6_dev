@@ -85,10 +85,19 @@
       return;
     }
 
+    let secondaryFallback = 'idle';
+    if (cleanFile === 'hit' || cleanFile === 'hit_physical') {
+      secondaryFallback = 'faint';
+    } else if (cleanFile === 'dodge') {
+      secondaryFallback = 'guard';
+    }
+
     const videoCandidates = [
       `assets/videos/${riderId}/${cleanFile}.mp4`,
       `assets/videos/${riderId}_${cleanFile}.mp4`,
       `assets/videos/${cleanFile}.mp4`,
+      `assets/videos/${riderId}/${secondaryFallback}.mp4`,
+      `assets/videos/${riderId}_${secondaryFallback}.mp4`,
       `assets/videos/${riderId}/idle.mp4`,
       `assets/videos/${riderId}_idle.mp4`
     ];
@@ -226,11 +235,27 @@
 
       const cleanFileName = getCleanFileName(videoFile) || 'idle';
 
+      // Smart fallback chain for reaction clips
+      let fallback1 = 'idle';
+      let fallback2 = 'idle';
+
+      if (cleanFileName === 'hit' || cleanFileName === 'hit_physical') {
+        fallback1 = 'faint';
+        fallback2 = 'ko';
+      } else if (cleanFileName === 'dodge') {
+        fallback1 = 'guard';
+        fallback2 = 'jump';
+      }
+
       const candidates = [
         `assets/videos/${riderId}/${cleanFileName}.mp4`,
         `assets/videos/${riderId}_${cleanFileName}.mp4`,
         `assets/videos/${cleanFileName}.mp4`,
-        `assets/videos/${riderId}/idle.mp4`
+        `assets/videos/${riderId}/${fallback1}.mp4`,
+        `assets/videos/${riderId}_${fallback1}.mp4`,
+        `assets/videos/${riderId}/${fallback2}.mp4`,
+        `assets/videos/${riderId}/idle.mp4`,
+        `assets/videos/${riderId}_idle.mp4`
       ];
 
       let candidateIdx = 0;
