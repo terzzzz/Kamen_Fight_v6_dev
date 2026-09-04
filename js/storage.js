@@ -13,9 +13,6 @@
     MATCH_STATS: 'rider_fighting_game_stats'
   };
 
-  /**
-   * Saves the current AI knowledge base to LocalStorage.
-   */
   function saveAIKnowledge() {
     if (window.globalAIKnowledge && typeof window.globalAIKnowledge.serialize === 'function') {
       try {
@@ -27,9 +24,6 @@
     }
   }
 
-  /**
-   * Loads stored AI knowledge into globalAIKnowledge on game boot.
-   */
   function loadAIKnowledge() {
     if (window.globalAIKnowledge && typeof window.globalAIKnowledge.deserialize === 'function') {
       try {
@@ -43,9 +37,6 @@
     }
   }
 
-  /**
-   * Saves match outcome stats (wins, total matches).
-   */
   function recordMatchStats(result) {
     try {
       var stats = loadBattleStats();
@@ -61,9 +52,6 @@
     }
   }
 
-  /**
-   * Retrieves match history stats.
-   */
   function loadBattleStats() {
     try {
       var raw = localStorage.getItem(STORAGE_KEYS.MATCH_STATS);
@@ -73,9 +61,6 @@
     }
   }
 
-  /**
-   * Clears saved AI memory to reset learning.
-   */
   function clearAIMemory() {
     try {
       localStorage.removeItem(STORAGE_KEYS.AI_MEMORY);
@@ -89,9 +74,6 @@
     }
   }
 
-  /**
-   * Clears saved match history statistics.
-   */
   function clearBattleStats() {
     try {
       localStorage.removeItem(STORAGE_KEYS.MATCH_STATS);
@@ -100,7 +82,6 @@
     }
   }
 
-  // Global Exports
   window.STORAGE_KEYS = STORAGE_KEYS;
   window.saveAIKnowledge = saveAIKnowledge;
   window.loadAIKnowledge = loadAIKnowledge;
@@ -109,7 +90,6 @@
   window.clearAIMemory = clearAIMemory;
   window.clearBattleStats = clearBattleStats;
 
-  // Auto-load AI knowledge on script initialization
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadAIKnowledge);
   } else {
