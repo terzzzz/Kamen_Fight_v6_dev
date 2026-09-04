@@ -99,16 +99,16 @@
     const p2Id = cfg.p2Rider?.id || 'nigo';
 
     const fallbackMoves = window.FALLBACK_ICHIGO_MOVES || {};
-    window.gameState.p1Moves = fallbackMoves;
-    window.gameState.p2Moves = fallbackMoves;
+    window.gameState.p1Moves = JSON.parse(JSON.stringify(fallbackMoves));
+    window.gameState.p2Moves = JSON.parse(JSON.stringify(fallbackMoves));
 
     try {
       const res = await fetch('data/moves.json');
       if (res.ok) {
         const allMoves = await res.json();
         if (allMoves) {
-          window.gameState.p1Moves = allMoves[p1Id] || fallbackMoves;
-          window.gameState.p2Moves = allMoves[p2Id] || fallbackMoves;
+          if (allMoves[p1Id]) window.gameState.p1Moves = JSON.parse(JSON.stringify(allMoves[p1Id]));
+          if (allMoves[p2Id]) window.gameState.p2Moves = JSON.parse(JSON.stringify(allMoves[p2Id]));
         }
       }
     } catch (err) {
@@ -145,6 +145,7 @@
       chi: rules.STARTING_CHI || 8,
       maxChi: rules.MAX_CHI || 16,
       faintMeter: 0,
+      activeChargePercent: 0,
       activeBuffs: [],
       isFainted: false,
       willBeFaintedNextRound: false
@@ -160,6 +161,7 @@
       chi: rules.STARTING_CHI || 8,
       maxChi: rules.MAX_CHI || 16,
       faintMeter: 0,
+      activeChargePercent: 0,
       activeBuffs: [],
       isFainted: false,
       willBeFaintedNextRound: false
@@ -193,7 +195,6 @@
     const p1IsCPU = !!(window.gameState.p1 && window.gameState.p1.isCPU);
     const p2IsCPU = !!(window.gameState.p2 && window.gameState.p2.isCPU);
 
-    // Target ONLY the 8 key buttons, grid wrappers, and button prompts (DO NOT hide main card containers)
     const p1ButtonSelectors = [
       '#key-W', '#key-A', '#key-S', '#key-D',
       '#key-I', '#key-J', '#key-K', '#key-L',
@@ -208,30 +209,25 @@
       '.p2-control-buttons', '.p2-key-grid', '.p2-instructions', '#p2-keypad'
     ];
 
-    // Hide/Show P1 key buttons
     p1ButtonSelectors.forEach(sel => {
       document.querySelectorAll(sel).forEach(el => {
         el.style.setProperty('display', p1IsCPU ? 'none' : '', 'important');
       });
     });
 
-    // Hide/Show P2 key buttons
     p2ButtonSelectors.forEach(sel => {
       document.querySelectorAll(sel).forEach(el => {
         el.style.setProperty('display', p2IsCPU ? 'none' : '', 'important');
       });
     });
 
-    // Target sub-elements inside input containers without hiding the outer box container
     document.querySelectorAll('#p1-controls, #p1-input-card, #p2-controls, #p2-input-card, .p1-input-box, .p2-input-box').forEach(box => {
       const isP1 = box.id?.includes('p1') || box.className?.includes('p1');
       const isCPU = isP1 ? p1IsCPU : p2IsCPU;
 
-      // Keep box container visible so the charge bar inside renders properly
       box.style.setProperty('display', 'block', 'important');
       box.hidden = false;
 
-      // Hide only button grid / text nodes inside this container
       box.querySelectorAll('.key-button, .key, button, .keypad, .touch-pad, .instructions, p, header').forEach(subEl => {
         if (!subEl.id?.includes('charge') && !subEl.className?.includes('charge')) {
           subEl.style.setProperty('display', isCPU ? 'none' : '', 'important');
@@ -239,7 +235,6 @@
       });
     });
 
-    // Explicitly guarantee Charge Bar elements remain visible
     const chargeMeterEls = document.querySelectorAll(
       '#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, ' +
       '.charge-meter, .charge-box, #p1-charge-fill, #p2-charge-fill, ' +
@@ -314,8 +309,19 @@
         clearInterval(roundTimerInterval);
         roundTimerInterval = null;
 
-        if (!window.gameState.p1SelectedMoveKey) window.gameState.p1SelectedMoveKey = 'DO_NOTHING';
-        if (!window.gameState.p2SelectedMoveKey) window.gameState.p2SelectedMoveKey = 'DO_NOTHING';
+        if (!window.gameState.p1SelectedMoveKey) {
+          window.gameState.p1SelectedMoveKey = 'DO_NOTHING';
+          window.gameState.p1IsConfirmed = true;
+          window.gameState.input.selectedMoveKey = 'DO_NOTHING';
+          window.gameState.input.isConfirmed = true;
+        }
+
+        if (!window.gameState.p2SelectedMoveKey) {
+          window.gameState.p2SelectedMoveKey = 'DO_NOTHING';
+          window.gameState.p2IsConfirmed = true;
+          window.gameState.p2Input.selectedMoveKey = 'DO_NOTHING';
+          window.gameState.p2Input.isConfirmed = true;
+        }
 
         if (typeof window.executeTurnResolutionPhase === 'function') {
           window.executeTurnResolutionPhase();
@@ -422,18 +428,37 @@
   }
 
   /* ==========================================================================
-     5. KEYBOARD & INPUT EVENT LISTENERS
+     5. KEYBOARD & INPUT EVENT LISTENERS (WITH HUMAN CHARGE CALCULATION)
      ========================================================================== */
 
+  function calculateHumanCharge(dir, chargeStartTime) {
+    if (!chargeStartTime) return 100;
+    const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
+    let rawTime = chargeTimes[dir] !== undefined ? chargeTimes[dir] : 3.0;
+    const totalChargeMs = rawTime < 50 ? rawTime * 1000 : rawTime;
+    const elapsedMs = Date.now() - chargeStartTime;
+    return Math.min(100, Math.max(10, Math.round((elapsedMs / totalChargeMs) * 100)));
+  }
+
   function setupInputListeners() {
+    if (window.__gameKeyListenersInstalled) return;
+    window.__gameKeyListenersInstalled = true;
+
     const p1DirKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
     const p1ActKeys = ['KeyI', 'KeyJ', 'KeyK', 'KeyL'];
 
     const p2DirKeys = ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'];
     const p2ActKeys = ['Numpad5', 'Numpad1', 'Numpad2', 'Numpad3', 'Digit5', 'Digit1', 'Digit2', 'Digit3'];
 
+    const allHandledCodes = [...p1DirKeys, ...p1ActKeys, ...p2DirKeys, ...p2ActKeys];
+
     document.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
       if (!window.gameState) return;
+
+      if (allHandledCodes.includes(e.code)) {
+        e.preventDefault();
+      }
 
       if (window.gameState.roundPhase === 'GAME_OVER' && window.gameState.canContinueFromGameOver) {
         const selectScreen = document.getElementById('vs-select-screen');
@@ -446,6 +471,7 @@
 
       if (window.gameState.roundPhase !== 'INPUT') return;
 
+      // Player 1 Input
       if (window.gameState.p1 && !window.gameState.p1.isCPU && !window.gameState.p1IsConfirmed) {
         if (p1DirKeys.includes(e.code) && !window.gameState.input.heldDirection) {
           const dirMap = { KeyW: 'W', KeyA: 'A', KeyS: 'S', KeyD: 'D' };
@@ -455,17 +481,24 @@
         } else if (p1ActKeys.includes(e.code) && window.gameState.input.heldDirection) {
           const actMap = { KeyI: 'I', KeyJ: 'J', KeyK: 'K', KeyL: 'L' };
           const act = actMap[e.code];
-          const moveKey = `${window.gameState.input.heldDirection}+${act}`;
+          const dir = window.gameState.input.heldDirection;
+          const moveKey = `${dir}+${act}`;
 
           const moveData = window.gameState.p1Moves ? window.gameState.p1Moves[moveKey] : null;
           if (moveData && (moveData.chiCost || 0) <= window.gameState.p1.chi) {
+            const chargePct = calculateHumanCharge(dir, window.gameState.input.chargeStartTime);
+            window.gameState.p1.activeChargePercent = chargePct;
+            window.gameState.input.currentPercent = chargePct;
+
             window.gameState.p1SelectedMoveKey = moveKey;
             window.gameState.p1IsConfirmed = true;
+            window.gameState.input.selectedMoveKey = moveKey;
             window.gameState.input.isConfirmed = true;
           }
         }
       }
 
+      // Player 2 Input
       if (window.gameState.p2 && !window.gameState.p2.isCPU && !window.gameState.p2IsConfirmed) {
         if (p2DirKeys.includes(e.code) && !window.gameState.p2Input.heldDirection) {
           const p2DirMap = { ArrowUp: 'W', ArrowLeft: 'A', ArrowDown: 'S', ArrowRight: 'D' };
@@ -480,12 +513,18 @@
             Numpad3: 'L', Digit3: 'L'
           };
           const act = p2ActMap[e.code];
-          const moveKey = `${window.gameState.p2Input.heldDirection}+${act}`;
+          const dir = window.gameState.p2Input.heldDirection;
+          const moveKey = `${dir}+${act}`;
 
           const moveData = window.gameState.p2Moves ? window.gameState.p2Moves[moveKey] : null;
           if (moveData && (moveData.chiCost || 0) <= window.gameState.p2.chi) {
+            const chargePct = calculateHumanCharge(dir, window.gameState.p2Input.chargeStartTime);
+            window.gameState.p2.activeChargePercent = chargePct;
+            window.gameState.p2Input.currentPercent = chargePct;
+
             window.gameState.p2SelectedMoveKey = moveKey;
             window.gameState.p2IsConfirmed = true;
+            window.gameState.p2Input.selectedMoveKey = moveKey;
             window.gameState.p2Input.isConfirmed = true;
           }
         }
@@ -493,6 +532,10 @@
     });
 
     document.addEventListener('keyup', (e) => {
+      if (allHandledCodes.includes(e.code)) {
+        e.preventDefault();
+      }
+
       if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
 
       if (p1DirKeys.includes(e.code) && window.gameState.input) {
