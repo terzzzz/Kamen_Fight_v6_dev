@@ -19,73 +19,89 @@
    * @param {string} slotKey - Player slot ('p1' or 'p2')
    * @param {Object} playerObj - Current player state object
    */
-  function updatePlayerHUD(slotKey, playerObj) {
-    if (!playerObj) return;
+/**
+ * Canonical Player HUD State Renderer
+ * Path: js/ui.js
+ */
+function updatePlayerHUD(slotKey, playerObj) {
+  if (!playerObj) return;
 
-    const isP1 = slotKey === 'p1';
+  const isP1 = slotKey === 'p1';
 
-    const nameEl = document.getElementById(isP1 ? 'p1-name' : 'p2-name');
-    const lpEl = document.getElementById(isP1 ? 'p1-lp' : 'p2-lp');
-    const chiEl = document.getElementById(isP1 ? 'p1-chi' : 'p2-chi');
-    const chiBarFillEl = document.getElementById(isP1 ? 'p1-chi-bar-fill' : 'p2-chi-bar-fill');
-    const faintFillEl = document.getElementById(isP1 ? 'p1-faint-fill' : 'p2-faint-fill');
-    const buffTrayEl = document.getElementById(isP1 ? 'p1-buff-tray' : 'p2-buff-tray');
+  const nameEl = document.getElementById(isP1 ? 'p1-name' : 'p2-name');
+  const lpEl = document.getElementById(isP1 ? 'p1-lp' : 'p2-lp');
+  const chiEl = document.getElementById(isP1 ? 'p1-chi' : 'p2-chi');
+  const chiBarFillEl = document.getElementById(isP1 ? 'p1-chi-bar-fill' : 'p2-chi-bar-fill');
+  
+  // Faint meter DOM elements (both numerical text & visual fill bar)
+  const faintTextEl = document.getElementById(isP1 ? 'p1-faint-text' : 'p2-faint-text') || 
+                      document.getElementById(isP1 ? 'p1-faint' : 'p2-faint');
+  const faintFillEl = document.getElementById(isP1 ? 'p1-faint-fill' : 'p2-faint-fill');
+  const buffTrayEl = document.getElementById(isP1 ? 'p1-buff-tray' : 'p2-buff-tray');
 
-    if (nameEl) nameEl.textContent = playerObj.name || (isP1 ? 'Player 1' : 'Player 2');
-    if (lpEl) lpEl.textContent = `LP: ${playerObj.lp} / ${playerObj.maxLp}`;
+  if (nameEl) nameEl.textContent = playerObj.name || (isP1 ? 'Player 1' : 'Player 2');
+  if (lpEl) lpEl.textContent = `LP: ${playerObj.lp} / ${playerObj.maxLp}`;
 
-    if (faintFillEl) {
-      const faintPct = Math.min(100, Math.max(0, playerObj.faintMeter || 0));
-      faintFillEl.style.height = `${faintPct}%`;
-    }
-
-    const chi = typeof playerObj.chi === 'number' ? playerObj.chi : 0;
-    const maxChi = playerObj.maxChi || 16;
-    if (chiEl) chiEl.textContent = `CHI: ${chi} / ${maxChi}`;
-
-    if (chiBarFillEl) {
-      const chiPct = Math.min(100, Math.max(0, (chi / maxChi) * 100));
-      chiBarFillEl.style.width = `${chiPct}%`;
-    }
-
-    // Class List Modifications (Non-destructive to existing container classes)
-    if (chiEl) {
-      chiEl.classList.toggle('chi-text-low', chi < 5);
-      chiEl.classList.toggle('chi-text-full', chi > 14);
-      chiEl.style.color = chi < 5 ? '#ff3333' : (chi > 14 ? '#ffcc00' : '#00ffcc');
-    }
-
-    if (chiBarFillEl) {
-      chiBarFillEl.classList.toggle('chi-bar-low', chi < 5);
-      chiBarFillEl.classList.toggle('chi-bar-full', chi > 14);
-      chiBarFillEl.style.background = chi < 5 ? '#ff3333' : (chi > 14 ? '#ffcc00' : '#00ffcc');
-    }
-
-    let activeTags = [];
-    if (playerObj.activeBuffs && Array.isArray(playerObj.activeBuffs)) {
-      activeTags = [...playerObj.activeBuffs];
-    }
-
-    if (chi < 5) {
-      activeTags.push({
-        id: 'low_power_tag',
-        label: 'LOW POWER (DEF -25%)',
-        type: 'debuff-low-power'
-      });
-    } else if (chi > 14) {
-      activeTags.push({
-        id: 'full_power_tag',
-        label: 'FULL POWER (ATK/ACC +20%)',
-        type: 'buff-full-power'
-      });
-    }
-
-    if (buffTrayEl) {
-      buffTrayEl.innerHTML = activeTags.map(tag => `
-        <span class="buff-tag ${tag.type || ''}">${tag.label}</span>
-      `).join('');
-    }
+  // Restore Numeric Faint Count Display
+  const faintVal = Math.min(100, Math.max(0, Math.floor(playerObj.faintMeter || 0)));
+  if (faintTextEl) {
+    faintTextEl.textContent = `FAINT: ${faintVal} / 100`;
   }
+
+  // Visual Faint Fill Bar Height
+  if (faintFillEl) {
+    faintFillEl.style.height = `${faintVal}%`;
+  }
+
+  const chi = typeof playerObj.chi === 'number' ? playerObj.chi : 0;
+  const maxChi = playerObj.maxChi || 16;
+  if (chiEl) chiEl.textContent = `CHI: ${chi} / ${maxChi}`;
+
+  if (chiBarFillEl) {
+    const chiPct = Math.min(100, Math.max(0, (chi / maxChi) * 100));
+    chiBarFillEl.style.width = `${chiPct}%`;
+  }
+
+  // Class List Modifications (Non-destructive)
+  if (chiEl) {
+    chiEl.classList.toggle('chi-text-low', chi < 5);
+    chiEl.classList.toggle('chi-text-full', chi > 14);
+    chiEl.style.color = chi < 5 ? '#ff3333' : (chi > 14 ? '#ffcc00' : '#00ffcc');
+  }
+
+  if (chiBarFillEl) {
+    chiBarFillEl.classList.toggle('chi-bar-low', chi < 5);
+    chiBarFillEl.classList.toggle('chi-bar-full', chi > 14);
+    chiBarFillEl.style.background = chi < 5 ? '#ff3333' : (chi > 14 ? '#ffcc00' : '#00ffcc');
+  }
+
+  let activeTags = [];
+  if (playerObj.activeBuffs && Array.isArray(playerObj.activeBuffs)) {
+    activeTags = [...playerObj.activeBuffs];
+  }
+
+  if (chi < 5) {
+    activeTags.push({
+      id: 'low_power_tag',
+      label: 'LOW POWER (DEF -25%)',
+      type: 'debuff-low-power'
+    });
+  } else if (chi > 14) {
+    activeTags.push({
+      id: 'full_power_tag',
+      label: 'FULL POWER (ATK/ACC +20%)',
+      type: 'buff-full-power'
+    });
+  }
+
+  if (buffTrayEl) {
+    buffTrayEl.innerHTML = activeTags.map(tag => `
+      <span class="buff-tag ${tag.type || ''}">${tag.label}</span>
+    `).join('');
+  }
+}
+
+  
 
   /**
    * Displays temporary damage floating combat text on screen
