@@ -56,7 +56,6 @@
   function selectCPUMoveSim(cpu, opp, moves, difficulty) {
     if (cpu.isFainted) return 'DO_NOTHING';
 
-    // Use full AI decision engine when available
     if (typeof window.selectCPUMove === 'function') {
       return window.selectCPUMove(cpu, opp, moves, difficulty);
     }
@@ -96,7 +95,7 @@
 
   async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = 'normal', p2Difficulty = 'normal', progressCallback = null) {
     const allMoves = await loadSimulatorMoves();
-    const rules = window.COMBAT_RULES || { STARTING_CHI: 8, MAX_CHI: 16, FAINT_THRESHOLD: 100, HIT_BUILDUP: 25 };
+    const rules = window.COMBAT_RULES || { STARTING_CHI: 8, MAX_CHI: 16, FAINT_THRESHOLD: 100, HIT_BUILDUP: 25, ROUND_RECOVERY: 13 };
     
     const hardHpMult = (window.GAME_CONFIG && window.GAME_CONFIG.HARD_CPU_HP_MULTIPLIER) || 1.10;
     const masterHpMult = (window.GAME_CONFIG && window.GAME_CONFIG.MASTER_CPU_HP_MULTIPLIER) || 1.18;
@@ -122,7 +121,6 @@
     };
 
     for (let matchIndex = 0; matchIndex < count; matchIndex++) {
-      // Yield to main thread every 5 matches to keep UI smooth
       if (matchIndex % 5 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
       }
@@ -151,6 +149,9 @@
             p1.chi = Math.min(p1.maxChi, p1.chi + 1);
             p2.chi = Math.min(p2.maxChi, p2.chi + 1);
           }
+
+          let p1HitThisTurn = false;
+          let p2HitThisTurn = false;
 
           [p1, p2].forEach(p => {
             if (p.willBeFainted) {
@@ -261,6 +262,7 @@
                 let faintDmg = mFirst.baseFaintDamage || rules.HIT_BUILDUP || 25;
                 if (second.chi < 5) faintDmg *= 1.25;
                 second.faintMeter += faintDmg;
+                if (p1GoesFirst) p2HitThisTurn = true; else p1HitThisTurn = true;
 
                 if (second.faintMeter >= rules.FAINT_THRESHOLD) {
                   second.isFainted = true;
@@ -323,6 +325,7 @@
                 let faintDmg = mSecond.baseFaintDamage || rules.HIT_BUILDUP || 25;
                 if (first.chi < 5) faintDmg *= 1.25;
                 first.faintMeter += faintDmg;
+                if (p1GoesFirst) p1HitThisTurn = true; else p2HitThisTurn = true;
 
                 if (first.faintMeter >= rules.FAINT_THRESHOLD) {
                   first.isFainted = true;
@@ -333,6 +336,13 @@
               if (keySecond.startsWith('D')) second.chi = Math.min(second.maxChi, second.chi + 2);
               if (mSecond.chiRefundOnHit) second.chi = Math.min(second.maxChi, second.chi + mSecond.chiRefundOnHit);
             }
+          }
+
+          if (!p1.isFainted && !p1HitThisTurn && p1.faintMeter > 0) {
+            p1.faintMeter = Math.max(0, p1.faintMeter - (rules.ROUND_RECOVERY || 13));
+          }
+          if (!p2.isFainted && !p2HitThisTurn && p2.faintMeter > 0) {
+            p2.faintMeter = Math.max(0, p2.faintMeter - (rules.ROUND_RECOVERY || 13));
           }
 
           roundCounter++;
