@@ -29,6 +29,11 @@ window.RIDER_AI_PROFILES = {
     archetype: 'Utility & Control',
     weights: { W_LP: 1.0, W_CHI: 4.5, W_FAINT: 3.0 },
     preferredChiGoal: 4
+  },
+  x: {
+    archetype: 'Ridol Weapon Specialist',
+    weights: { W_LP: 1.3, W_CHI: 4.0, W_FAINT: 2.5 },
+    preferredChiGoal: 5
   }
 };
 
@@ -402,15 +407,13 @@ window.getCPUMoveChoice = function(cpuPlayer, opponentPlayer, slotKey) {
   return result.moveKey;
 };
 
-/* Unified LocalStorage binding delegating to window.STORAGE_KEYS */
+/* Unified LocalStorage helpers delegating to window.STORAGE_KEYS */
 window.saveAIKnowledge = function() {
-  if (typeof window.saveAIKnowledge === 'function' && window.STORAGE_KEYS) {
-    try {
-      const key = window.STORAGE_KEYS.AI_MEMORY || 'kamen_rider_ai_knowledge';
-      localStorage.setItem(key, window.globalAIKnowledge.serialize());
-    } catch (e) {
-      console.warn("Failed to save AI knowledge:", e);
-    }
+  try {
+    const key = (window.STORAGE_KEYS && window.STORAGE_KEYS.AI_MEMORY) ? window.STORAGE_KEYS.AI_MEMORY : 'kamen_rider_ai_knowledge';
+    localStorage.setItem(key, window.globalAIKnowledge.serialize());
+  } catch (e) {
+    console.warn("Failed to save AI knowledge:", e);
   }
 };
 
