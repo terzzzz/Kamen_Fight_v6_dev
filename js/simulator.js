@@ -29,14 +29,14 @@
       console.warn("Simulator: Could not load data/moves.json, using fallback roster.");
     }
 
- const fallback = typeof window.FALLBACK_ICHIGO_MOVES !== 'undefined' ? window.FALLBACK_ICHIGO_MOVES : {};
-cachedSimulatorMoves = {
-  'ichigo': deepClone(fallback),
-  'nigo': deepClone(fallback),
-  'v3': deepClone(fallback),
-  'riderman': deepClone(fallback),
-  'x': deepClone(fallback)
-};
+    const fallback = typeof window.FALLBACK_ICHIGO_MOVES !== 'undefined' ? window.FALLBACK_ICHIGO_MOVES : {};
+    cachedSimulatorMoves = {
+      'ichigo': deepClone(fallback),
+      'nigo': deepClone(fallback),
+      'v3': deepClone(fallback),
+      'riderman': deepClone(fallback),
+      'x': deepClone(fallback)
+    };
     return cachedSimulatorMoves;
   }
 
@@ -184,6 +184,7 @@ cachedSimulatorMoves = {
 
           let p1GoesFirst = false;
 
+          /* Priority Hierarchy: Range -> Stance Tier -> 50/50 Coin Flip */
           if (!p1IsIdle && p2IsIdle) {
             p1GoesFirst = true;
           } else if (p1IsIdle && !p2IsIdle) {
