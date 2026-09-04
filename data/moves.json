@@ -395,13 +395,14 @@
       "video": "x_kick.mp4"
     },
     "S+L": {
-      "name": "Ridol Longpole X-Kick",
+      "name": "Ridol Crown Split",
       "type": "SPECIAL",
+      "rangeType": "REACH",
       "chiCost": 7,
       "baseDamage": 900,
       "baseFaintDamage": 35,
       "hitChance": 70,
-      "video": "longpole_kick.mp4"
+      "video": "crown_split.mp4"
     },
     "S+I": {
       "name": "Vacuum Hell Wheel",
@@ -411,7 +412,7 @@
       "hitChance": 75,
       "video": "vacuum_hell_wheel.mp4"
     },
-     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
+    "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+L": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" }
