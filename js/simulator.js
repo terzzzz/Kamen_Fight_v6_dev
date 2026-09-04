@@ -8,14 +8,22 @@
 
   let cachedSimulatorMoves = null;
 
+  function deepClone(obj) {
+    if (!obj) return {};
+    return JSON.parse(JSON.stringify(obj));
+  }
+
   async function loadSimulatorMoves() {
     if (cachedSimulatorMoves) return cachedSimulatorMoves;
 
     try {
       const res = await fetch('data/moves.json');
       if (res.ok) {
-        cachedSimulatorMoves = await res.json();
-        return cachedSimulatorMoves;
+        const data = await res.json();
+        if (data && Object.keys(data).length > 0) {
+          cachedSimulatorMoves = deepClone(data);
+          return cachedSimulatorMoves;
+        }
       }
     } catch (e) {
       console.warn("Simulator: Could not load data/moves.json, using fallback roster.");
@@ -23,10 +31,10 @@
 
     const fallback = typeof window.FALLBACK_ICHIGO_MOVES !== 'undefined' ? window.FALLBACK_ICHIGO_MOVES : {};
     cachedSimulatorMoves = {
-      'ichigo': JSON.parse(JSON.stringify(fallback)),
-      'nigo': JSON.parse(JSON.stringify(fallback)),
-      'v3': JSON.parse(JSON.stringify(fallback)),
-      'riderman': JSON.parse(JSON.stringify(fallback))
+      'ichigo': deepClone(fallback),
+      'nigo': deepClone(fallback),
+      'v3': deepClone(fallback),
+      'riderman': deepClone(fallback)
     };
     return cachedSimulatorMoves;
   }
@@ -105,8 +113,8 @@
     const p1Diff = String(p1Difficulty || 'normal').toLowerCase();
     const p2Diff = String(p2Difficulty || 'normal').toLowerCase();
 
-    const p1Moves = (allMoves && allMoves[p1Rider.id]) || allMoves['ichigo'] || {};
-    const p2Moves = (allMoves && allMoves[p2Rider.id]) || allMoves['ichigo'] || {};
+    const p1Moves = deepClone((allMoves && allMoves[p1Rider.id]) || allMoves['ichigo'] || {});
+    const p2Moves = deepClone((allMoves && allMoves[p2Rider.id]) || allMoves['ichigo'] || {});
 
     const stats = {
       totalMatches: count,
@@ -121,7 +129,7 @@
     };
 
     for (let matchIndex = 0; matchIndex < count; matchIndex++) {
-      if (matchIndex % 5 === 0) {
+      if (matchIndex % 3 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
       }
 
@@ -367,8 +375,8 @@
     }
 
     return {
-      p1Name: p1Rider.name,
-      p2Name: p2Rider.name,
+      p1Name: p1Rider.name || 'Player 1',
+      p2Name: p2Rider.name || 'Player 2',
       totalMatches: count,
       p1Wins: stats.p1Wins,
       p2Wins: stats.p2Wins,
