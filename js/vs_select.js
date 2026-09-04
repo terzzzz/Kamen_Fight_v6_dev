@@ -44,8 +44,6 @@
     else el.classList.add('normal');
   }
 
-  /* --- STEP ADVANCEMENT HANDLERS --- */
-
   window.confirmStep = function(e) {
     if (e && e.preventDefault) e.preventDefault();
     const state = window.vsSelectionState;
@@ -81,8 +79,6 @@
   window.nextStep = window.confirmStep;
   window.confirmP1Selection = window.confirmP1;
   window.confirmP2Selection = window.confirmP2;
-
-  /* --- BGM CONTROLLERS --- */
 
   window.changeBGMVolume = function(val) {
     window.currentVolume = parseFloat(val);
@@ -135,8 +131,6 @@
       window.battleBGM = null;
     }
   };
-
-  /* --- SELECTION CONTROLS --- */
 
   window.cycleRider = function(playerKey, direction) {
     const riders = window.AVAILABLE_RIDERS;
@@ -477,8 +471,6 @@
       window.startBattle(matchConfig);
     }
   };
-
-  /* --- GLOBAL EVENT DELEGATION LISTENER --- */
 
   document.addEventListener('click', (e) => {
     const p1Btn = e.target.closest('#confirm-p1-btn, #btn-confirm-p1');
