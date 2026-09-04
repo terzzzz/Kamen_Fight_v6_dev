@@ -230,17 +230,17 @@
 
     const resourceDiscount = Math.min(1.0, Math.max(0.15, selfHpRatio / 0.35));
 
-    const W_LP = (characterWeights.W_LP || 1.0) * lpUrgencyMultiplier;
-    const W_CHI = (characterWeights.W_CHI || 8.0) * resourceDiscount;
-    const W_FAINT = (characterWeights.W_FAINT || 2.0) * resourceDiscount;
+    const W_LP = (characterWeights.W_LP || 1.2) * lpUrgencyMultiplier;
+    const W_CHI = (characterWeights.W_CHI || 10.0) * resourceDiscount;
+    const W_FAINT = (characterWeights.W_FAINT || 2.5) * resourceDiscount;
 
     let score = ((selfState.lp - oppState.lp) * W_LP) +
                 ((selfState.chi - oppState.chi) * W_CHI);
 
-    if (selfState.chi < 5) score -= 80 * resourceDiscount;
-    if (oppState.chi < 5) score += 80 * resourceDiscount;
-    if (selfState.chi > 14) score += 100 * resourceDiscount;
-    if (oppState.chi > 14) score -= 100 * resourceDiscount;
+    if (selfState.chi < 5) score -= 90 * resourceDiscount;
+    if (oppState.chi < 5) score += 90 * resourceDiscount;
+    if (selfState.chi > 14) score += 120 * resourceDiscount;
+    if (oppState.chi > 14) score -= 120 * resourceDiscount;
 
     const oppFaintVal = (oppState.isFainted || oppState.faintMeter >= 100 || oppState.cashedInFaint) ? 100 : oppState.faintMeter;
     const selfFaintVal = (selfState.isFainted || selfState.faintMeter >= 100 || selfState.cashedInFaint) ? 100 : selfState.faintMeter;
@@ -248,23 +248,25 @@
     score += (oppFaintVal - selfFaintVal) * W_FAINT;
 
     if (oppState.isFainted || oppState.faintMeter >= 100 || oppState.cashedInFaint) {
-      score += 300 * resourceDiscount;
+      score += 450 * resourceDiscount;
     }
     if (selfState.isFainted || selfState.faintMeter >= 100 || selfState.cashedInFaint) {
-      score -= 300 * lpUrgencyMultiplier;
+      score -= 450 * lpUrgencyMultiplier;
     }
 
     if (isMaster) {
       const oppHpRatio = oppState.lp / (oppState.maxLp || 2300);
-      if (oppHpRatio < 0.25) score += (0.25 - oppHpRatio) * 400;
+      if (oppHpRatio < 0.25) score += (0.25 - oppHpRatio) * 500;
 
-      if (selfState.faintMeter >= 70) score -= 40;
-      if (oppState.faintMeter >= 70) score += 35;
+      // Penalize self high faint meter to discourage turtling into faint traps
+      if (selfState.faintMeter >= 50) score -= (selfState.faintMeter - 40) * 4;
+      if (oppState.faintMeter >= 50) score += (oppState.faintMeter - 40) * 4;
 
-      if (selfState.chi >= 6 && selfState.chi <= 10) score += 18;
+      // Reward offensive resource accumulation & usage
+      if (selfState.chi >= 5 && selfState.chi <= 12) score += 30;
 
       if ((oppState.activeChargePercent || 0) >= 88 && selfState.chi >= 0) {
-        score += 12;
+        score += 15;
       }
     }
 
@@ -278,10 +280,18 @@
     const dmg = move.baseDamage || 0;
     const hit = (move.hitChance || 80) / 100;
     let s = dmg * hit;
-    if (move.type === 'DEFENSE') s += 40;
-    if (String(key).startsWith('D') && cost === 0) s += 25;
-    if (String(key).startsWith('S')) s += cost * 4;
-    s -= cost * 3;
+
+    // Rebalanced beam ordering: prevent Guard moves from clogging beam slots
+    if (move.type === 'DEFENSE') {
+      s += (player.faintMeter >= 50) ? -30 : 5;
+    }
+    if (String(key).startsWith('D')) {
+      s += (cost === 0 ? 35 : 25);
+    }
+    if (String(key).startsWith('S')) {
+      s += cost * 6;
+    }
+    s -= cost * 2;
     return s;
   }
 
@@ -302,18 +312,18 @@
       ? window.globalAIKnowledge.playerProfiles[oppId]
       : null;
 
-    const attackRatio = prof ? (prof.attackCount / Math.max(1, prof.totalRounds)) : 0.55;
-    const guardRatio = prof ? (prof.guardCount / Math.max(1, prof.totalRounds)) : 0.25;
+    const attackRatio = prof ? (prof.attackCount / Math.max(1, prof.totalRounds)) : 0.65;
+    const guardRatio = prof ? (prof.guardCount / Math.max(1, prof.totalRounds)) : 0.20;
 
     oppValid.forEach(function (k) {
       const m = oppMovesData[k] || {};
       let w = 1;
       if (String(k).startsWith('A') || m.type === 'DEFENSE') {
-        w = 0.6 + guardRatio * 2.2;
+        w = 0.4 + guardRatio * 1.5;
       } else if (String(k).startsWith('S')) {
-        w = 0.7 + attackRatio * 1.4;
+        w = 0.8 + attackRatio * 1.6;
       } else {
-        w = 0.8 + attackRatio * 1.2;
+        w = 0.9 + attackRatio * 1.4;
       }
       if ((m.chiCost || 0) > (opponentPlayer.chi || 0)) w = 0.05;
       weights[k] = w;
@@ -387,8 +397,8 @@
     const isOpponentLocked = !!searchOptions.isOpponentLocked;
     const lockedOpponentMoveKey = searchOptions.lockedOpponentMoveKey || null;
 
-    const selfBeam = searchOptions.selfBeam || (isMaster ? 4 : 8);
-    const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
+    const selfBeam = searchOptions.selfBeam || (isMaster ? 5 : 8);
+    const oppBeam = searchOptions.oppBeam || (isMaster ? 3 : 8);
     const nodeLimit = searchOptions.nodeLimit || (isMaster ? 3500 : 900);
     const startTime = Date.now();
     const timeBudgetMs = searchOptions.timeBudgetMs || (isMaster ? 35 : 15);
@@ -495,8 +505,8 @@
         isMaster: isMaster,
         isOpponentLocked: options.isOpponentLocked,
         lockedOpponentMoveKey: options.lockedOpponentMoveKey,
-        selfBeam: options.selfBeam || (isMaster ? 4 : 8),
-        oppBeam: options.oppBeam || (isMaster ? 2 : 8),
+        selfBeam: options.selfBeam || (isMaster ? 5 : 8),
+        oppBeam: options.oppBeam || (isMaster ? 3 : 8),
         nodeLimit: options.nodeLimit || (isMaster ? 3500 : 900),
         timeBudgetMs: options.timeBudgetMs || (isMaster ? 35 : 15)
       });
