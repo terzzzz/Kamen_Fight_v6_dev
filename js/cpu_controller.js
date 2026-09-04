@@ -69,6 +69,41 @@
     }
   }
 
+  /**
+ * Universal CPU Charge & Target Manager
+ * Path: js/cpu_controller.js
+ */
+
+function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
+  if (!cpuPlayer) return 85;
+
+  let target = 85;
+  const keyStr = typeof moveKey === 'string' ? moveKey : 'D+J';
+  const diff = String(difficulty || 'normal').toLowerCase();
+
+  if (keyStr.startsWith('A+')) {
+    // Guards: lock quickly
+    target = (diff === 'master') ? 100 : 20;
+  } else if (diff === 'easy') {
+    target = Math.floor(Math.random() * 16) + 65;
+  } else if (diff === 'master') {
+    target = Math.floor(Math.random() * 4) + 96; // 96-99
+  } else if (diff === 'hard') {
+    target = Math.floor(Math.random() * 8) + 88; // 88-95
+  } else if (keyStr.startsWith('D')) {
+    target = Math.floor(Math.random() * 11) + 82;
+  } else {
+    target = Math.floor(Math.random() * 11) + 85;
+  }
+
+  cpuPlayer.activeChargePercent = target;
+  return target;
+}
+
+if (typeof window !== 'undefined') {
+  window.setUniversalChargeTarget = setUniversalChargeTarget;
+}
+
   // Export Facade Methods
   window.setUniversalChargeTarget = setUniversalChargeTarget;
   window.getCPUReactionDelay = getCPUReactionDelay;
