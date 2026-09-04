@@ -56,6 +56,13 @@ var FALLBACK_ICHIGO_MOVES = window.FALLBACK_ICHIGO_MOVES || {
 
 window.cpuChargeIntervals = window.cpuChargeIntervals || {};
 
+/* Helper: Standardized Charge Duration Calculation */
+function getChargeDurationMs(dirKey) {
+  const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
+  let rawTime = chargeTimes[dirKey] !== undefined ? chargeTimes[dirKey] : 3.0;
+  return rawTime < 50 ? rawTime * 1000 : rawTime;
+}
+
 /* Real-Time CPU Charging Routine */
 
 window.startCPUTurnRoutine = function(slotKey) {
@@ -70,7 +77,10 @@ window.startCPUTurnRoutine = function(slotKey) {
     window.cpuChargeIntervals[slotKey] = null;
   }
 
+  // Clear stale charge state
+  delete playerObj._chosenTargetChargePct;
   playerObj.activeChargePercent = 0;
+
   if (slotKey === 'p1') {
     window.gameState.p1SelectedMoveKey = null;
     window.gameState.p1IsConfirmed = false;
@@ -112,8 +122,9 @@ window.startCPUTurnRoutine = function(slotKey) {
   const isZeroChiGuard = (dirKey === 'A' && (move.chiCost || 0) === 0);
   const diff = playerObj.difficulty || 'normal';
 
+  // Read AI-provided target or fallback
   let targetChargePct = playerObj._chosenTargetChargePct;
-  if (targetChargePct === undefined) {
+  if (targetChargePct === undefined || targetChargePct === null) {
     const baseTarget = isZeroChiGuard 
       ? 100 
       : (diff === 'master' ? 98 : (diff === 'hard' ? 95 : (diff === 'easy' ? 70 : 85)));
@@ -123,12 +134,9 @@ window.startCPUTurnRoutine = function(slotKey) {
 
   simulateCPUDirectionButton(slotKey, dirKey, true);
 
-  const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
-  let rawTime = chargeTimes[dirKey] !== undefined ? chargeTimes[dirKey] : 3.0;
-  const totalChargeMs = rawTime < 50 ? rawTime * 1000 : rawTime;
+  const totalChargeMs = getChargeDurationMs(dirKey);
   const intervalMs = 50;
   const pctIncrement = (intervalMs / totalChargeMs) * 100;
-
   const reactionDelay = diff === 'master' ? 120 : (diff === 'hard' ? 200 : 350);
 
   setTimeout(() => {
@@ -342,9 +350,7 @@ function applyBuff(player, buffId, label, buffType, durationRounds) {
     roundsLeft: durationRounds,
     appliedRound: window.gameState ? window.gameState.roundCounter : 1
   });
-  if (typeof window.updatePlayerHUD === 'function') {
-    window.updatePlayerHUD(player === window.gameState?.p1 ? 'p1' : 'p2', player);
-  }
+  updateHUD();
 }
 
 function processRoundBuffs(player) {
@@ -355,9 +361,7 @@ function processRoundBuffs(player) {
     }
   });
   player.activeBuffs = player.activeBuffs.filter(b => b.roundsLeft > 0);
-  if (typeof window.updatePlayerHUD === 'function') {
-    window.updatePlayerHUD(player === window.gameState?.p1 ? 'p1' : 'p2', player);
-  }
+  updateHUD();
 }
 
 function handleAirborneState(player, moveKey, move) {
@@ -372,9 +376,7 @@ function handleAirborneState(player, moveKey, move) {
       player.airborneTicks--;
     }
   }
-  if (typeof window.updatePlayerHUD === 'function') {
-    window.updatePlayerHUD(player === window.gameState?.p1 ? 'p1' : 'p2', player);
-  }
+  updateHUD();
 }
 
 function setSideBoxesBlank(isBlank) {
@@ -384,8 +386,36 @@ function setSideBoxesBlank(isBlank) {
   if (p2Box) p2Box.classList.toggle('blanked', isBlank);
 }
 
+function syncPlayerHUD(slotKey, player) {
+  if (!player) return;
+  const threshold = (window.COMBAT_RULES && window.COMBAT_RULES.FAINT_THRESHOLD) || 100;
+  const faintMeterVal = Math.min(threshold, Math.max(0, player.faintMeter || 0));
+  const faintPct = Math.min(100, Math.max(0, Math.round((faintMeterVal / threshold) * 100)));
+
+  const faintFills = document.querySelectorAll(`#${slotKey}-faint-fill, .${slotKey}-faint-fill, #${slotKey}-faint-bar-fill`);
+  faintFills.forEach(el => { el.style.width = `${faintPct}%`; });
+
+  const faintTexts = document.querySelectorAll(`#${slotKey}-faint-text, .${slotKey}-faint-text`);
+  faintTexts.forEach(el => { el.textContent = `${Math.round(faintMeterVal)} / ${threshold}`; });
+
+  const maxLp = player.maxLp || 2300;
+  const lpPct = Math.min(100, Math.max(0, Math.round(((player.lp || 0) / maxLp) * 100)));
+  const lpFills = document.querySelectorAll(`#${slotKey}-lp-fill, .${slotKey}-lp-fill`);
+  lpFills.forEach(el => { el.style.width = `${lpPct}%`; });
+
+  const lpTexts = document.querySelectorAll(`#${slotKey}-lp-text, .${slotKey}-lp-text, #${slotKey}-lp .stat-value-styled`);
+  lpTexts.forEach(el => { el.textContent = `${Math.round(player.lp || 0)} / ${maxLp}`; });
+
+  const chiTexts = document.querySelectorAll(`#${slotKey}-chi-text, .${slotKey}-chi-text, #${slotKey}-chi .stat-value-styled`);
+  chiTexts.forEach(el => { el.textContent = `${player.chi || 0} / ${player.maxChi || 16}`; });
+}
+
 function updateHUD() {
   if (!window.gameState) return;
+
+  syncPlayerHUD('p1', window.gameState.p1);
+  syncPlayerHUD('p2', window.gameState.p2);
+
   if (typeof window.updatePlayerHUD === 'function') {
     window.updatePlayerHUD('p1', window.gameState.p1);
     window.updatePlayerHUD('p2', window.gameState.p2);
@@ -461,6 +491,7 @@ async function applyFaintBuildUp(player, playerKey, customAmount = null) {
   }
 
   player.faintMeter = Math.min(rules.FAINT_THRESHOLD, player.faintMeter + amount);
+  updateHUD();
 
   if (player.faintMeter >= rules.FAINT_THRESHOLD) {
     player.isFainted = true;
@@ -514,6 +545,8 @@ function resolveAttack(attacker, defender, atkMove, atkMoveKey, defMove, defMove
     if (defender.chi < 5) finalFaintPenalty = Math.floor(finalFaintPenalty * 1.25);
 
     defender.faintMeter = Math.min(rules.FAINT_THRESHOLD, defender.faintMeter + finalFaintPenalty);
+    updateHUD();
+
     if (defender.faintMeter >= rules.FAINT_THRESHOLD) {
       defender.isFainted = true;
       defender.justFainted = true;
@@ -727,17 +760,13 @@ async function executeTurnResolutionPhase() {
       if (p1Stance !== p2Stance) {
         p1GoesFirst = p1Stance > p2Stance;
       } else {
-        const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
-
         let p1Dir = (typeof p1MoveKey === 'string' && p1MoveKey.includes('+')) ? p1MoveKey.split('+')[0] : 'D';
         let p2Dir = (typeof p2MoveKey === 'string' && p2MoveKey.includes('+')) ? p2MoveKey.split('+')[0] : 'D';
 
-        let p1Raw = chargeTimes[p1Dir] !== undefined ? chargeTimes[p1Dir] : 3.0;
-        let p1TotalMs = p1Raw < 50 ? p1Raw * 1000 : p1Raw;
+        let p1TotalMs = getChargeDurationMs(p1Dir);
         let p1Elapsed = (p1Charge / 100) * (p1TotalMs / 1000);
 
-        let p2Raw = chargeTimes[p2Dir] !== undefined ? chargeTimes[p2Dir] : 3.0;
-        let p2TotalMs = p2Raw < 50 ? p2Raw * 1000 : p2Raw;
+        let p2TotalMs = getChargeDurationMs(p2Dir);
         let p2Elapsed = (p2Charge / 100) * (p2TotalMs / 1000);
 
         if (p1Elapsed !== p2Elapsed) {
@@ -1122,3 +1151,5 @@ window.executeTurnResolutionPhase = executeTurnResolutionPhase;
 window.applyFaintBuildUp = applyFaintBuildUp;
 window.resolveAttack = resolveAttack;
 window.getMoveForPlayer = getMoveForPlayer;
+window.syncChargeBarUI = syncChargeBarUI;
+window.updateHUD = updateHUD;
