@@ -27,6 +27,13 @@
     return (nativeFacing !== targetFacing) ? 'scaleX(-1)' : 'scaleX(1)';
   }
 
+  // Helper: extract clean base filename from URI or path
+  function getCleanFileName(url) {
+    if (!url) return '';
+    const filename = url.split('/').pop().split('?')[0];
+    return filename.replace(/\.(mp4|webm|png|jpg)$/i, '');
+  }
+
   // Side Character Video Updater (Idle, Mid-Air, Faint, Victory, KO)
   function updateCharacterMedia(playerKey, stateType = 'IDLE') {
     const videoEl = document.getElementById(`${playerKey}-video`);
@@ -54,10 +61,17 @@
     }
 
     const cleanFile = fileName.replace(/\.(mp4|webm)$/i, '');
+    const currentSrc = videoEl.currentSrc || videoEl.src || '';
+    const currentCleanName = getCleanFileName(currentSrc);
 
-    // Prevent redundant DOM reload if video is already playing target clip
-    const currentSrc = videoEl.src || '';
-    if (currentSrc.includes(`/${cleanFile}.mp4`) || currentSrc.includes(`_${cleanFile}.mp4`)) {
+    // Prevent redundant DOM reload if video is already playing the target clip
+    const isMatchingClip = (
+      currentCleanName === cleanFile ||
+      currentCleanName === `${riderId}_${cleanFile}` ||
+      currentCleanName.endsWith(`_${cleanFile}`)
+    );
+
+    if (isMatchingClip && !videoEl.paused && videoEl.currentTime > 0) {
       videoEl.hidden = false;
       videoEl.style.display = 'block';
       if (spriteEl) spriteEl.hidden = true;
@@ -66,7 +80,7 @@
       try {
         videoEl.currentTime = 0;
         const p = videoEl.play();
-        if (p !== undefined) p.catch(() => {});
+        if (p !== undefined) p.catch((err) => console.warn("Video replay warning:", err));
       } catch (e) {}
       return;
     }
@@ -210,7 +224,7 @@
         resolve();
       };
 
-      const cleanFileName = String(videoFile || 'idle.mp4').replace(/^assets\/videos\//, '').replace(/\.(mp4|webm)$/i, '');
+      const cleanFileName = getCleanFileName(videoFile) || 'idle';
 
       const candidates = [
         `assets/videos/${riderId}/${cleanFileName}.mp4`,
