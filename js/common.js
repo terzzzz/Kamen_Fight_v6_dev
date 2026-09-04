@@ -3,7 +3,8 @@
  * Path: js/common.js
  */
 
-window.COMBAT_RULES = window.COMBAT_RULES || {
+// Master Combat Rules Initialization
+window.COMBAT_RULES = Object.assign({
   FAINT_THRESHOLD: 100,
   HIT_BUILDUP: 25,
   ROUND_RECOVERY: 13,
@@ -13,9 +14,10 @@ window.COMBAT_RULES = window.COMBAT_RULES || {
   STARTING_CHI: 8,
   MAX_CHI: 16,
   OFFENSIVE_TYPES: ['MELEE', 'PROJECTILE', 'SPECIAL', 'FINISHER', 'PHYSICAL']
-};
+}, window.COMBAT_RULES || {});
 
-window.GAME_CONFIG = window.GAME_CONFIG || {
+// Master Game Configuration Initialization
+window.GAME_CONFIG = Object.assign({
   ROUND_TIME_LIMIT: 8.0,
   CHARGE_TIME_REQUIRED: 2.5,
   LATE_EXTENSION_BONUS: 1.0,
@@ -24,24 +26,53 @@ window.GAME_CONFIG = window.GAME_CONFIG || {
   HARD_CPU_DMG_MULTIPLIER: 1.10,
   MASTER_CPU_HP_MULTIPLIER: 1.18,
   MASTER_CPU_DMG_MULTIPLIER: 1.15
-};
+}, window.GAME_CONFIG || {});
 
-// Default directional charge duration thresholds in milliseconds
-window.CHARGE_TIMES = window.CHARGE_TIMES || {
+// Default Directional Charge Duration Thresholds (in Milliseconds)
+window.CHARGE_TIMES = Object.assign({
   W: 3500,
   A: 2200,
   S: 4200,
   D: 3000
-};
+}, window.CHARGE_TIMES || {});
 
-function getOpponentMovesData(opponentPlayer) {
-  if (typeof window.gameState !== 'undefined' && window.gameState) {
-    if (opponentPlayer === window.gameState.p1 && window.gameState.p1Moves) return window.gameState.p1Moves;
-    if (opponentPlayer === window.gameState.p2 && window.gameState.p2Moves) return window.gameState.p2Moves;
-  }
-  return typeof window.FALLBACK_ICHIGO_MOVES !== 'undefined' ? window.FALLBACK_ICHIGO_MOVES : {};
+/**
+ * Returns directional charge duration cleanly normalized in milliseconds
+ * @param {string} dirKey - Directional key ('W', 'A', 'S', 'D')
+ * @returns {number} Time required to charge to 100% in milliseconds
+ */
+function getChargeTimeMs(dirKey) {
+  const times = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
+  const raw = times[dirKey] !== undefined ? times[dirKey] : 3000;
+  return raw < 50 ? raw * 1000 : raw;
 }
 
+/**
+ * Safely fetches the move set for an opponent player object or slot key
+ * @param {Object|string} opponentPlayer - Player object or slot key ('p1'/'p2')
+ * @returns {Object} Move set dictionary for the opponent
+ */
+function getOpponentMovesData(opponentPlayer) {
+  if (typeof window.gameState !== 'undefined' && window.gameState) {
+    if (opponentPlayer === 'p1' || (opponentPlayer && opponentPlayer === window.gameState.p1)) {
+      return window.gameState.p1Moves || window.FALLBACK_ICHIGO_MOVES || {};
+    }
+    if (opponentPlayer === 'p2' || (opponentPlayer && opponentPlayer === window.gameState.p2)) {
+      return window.gameState.p2Moves || window.FALLBACK_ICHIGO_MOVES || {};
+    }
+    // Fallback ID match if object references differ
+    if (opponentPlayer && opponentPlayer.id) {
+      if (window.gameState.p1 && opponentPlayer.id === window.gameState.p1.id) return window.gameState.p1Moves || {};
+      if (window.gameState.p2 && opponentPlayer.id === window.gameState.p2.id) return window.gameState.p2Moves || {};
+    }
+  }
+  return window.FALLBACK_ICHIGO_MOVES || {};
+}
+
+/**
+ * Retrieves the current timing rules configuration for a match
+ * @returns {Object} Timing window parameters in seconds
+ */
 function getMatchTimingConfig() {
   const matchCfg = (typeof window.gameState !== 'undefined' && window.gameState && window.gameState.matchConfig) 
     ? window.gameState.matchConfig 
@@ -79,9 +110,9 @@ function getElapsedTime(remainingTime) {
 }
 
 /**
- * Evaluates whether the round has reached the late decision phase (Option A)
+ * Evaluates whether the round has reached the late decision phase
  * @param {number} remainingTime - Current countdown value
- * @returns {boolean} True if elapsed time >= lateThreshold (e.g. >= 7.0s elapsed / <= 1.0s remaining)
+ * @returns {boolean} True if elapsed time >= lateThreshold
  */
 function isLateRound(remainingTime) {
   const { lateThreshold } = getMatchTimingConfig();
@@ -89,6 +120,7 @@ function isLateRound(remainingTime) {
   return elapsedTime >= lateThreshold;
 }
 
+window.getChargeTimeMs = getChargeTimeMs;
 window.getOpponentMovesData = getOpponentMovesData;
 window.getMatchTimingConfig = getMatchTimingConfig;
 window.getElapsedTime = getElapsedTime;
