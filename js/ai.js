@@ -93,7 +93,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
   if (cpuPlayer.isFainted) return 'DO_NOTHING';
 
   const moveKeys = Object.keys(availableMoves || {});
-  if (moveKeys.length === 0) return 'D+J';
+  if (moveKeys.length === 0) return 'DO_NOTHING';
 
   const diff = String(difficulty).toLowerCase();
   const riderProfile = (window.RIDER_AI_PROFILES && window.RIDER_AI_PROFILES[cpuPlayer.id])
@@ -265,10 +265,12 @@ window.selectCPUMoveAndCharge = function(cpuPlayer, opponentPlayer, slotKey) {
 
   const chosenMoveKey = window.selectCPUMove(cpuPlayer, opponentPlayer, availableMoves, difficulty);
 
-  // Delegate charge target directly to Universal Charge Manager
   let targetChargePct = 85;
   if (typeof window.setUniversalChargeTarget === 'function') {
     targetChargePct = window.setUniversalChargeTarget(cpuPlayer, chosenMoveKey, difficulty);
+  } else {
+    const isZeroChiGuard = chosenMoveKey.startsWith('A+') && availableMoves[chosenMoveKey] && (availableMoves[chosenMoveKey].chiCost || 0) === 0;
+    targetChargePct = isZeroChiGuard ? 100 : (difficulty === 'master' ? 98 : (difficulty === 'hard' ? 95 : (difficulty === 'easy' ? 70 : 85)));
   }
 
   return { moveKey: chosenMoveKey, targetChargePct: targetChargePct };
@@ -277,7 +279,7 @@ window.selectCPUMoveAndCharge = function(cpuPlayer, opponentPlayer, slotKey) {
 window.getCPUMoveChoice = function(cpuPlayer, opponentPlayer, slotKey) {
   const result = window.selectCPUMoveAndCharge(cpuPlayer, opponentPlayer, slotKey);
   if (cpuPlayer) {
-    cpuPlayer.activeChargePercent = result.targetChargePct;
+    cpuPlayer._chosenTargetChargePct = result.targetChargePct;
   }
   return result.moveKey;
 };
