@@ -29,13 +29,14 @@
       console.warn("Simulator: Could not load data/moves.json, using fallback roster.");
     }
 
-    const fallback = typeof window.FALLBACK_ICHIGO_MOVES !== 'undefined' ? window.FALLBACK_ICHIGO_MOVES : {};
-    cachedSimulatorMoves = {
-      'ichigo': deepClone(fallback),
-      'nigo': deepClone(fallback),
-      'v3': deepClone(fallback),
-      'riderman': deepClone(fallback)
-    };
+ const fallback = typeof window.FALLBACK_ICHIGO_MOVES !== 'undefined' ? window.FALLBACK_ICHIGO_MOVES : {};
+cachedSimulatorMoves = {
+  'ichigo': deepClone(fallback),
+  'nigo': deepClone(fallback),
+  'v3': deepClone(fallback),
+  'riderman': deepClone(fallback),
+  'x': deepClone(fallback)
+};
     return cachedSimulatorMoves;
   }
 
