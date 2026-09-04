@@ -17,13 +17,13 @@
     master: 'MASTER'
   };
 
-window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
-  { id: 'ichigo', name: 'Kamen Rider Ichigo', icon: 'assets/images/icons/ichigo.png', maxLp: 3000 },
-  { id: 'nigo', name: 'Kamen Rider Nigo', icon: 'assets/images/icons/nigo.png', maxLp: 3300 },
-  { id: 'v3', name: 'Kamen Rider V3', icon: 'assets/images/icons/v3.png', maxLp: 3150 },
-  { id: 'riderman', name: 'Riderman', icon: 'assets/images/icons/riderman.png', maxLp: 2800 },
-  { id: 'x', name: 'Kamen Rider X', icon: 'assets/images/icons/x.png', maxLp: 3100 }
-];
+  window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
+    { id: 'ichigo', name: 'Kamen Rider Ichigo', icon: 'assets/images/icons/ichigo.png', maxLp: 3000 },
+    { id: 'nigo', name: 'Kamen Rider Nigo', icon: 'assets/images/icons/nigo.png', maxLp: 3300 },
+    { id: 'v3', name: 'Kamen Rider V3', icon: 'assets/images/icons/v3.png', maxLp: 3150 },
+    { id: 'riderman', name: 'Riderman', icon: 'assets/images/icons/riderman.png', maxLp: 2800 },
+    { id: 'x', name: 'Kamen Rider X', icon: 'assets/images/icons/x.png', maxLp: 3100 }
+  ];
 
   window.vsSelectionState = window.vsSelectionState || {
     step: 1,
@@ -458,6 +458,11 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
   };
 
   window.validateAndStartMatch = function() {
+    // Prime video elements with user gesture token for smooth CPU vs CPU playback
+    if (typeof window.unlockMobileVideos === 'function') {
+      window.unlockMobileVideos();
+    }
+
     window.stopSelectionBGM();
     window.playBattleBGM();
 
