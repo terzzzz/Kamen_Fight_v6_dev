@@ -30,7 +30,7 @@
       activeChargePercent: (p.activeChargePercent !== undefined) ? p.activeChargePercent : 100,
       airborneTicks: p.airborneTicks || 0,
       activeBuffs: p.activeBuffs ? p.activeBuffs.map(function (b) {
-        return { id: b.id, roundsLeft: b.roundsLeft };
+        return { id: b.id, roundsLeft: typeof b.roundsLeft === 'number' ? b.roundsLeft : 1 };
       }) : []
     };
   }
@@ -47,8 +47,8 @@
       MAX_CHI: 16
     };
 
-    const selfMove = (selfMovesData && selfMovesData[selfMoveKey]) || { name: 'Idle', type: 'IDLE', baseDamage: 0, chiCost: 0 };
-    const oppMove = (oppMovesData && oppMovesData[oppMoveKey]) || { name: 'Idle', type: 'IDLE', baseDamage: 0, chiCost: 0 };
+    const selfMove = (selfMovesData && selfMovesData[selfMoveKey]) || window.DO_NOTHING_MOVE || { name: 'Idle', type: 'IDLE', baseDamage: 0, chiCost: 0 };
+    const oppMove = (oppMovesData && oppMovesData[oppMoveKey]) || window.DO_NOTHING_MOVE || { name: 'Idle', type: 'IDLE', baseDamage: 0, chiCost: 0 };
 
     nextSelf.chi = Math.max(0, nextSelf.chi - (selfMove.chiCost || 0));
     nextOpp.chi = Math.max(0, nextOpp.chi - (oppMove.chiCost || 0));
@@ -376,6 +376,8 @@
     const selfBeam = searchOptions.selfBeam || (isMaster ? 4 : 8);
     const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
     const nodeLimit = searchOptions.nodeLimit || (isMaster ? 3500 : 900);
+    const startTime = Date.now();
+    const timeBudgetMs = 12; // Time guard to ensure zero frame stutter on lower-end devices
 
     let nodes = 0;
 
@@ -383,12 +385,12 @@
       const valid = Object.keys(moves || {}).filter(function (k) {
         return (moves[k] && (moves[k].chiCost || 0) <= (player.chi || 0));
       });
-      return valid.length > 0 ? valid : ['D+J'];
+      return valid.length > 0 ? valid : ['DO_NOTHING'];
     };
 
     function searchTree(selfState, oppState, depth) {
       nodes++;
-      if (nodes > nodeLimit || depth === 0 || selfState.lp <= 0 || oppState.lp <= 0) {
+      if (nodes > nodeLimit || (Date.now() - startTime) > timeBudgetMs || depth === 0 || selfState.lp <= 0 || oppState.lp <= 0) {
         return evaluateLeafState(selfState, oppState, characterWeights, isMaster);
       }
 
@@ -409,11 +411,11 @@
           const nxt = simulateTurnState(selfState, oppState, sMove, oMove, selfMovesData, oppMovesData);
           expected += (oppWeights[oMove] || (1 / oppValid.length)) *
                       searchTree(nxt.nextSelf, nxt.nextOpp, depth - 1);
-          if (nodes > nodeLimit) break;
+          if (nodes > nodeLimit || (Date.now() - startTime) > timeBudgetMs) break;
         }
 
         if (expected > bestSelfVal) bestSelfVal = expected;
-        if (nodes > nodeLimit) break;
+        if (nodes > nodeLimit || (Date.now() - startTime) > timeBudgetMs) break;
       }
 
       return bestSelfVal;
@@ -431,7 +433,7 @@
 
     const oppWeights = getOppWeights(oppValid, opponentPlayer, oppMovesData);
 
-    let bestMove = selfValid[0] || 'D+J';
+    let bestMove = selfValid[0] || 'DO_NOTHING';
     let bestScore = -Infinity;
 
     for (let i = 0; i < selfValid.length; i++) {
@@ -443,14 +445,14 @@
         const nxt = simulateTurnState(cpuPlayer, opponentPlayer, sMove, oMove, selfMovesData, oppMovesData);
         moveScore += (oppWeights[oMove] || (1 / oppValid.length)) *
                      searchTree(nxt.nextSelf, nxt.nextOpp, maxDepth - 1);
-        if (nodes > nodeLimit) break;
+        if (nodes > nodeLimit || (Date.now() - startTime) > timeBudgetMs) break;
       }
 
       if (moveScore > bestScore) {
         bestScore = moveScore;
         bestMove = sMove;
       }
-      if (nodes > nodeLimit) break;
+      if (nodes > nodeLimit || (Date.now() - startTime) > timeBudgetMs) break;
     }
 
     return { moveKey: bestMove, score: bestScore, nodes: nodes };
@@ -485,7 +487,13 @@
       });
 
       window.ForeseeEngine.lastResult = result;
-      return result.moveKey;
+      
+      // Return full object containing moveKey, score, and nodes visited
+      return {
+        moveKey: result.moveKey,
+        score: result.score,
+        nodes: result.nodes
+      };
     }
   };
 
