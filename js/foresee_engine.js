@@ -27,6 +27,7 @@
       faintMeter: p.faintMeter || 0,
       isFainted: !!p.isFainted,
       cashedInFaint: !!p.cashedInFaint,
+      wasHitThisTurn: false,
       activeChargePercent: (p.activeChargePercent !== undefined) ? p.activeChargePercent : 100,
       airborneTicks: p.airborneTicks || 0,
       activeBuffs: p.activeBuffs ? p.activeBuffs.map(function (b) {
@@ -98,6 +99,7 @@
 
       if (step.move.type === 'DEFENSE') {
         const penalty = (step.move.chiCost || 0) > 0 ? rules.FAINT_PENALTY_CHI_GUARD : rules.FAINT_PENALTY_STANDARD_GUARD;
+        step.def.wasHitThisTurn = true;
         step.atk.faintMeter = Math.min(rules.FAINT_THRESHOLD, step.atk.faintMeter + penalty);
         if (step.atk.faintMeter >= rules.FAINT_THRESHOLD) step.atk.isFainted = true;
         return;
@@ -167,10 +169,12 @@
       }
 
       if (!isGuarded) {
+        step.def.wasHitThisTurn = true;
         step.def.faintMeter = Math.min(rules.FAINT_THRESHOLD, step.def.faintMeter + expectedFaint);
         if (step.def.faintMeter >= rules.FAINT_THRESHOLD) step.def.isFainted = true;
         if (idx === 0) turn1Interrupted = true;
       } else if (!guardWasSuccessful && idx === 0) {
+        step.def.wasHitThisTurn = true;
         turn1Interrupted = true;
       }
 
@@ -185,9 +189,10 @@
     });
 
     [nextSelf, nextOpp].forEach(function (p) {
-      if (!p.isFainted && p.faintMeter > 0) {
+      if (!p.isFainted && !p.wasHitThisTurn && p.faintMeter > 0) {
         p.faintMeter = Math.max(0, p.faintMeter - rules.ROUND_RECOVERY);
       }
+      p.wasHitThisTurn = false;
       if (p.isFainted) p.isFainted = false;
 
       if (p.airborneTicks > 0) p.airborneTicks--;
@@ -377,7 +382,7 @@
     const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
     const nodeLimit = searchOptions.nodeLimit || (isMaster ? 3500 : 900);
     const startTime = Date.now();
-    const timeBudgetMs = 12; // Time guard to ensure zero frame stutter on lower-end devices
+    const timeBudgetMs = 12;
 
     let nodes = 0;
 
@@ -488,7 +493,6 @@
 
       window.ForeseeEngine.lastResult = result;
       
-      // Return full object containing moveKey, score, and nodes visited
       return {
         moveKey: result.moveKey,
         score: result.score,
