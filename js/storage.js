@@ -96,4 +96,4 @@
     loadAIKnowledge();
   }
 
-})(window);
+})(window); 
