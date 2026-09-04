@@ -2,6 +2,10 @@
  * Shared Foresee Simulation Engine (Expectimax + Beam Search)
  * Path: js/foresee_engine.js
  *
+ * NOTE: ForeseeEngine.getBestMove is synchronous and CPU-bound.
+ * For deep lookaheads (e.g. Master level depth 4), higher node limits and 
+ * time budgets are used to ensure accurate evaluation.
+ *
  * Compatible calls:
  *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 3)
  *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 4, { isMaster: true })
@@ -382,7 +386,7 @@
     const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
     const nodeLimit = searchOptions.nodeLimit || (isMaster ? 3500 : 900);
     const startTime = Date.now();
-    const timeBudgetMs = 12;
+    const timeBudgetMs = searchOptions.timeBudgetMs || (isMaster ? 35 : 15);
 
     let nodes = 0;
 
@@ -488,7 +492,8 @@
         lockedOpponentMoveKey: options.lockedOpponentMoveKey,
         selfBeam: options.selfBeam || (isMaster ? 4 : 8),
         oppBeam: options.oppBeam || (isMaster ? 2 : 8),
-        nodeLimit: options.nodeLimit || (isMaster ? 3500 : 900)
+        nodeLimit: options.nodeLimit || (isMaster ? 3500 : 900),
+        timeBudgetMs: options.timeBudgetMs || (isMaster ? 35 : 15)
       });
 
       window.ForeseeEngine.lastResult = result;
