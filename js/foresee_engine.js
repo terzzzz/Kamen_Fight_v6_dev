@@ -22,6 +22,14 @@
     return 1;
   }
 
+  function getMoveStanceTierSim(moveKey) {
+    if (typeof moveKey !== 'string') return 0;
+    if (moveKey.startsWith('S')) return 3;
+    if (moveKey.startsWith('W')) return 2;
+    if (moveKey.startsWith('D')) return 1;
+    return 0;
+  }
+
   function cloneFighter(p) {
     return {
       id: p.id,
@@ -61,22 +69,19 @@
     const selfPri = getMoveRangePrioritySim(selfMove);
     const oppPri = getMoveRangePrioritySim(oppMove);
 
+    /* Priority Hierarchy: Range -> Stance Tier -> 50/50 Coin Flip */
     let selfGoesFirst = true;
-    if (oppPri > selfPri) {
-      selfGoesFirst = false;
-    } else if (selfPri > oppPri) {
-      selfGoesFirst = true;
+    if (selfPri !== oppPri) {
+      selfGoesFirst = selfPri > oppPri;
     } else {
-      const selfIsS = String(selfMoveKey).startsWith('S');
-      const oppIsS = String(oppMoveKey).startsWith('S');
-      const selfIsW = String(selfMoveKey).startsWith('W');
-      const oppIsW = String(oppMoveKey).startsWith('W');
+      const selfStance = getMoveStanceTierSim(selfMoveKey);
+      const oppStance = getMoveStanceTierSim(oppMoveKey);
 
-      if (selfIsS && !oppIsS) selfGoesFirst = true;
-      else if (!selfIsS && oppIsS) selfGoesFirst = false;
-      else if (selfIsW && !oppIsW) selfGoesFirst = true;
-      else if (!selfIsW && oppIsW) selfGoesFirst = false;
-      else selfGoesFirst = true;
+      if (selfStance !== oppStance) {
+        selfGoesFirst = selfStance > oppStance;
+      } else {
+        selfGoesFirst = Math.random() < 0.5;
+      }
     }
 
     const steps = selfGoesFirst
