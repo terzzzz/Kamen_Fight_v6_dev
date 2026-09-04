@@ -3,10 +3,10 @@
  * Path: js/ai.js
  *
  * Difficulties:
- *   easy   = NOVICE
- *   normal = BALANCED
- *   hard   = AGGRESSIVE  (Foresee depth 2 + noise)
- *   master = MASTER      (Foresee depth 4 + safe overrides)
+ *    easy   = NOVICE
+ *    normal = BALANCED
+ *    hard   = AGGRESSIVE  (Foresee depth 2 + noise)
+ *    master = MASTER      (Foresee depth 4 + safe overrides)
  */
 
 window.RIDER_AI_PROFILES = {
@@ -59,7 +59,8 @@ window.globalAIKnowledge = {
       profile.attackCount++;
     }
 
-    const key = `${cpuId}_vs_${oppId}_${cpuMoveKey}`;
+    const validCpuKey = cpuMoveKey || 'DO_NOTHING';
+    const key = `${cpuId}_vs_${oppId}_${validCpuKey}`;
     if (!this.memoryStore[key]) {
       this.memoryStore[key] = { uses: 0, wins: 0, totalDmgDealt: 0 };
     }
@@ -98,7 +99,7 @@ window.calculateMoveSuccess = function(cpuPlayer, opponentPlayer, cpuMoveKey, ou
 /* ---------- helpers ---------- */
 
 function _getKeysByPrefix(moveKeys, prefix) {
-  return moveKeys.filter(k => k.startsWith(prefix));
+  return moveKeys.filter(k => typeof k === 'string' && k.startsWith(prefix));
 }
 
 function _pickRandom(arr) {
@@ -128,15 +129,14 @@ function _isUtility(key) {
  */
 function _shouldAvoidSpecial(cpuPlayer, opponentPlayer, moveKey, availableMoves) {
   if (!_isSpecial(moveKey)) return false;
-  const m = availableMoves[moveKey];
+  const m = availableMoves ? availableMoves[moveKey] : null;
   if (!m) return false;
   const cost = m.chiCost || 0;
   if (cost < 4) return false;
 
   const oppChi = (opponentPlayer && typeof opponentPlayer.chi === 'number') ? opponentPlayer.chi : 0;
-  const oppCharge = (opponentPlayer && opponentPlayer.activeChargePercent) ? opponentPlayer.activeChargePercent : 0;
+  const oppCharge = (opponentPlayer && opponentPlayer.activeChargePercent !== undefined) ? opponentPlayer.activeChargePercent : 0;
 
-  // High Chi + high charge = very likely Guard / counter setup
   if (oppChi >= 6 && oppCharge >= 80) return true;
   if (oppCharge >= 92) return true;
 
@@ -147,25 +147,32 @@ function _shouldAvoidSpecial(cpuPlayer, opponentPlayer, moveKey, availableMoves)
  * Prefer a safe alternative when Special is too risky.
  */
 function _pickSafeAlternative(moveKeys, availableMoves, cpuPlayer) {
-  const physicals = _getKeysByPrefix(moveKeys, 'D').filter(k => (availableMoves[k].chiCost || 0) <= cpuPlayer.chi);
+  const currentChi = (cpuPlayer && typeof cpuPlayer.chi === 'number') ? cpuPlayer.chi : 0;
+  const physicals = _getKeysByPrefix(moveKeys, 'D').filter(k => availableMoves[k] && (availableMoves[k].chiCost || 0) <= currentChi);
   const guards = _getKeysByPrefix(moveKeys, 'A');
-  const utils = _getKeysByPrefix(moveKeys, 'W').filter(k => (availableMoves[k].chiCost || 0) <= cpuPlayer.chi);
+  const utils = _getKeysByPrefix(moveKeys, 'W').filter(k => availableMoves[k] && (availableMoves[k].chiCost || 0) <= currentChi);
 
-  // Prefer zero-cost physical for chi gain
   const freePhys = physicals.filter(k => (availableMoves[k].chiCost || 0) === 0);
   if (freePhys.length) return _pickRandom(freePhys);
   if (physicals.length) return _pickRandom(physicals);
   if (guards.length) return _pickRandom(guards);
   if (utils.length) return _pickRandom(utils);
-  return moveKeys[0];
+  return moveKeys[0] || 'DO_NOTHING';
 }
 
-/* ---------- main decision ---------- */
+/* ---------- main decision engine ---------- */
 
 window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, difficulty = 'normal') {
-  if (cpuPlayer.isFainted) return 'DO_NOTHING';
+  if (!cpuPlayer || cpuPlayer.isFainted) return 'DO_NOTHING';
 
-  const moveKeys = Object.keys(availableMoves || {});
+  const currentChi = typeof cpuPlayer.chi === 'number' ? cpuPlayer.chi : 0;
+
+  // Filter keys strictly to available and affordable moves
+  const moveKeys = Object.keys(availableMoves || {}).filter(k => {
+    const m = availableMoves[k];
+    return m && (m.chiCost || 0) <= currentChi;
+  });
+
   if (moveKeys.length === 0) return 'DO_NOTHING';
 
   const diff = String(difficulty).toLowerCase();
@@ -173,12 +180,10 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     ? window.RIDER_AI_PROFILES[cpuPlayer.id]
     : { weights: { W_LP: 1.0, W_CHI: 5.0, W_FAINT: 2.0 }, preferredChiGoal: 4 };
 
-  const currentChi = cpuPlayer.chi || 0;
   const oppChi = (opponentPlayer && typeof opponentPlayer.chi === 'number') ? opponentPlayer.chi : 8;
-  const oppCharge = (opponentPlayer && opponentPlayer.activeChargePercent) ? opponentPlayer.activeChargePercent : 0;
+  const oppCharge = (opponentPlayer && opponentPlayer.activeChargePercent !== undefined) ? opponentPlayer.activeChargePercent : 0;
   const faintMeter = cpuPlayer.faintMeter || 0;
 
-  // Memory init
   if (!cpuPlayer.memory) {
     cpuPlayer.memory = {
       recentMoves: [],
@@ -206,9 +211,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     return _pickRandom(moveKeys);
   }
 
-  /* ===== Shared emergency rules (Normal / Aggressive / Master) ===== */
-
-  // 1. Faint recovery if meter is dangerous
+  /* ===== Shared Emergency Rules ===== */
   if (faintMeter >= 45) {
     const recoverKeys = moveKeys.filter(k => availableMoves[k] && availableMoves[k].faintRecovery > 0);
     if (recoverKeys.length) {
@@ -216,7 +219,6 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     }
   }
 
-  // 2. Master / Aggressive: strong Guard reaction to high opp charge or high opp chi
   if ((diff === 'master' || diff === 'hard') && _getKeysByPrefix(moveKeys, 'A').length) {
     const guardChance = (diff === 'master')
       ? (oppCharge >= 88 ? 0.75 : (oppChi >= 7 ? 0.45 : 0.15))
@@ -224,7 +226,6 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
 
     if (Math.random() < guardChance) {
       const guards = _getKeysByPrefix(moveKeys, 'A');
-      // Prefer matching-style mid/high guards if present
       const preferred = guards.find(k => k === 'A+K' || k === 'A+J') || guards[0];
       mem.recentMoves.push(preferred);
       if (mem.recentMoves.length > 6) mem.recentMoves.shift();
@@ -232,10 +233,9 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     }
   }
 
-  /* ===== MASTER + AGGRESSIVE : ForeseeEngine ===== */
+  /* ===== FORESEE SEARCH (Master & Aggressive) ===== */
   if ((diff === 'master' || diff === 'hard') && window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
     try {
-      // Master = deeper & cleaner. Aggressive = shallower + noise.
       const depth = (diff === 'master') ? 4 : 2;
 
       const result = window.ForeseeEngine.getBestMove(
@@ -248,19 +248,16 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
 
       let chosenKey = (result && typeof result === 'object' && result.moveKey) ? result.moveKey : result;
 
-      // Aggressive: 25% chance to pick a slightly worse / random legal move (dumber)
       if (diff === 'hard' && Math.random() < 0.25) {
         const alt = _pickRandom(moveKeys);
         if (alt) chosenKey = alt;
       }
 
       if (chosenKey && availableMoves[chosenKey]) {
-        // Master safety: refuse suicidal Special into likely Guard
         if (diff === 'master' && _shouldAvoidSpecial(cpuPlayer, opponentPlayer, chosenKey, availableMoves)) {
           chosenKey = _pickSafeAlternative(moveKeys, availableMoves, cpuPlayer);
         }
 
-        // Aggressive milder safety
         if (diff === 'hard' && _shouldAvoidSpecial(cpuPlayer, opponentPlayer, chosenKey, availableMoves) && Math.random() < 0.55) {
           chosenKey = _pickSafeAlternative(moveKeys, availableMoves, cpuPlayer);
         }
@@ -274,8 +271,8 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     }
   }
 
-  /* ===== Heuristic EV (Balanced + fallback) ===== */
-  let bestKey = moveKeys[0];
+  /* ===== Heuristic Evaluation ===== */
+  let bestKey = moveKeys[0] || 'DO_NOTHING';
   let bestScore = -99999;
 
   moveKeys.forEach(key => {
@@ -302,17 +299,14 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     const hitRate = evalHitChance / 100;
     score += (evalDamage * hitRate) * (riderProfile.weights.W_LP || 1.0);
 
-    // Chi economy — keep some reserve
     const remainingChi = currentChi - cost;
     if (remainingChi < 2 && evalDamage < (opponentPlayer?.lp || 9999)) {
       score -= (diff === 'master') ? 40 : 25;
     }
 
-    // Guard value
     if (isA && oppChi >= 6) score += 50;
     if (isA && oppCharge >= 85) score += (diff === 'master') ? 80 : 40;
 
-    // Physical / chi generation
     if (cost === 0 && isD) {
       const chiGain = (m.chiRefundOnHit || 0) + 2;
       score += chiGain * (riderProfile.weights.W_CHI || 4);
@@ -321,7 +315,6 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
       score -= cost * ((riderProfile.weights.W_CHI || 4) * 0.4);
     }
 
-    // Specials: only reward when safe
     if (isS) {
       const risky = _shouldAvoidSpecial(cpuPlayer, opponentPlayer, key, availableMoves);
       if (risky) {
@@ -331,19 +324,15 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
       }
     }
 
-    // Anti-spam
     const timesUsed = mem.recentMoves.filter(k => k === key).length;
     score -= timesUsed * ((diff === 'master') ? 30 : 20);
-
-    // Light noise (Master almost deterministic)
     score += Math.random() * ((diff === 'master') ? 3 : 10);
 
-    // Habit tracking (Master only)
     if (diff === 'master') {
       const oppId = opponentPlayer ? opponentPlayer.id : 'human';
       const oppProf = window.globalAIKnowledge.playerProfiles[oppId];
       if (oppProf && oppProf.totalRounds > 4) {
-        if (oppProf.guardCount > oppProf.attackCount * 1.3 && isS) score -= 35; // they guard a lot → don't special
+        if (oppProf.guardCount > oppProf.attackCount * 1.3 && isS) score -= 35;
         if (oppProf.guardCount > oppProf.attackCount * 1.3 && isD) score += 25;
         if (oppProf.attackCount > oppProf.guardCount * 1.4 && isA) score += 50;
       }
@@ -371,10 +360,15 @@ window.selectCPUMoveAndCharge = function(cpuPlayer, opponentPlayer, slotKey) {
   if (movesData) {
     Object.keys(movesData).forEach(key => {
       const m = movesData[key];
-      if (m && (m.chiCost || 0) <= cpuPlayer.chi) {
+      if (m && (m.chiCost || 0) <= (cpuPlayer ? cpuPlayer.chi : 0)) {
         availableMoves[key] = m;
       }
     });
+  }
+
+  // Clear stale target percentage before calculation
+  if (cpuPlayer) {
+    delete cpuPlayer._chosenTargetChargePct;
   }
 
   const chosenMoveKey = window.selectCPUMove(cpuPlayer, opponentPlayer, availableMoves, difficulty);
@@ -387,9 +381,9 @@ window.selectCPUMoveAndCharge = function(cpuPlayer, opponentPlayer, slotKey) {
     if (isZeroChiGuard) {
       targetChargePct = 100;
     } else if (difficulty === 'master') {
-      targetChargePct = Math.floor(Math.random() * 4) + 96; // 96-99
+      targetChargePct = Math.floor(Math.random() * 4) + 96;
     } else if (difficulty === 'hard') {
-      targetChargePct = Math.floor(Math.random() * 8) + 88; // 88-95
+      targetChargePct = Math.floor(Math.random() * 8) + 88;
     } else if (difficulty === 'easy') {
       targetChargePct = Math.floor(Math.random() * 16) + 65;
     } else {
@@ -408,17 +402,27 @@ window.getCPUMoveChoice = function(cpuPlayer, opponentPlayer, slotKey) {
   return result.moveKey;
 };
 
+/* Unified LocalStorage binding delegating to window.STORAGE_KEYS */
 window.saveAIKnowledge = function() {
-  try {
-    localStorage.setItem('kamen_rider_ai_knowledge', window.globalAIKnowledge.serialize());
-  } catch (e) {}
+  if (typeof window.saveAIKnowledge === 'function' && window.STORAGE_KEYS) {
+    try {
+      const key = window.STORAGE_KEYS.AI_MEMORY || 'kamen_rider_ai_knowledge';
+      localStorage.setItem(key, window.globalAIKnowledge.serialize());
+    } catch (e) {
+      console.warn("Failed to save AI knowledge:", e);
+    }
+  }
 };
 
 window.loadAIKnowledge = function() {
   try {
-    const payload = localStorage.getItem('kamen_rider_ai_knowledge');
+    const key = (window.STORAGE_KEYS && window.STORAGE_KEYS.AI_MEMORY) ? window.STORAGE_KEYS.AI_MEMORY : 'kamen_rider_ai_knowledge';
+    const legacyKey = (window.STORAGE_KEYS && window.STORAGE_KEYS.LEGACY_AI_MEMORY) ? window.STORAGE_KEYS.LEGACY_AI_MEMORY : 'rider_fighting_game_ai_memory';
+    const payload = localStorage.getItem(key) || localStorage.getItem(legacyKey);
     if (payload) window.globalAIKnowledge.deserialize(payload);
-  } catch (e) {}
+  } catch (e) {
+    console.warn("Failed to load AI knowledge:", e);
+  }
 };
 
 window.loadAIKnowledge();
