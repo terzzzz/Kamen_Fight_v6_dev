@@ -7,7 +7,7 @@
   'use strict';
 
   /* ==========================================================================
-     1. REAL-TIME CHARGE PROGRESS ENGINE
+     1. REAL-TIME CHARGE PROGRESS ENGINE (HUMAN & CPU VISUALIZER)
      ========================================================================== */
 
   function updateChargeProgress(playerKey = 'p1') {
@@ -32,7 +32,7 @@
       playerObj.activeChargePercent = calculatedPct;
     }
 
-    // 1. Update Player Box Charge Bar Fill
+    // 1. Update Player Box Charge Bar Fill (Always visible for CPU and Human)
     const fillEls = document.querySelectorAll(`#${playerKey}-charge-fill, .${playerKey}-charge-fill`);
     fillEls.forEach(fillEl => {
       fillEl.style.width = `${calculatedPct}%`;
@@ -90,7 +90,6 @@
     if (window.gameState.p1) window.gameState.p1.activeChargePercent = 0;
     if (window.gameState.p2) window.gameState.p2.activeChargePercent = 0;
 
-    // Remove active CSS classes from virtual buttons
     ['W', 'A', 'S', 'D', 'I', 'J', 'K', 'L'].forEach(dir => {
       const p1KeyEl = document.getElementById(`key-${dir}`) || document.getElementById(`p1-key-${dir}`);
       if (p1KeyEl) p1KeyEl.classList.remove('active');
@@ -112,25 +111,23 @@
 
     const p1StatusEl = document.getElementById('charge-status-display');
     if (p1StatusEl) {
-      p1StatusEl.textContent = 'TAP DIRECTION TO CHARGE';
+      const p1IsCPU = window.gameState.p1 && window.gameState.p1.isCPU;
+      p1StatusEl.textContent = p1IsCPU ? 'CPU THINKING...' : 'TAP DIRECTION TO CHARGE';
       p1StatusEl.style.color = '#00ffcc';
     }
 
     const p2StatusEl = document.getElementById('p2-charge-status-display');
     if (p2StatusEl) {
-      p2StatusEl.textContent = 'P2 TOUCH READY';
+      const p2IsCPU = window.gameState.p2 && window.gameState.p2.isCPU;
+      p2StatusEl.textContent = p2IsCPU ? 'CPU THINKING...' : 'P2 TOUCH READY';
       p2StatusEl.style.color = '#00bfff';
     }
   }
 
   function unlockMobileVideos() {
-    document.querySelectorAll('video').forEach(vid => {
-      vid.muted = true;
-      vid.setAttribute('playsinline', '');
-      vid.setAttribute('webkit-playsinline', '');
-      const p = vid.play();
-      if (p !== undefined) p.catch(() => {});
-    });
+    if (typeof window.unlockMobileVideos === 'function') {
+      window.unlockMobileVideos();
+    }
   }
 
   /* ==========================================================================
@@ -148,7 +145,6 @@
     window.gameState.roundPhase = 'INPUT';
     resetTurnInputState();
 
-    // Round Chi Growth (Round 2+)
     if (window.gameState.roundCounter > 1) {
       ['p1', 'p2'].forEach(slot => {
         const player = window.gameState[slot];
@@ -158,9 +154,12 @@
       });
     }
 
-    if (typeof window.updateControlPanelsVisibility === 'function') {
-      window.updateControlPanelsVisibility();
-    }
+    // Keep HUD status displays visible, hide manual touch d-pads for CPU
+    const p1Pad = document.querySelector('#p1-controls .pad-container');
+    if (p1Pad) p1Pad.style.visibility = window.gameState.p1?.isCPU ? 'hidden' : 'visible';
+
+    const p2Pad = document.querySelector('#p2-controls .pad-container');
+    if (p2Pad) p2Pad.style.visibility = window.gameState.p2?.isCPU ? 'hidden' : 'visible';
 
     setTimeout(() => {
       if (window.gameState.input) window.gameState.input.acceptingInputs = true;
@@ -172,17 +171,12 @@
         window.updatePlayerHUD('p1', window.gameState.p1);
         window.updatePlayerHUD('p2', window.gameState.p2);
       }
-    } catch (e) {
-      console.warn("HUD error caught:", e);
-    }
-
-    try {
       if (typeof window.updateCharacterMedia === 'function') {
         window.updateCharacterMedia('p1', 'IDLE');
         window.updateCharacterMedia('p2', 'IDLE');
       }
     } catch (e) {
-      console.warn("Media error caught:", e);
+      console.warn("HUD/Media update error caught:", e);
     }
 
     const battleMsg = document.getElementById('battle-message');
@@ -194,7 +188,6 @@
       }, 1200);
     }
 
-    // Unified Sub-Second Timer Initialization (100ms Precision)
     const timingCfg = typeof window.getMatchTimingConfig === 'function' 
       ? window.getMatchTimingConfig() 
       : { baseRoundWindow: 8.0 };
@@ -316,7 +309,6 @@
       }
     }
 
-    // Check Dual Lock-In Completion
     if (window.gameState.p1IsConfirmed && window.gameState.p2IsConfirmed && window.gameState.roundPhase === 'INPUT') {
       if (window.gameState.timerInterval) {
         clearInterval(window.gameState.timerInterval);
@@ -335,7 +327,7 @@
   }
 
   /* ==========================================================================
-     5. KEYBOARD & TOUCH BINDINGS WITH IDEMPOTENT GUARD
+     5. KEYBOARD & TOUCH BINDINGS
      ========================================================================== */
 
   function bindKeyboardInputs() {
@@ -485,10 +477,9 @@
   }
 
   /* ==========================================================================
-     6. EXPORTS & DOM LOAD INITIALIZATION
+     6. EXPORTS & INITIALIZATION
      ========================================================================== */
 
-  window.unlockMobileVideos = unlockMobileVideos;
   window.startRoundCountdown = startRoundCountdown;
   window.launchRoundTimer = launchRoundTimer;
   window.confirmPlayerAction = confirmPlayerAction;
