@@ -56,7 +56,7 @@ var FALLBACK_ICHIGO_MOVES = window.FALLBACK_ICHIGO_MOVES || {
 
 window.cpuChargeIntervals = window.cpuChargeIntervals || {};
 
-/* --- REAL-TIME CPU ROUTINE WITH VISUAL ACCUMULATION & HUMAN SPEED --- */
+/* Real-Time CPU Charging Routine */
 
 window.startCPUTurnRoutine = function(slotKey) {
   const playerObj = window.gameState ? window.gameState[slotKey] : null;
@@ -70,7 +70,6 @@ window.startCPUTurnRoutine = function(slotKey) {
     window.cpuChargeIntervals[slotKey] = null;
   }
 
-  // Reset charge and selection states
   playerObj.activeChargePercent = 0;
   if (slotKey === 'p1') {
     window.gameState.p1SelectedMoveKey = null;
@@ -230,7 +229,7 @@ if (typeof window.simulateCPUButtonPress !== 'function') {
   };
 }
 
-/* --- VISUAL EFFECTS & HUD HELPERS --- */
+/* Visual Effects & HUD Helpers */
 
 function syncChargeBarUI(slotKey, percent, moveKey, isLocked = false) {
   const roundedPct = Math.min(100, Math.max(0, Math.round(percent)));
@@ -402,7 +401,7 @@ function getMoveForPlayer(slotKey, moveKey) {
   return (moves && moves[moveKey]) ? moves[moveKey] : DO_NOTHING_MOVE;
 }
 
-/* --- COMBAT MATH & PRIORITY HELPERS --- */
+/* Combat Math & Priority Helpers */
 
 function getAttackerChiGainOnHit(atkMove, atkMoveKey) {
   if (!atkMove) return 0;
@@ -655,14 +654,13 @@ function resolveAttack(attacker, defender, atkMove, atkMoveKey, defMove, defMove
   return { isOffensive: true, hitLanded: true, isGlancing: isGlancing, guardSuccess: guardSuccess, isMatchingGuard: isMatchingGuard, chiGained: chiGained, finalDmg: finalDmg };
 }
 
-/* --- TURN RESOLUTION ORCHESTRATION --- */
+/* Turn Resolution Orchestration */
 
 async function executeTurnResolutionPhase() {
   if (!window.gameState) return;
   const rules = window.COMBAT_RULES || COMBAT_RULES;
   window.gameState.roundPhase = 'RESOLUTION';
 
-  // Defensive cleanup: Ensure background CPU charging loops stop
   ['p1', 'p2'].forEach(slot => {
     if (window.cpuChargeIntervals && window.cpuChargeIntervals[slot]) {
       clearInterval(window.cpuChargeIntervals[slot]);
@@ -768,7 +766,7 @@ async function executeTurnResolutionPhase() {
   let defender1WasInterrupted = false;
   let defender1GuardDeducted = false;
 
-  // --- STEP 1 EXECUTION ---
+  /* Step 1 Execution */
   if (move1.type !== 'IDLE' && key1 !== 'DO_NOTHING') {
     if (move1.buff) applyBuff(attacker1, move1.buff.id, move1.buff.label, move1.buff.type, move1.buff.duration);
     if (move1.debuff) applyBuff(defender1, move1.debuff.id, move1.debuff.label, move1.debuff.type, move1.debuff.duration);
@@ -889,7 +887,7 @@ async function executeTurnResolutionPhase() {
     }
   }
 
-  // --- STEP 2 EXECUTION ---
+  /* Step 2 Execution */
   if (defender2.lp > 0 && !attacker2.isFainted && !defender1WasInterrupted && move2.type !== 'IDLE' && key2 !== 'DO_NOTHING' && move2.type !== 'DEFENSE') {
     if (move2.buff) applyBuff(attacker2, move2.buff.id, move2.buff.label, move2.buff.type, move2.buff.duration);
     if (move2.debuff) applyBuff(defender2, move2.debuff.id, move2.debuff.label, move2.debuff.type, move2.debuff.duration);
