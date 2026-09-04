@@ -44,6 +44,17 @@
     else el.classList.add('normal');
   }
 
+  function setCardSlotClasses(cardEl, isActive) {
+    if (!cardEl) return;
+    if (isActive) {
+      cardEl.classList.add('active-slot');
+      cardEl.classList.remove('locked-slot');
+    } else {
+      cardEl.classList.add('locked-slot');
+      cardEl.classList.remove('active-slot');
+    }
+  }
+
   window.confirmStep = function(e) {
     if (e && e.preventDefault) e.preventDefault();
     const state = window.vsSelectionState;
@@ -248,8 +259,8 @@
 
     if (currentStep === 1) {
       if (headerText) headerText.textContent = 'STEP 1: SELECT PLAYER 1 RIDER';
-      if (p1Card) p1Card.className = 'rider-card active-slot';
-      if (p2Card) p2Card.className = 'rider-card locked-slot';
+      setCardSlotClasses(p1Card, true);
+      setCardSlotClasses(p2Card, false);
 
       if (p1LeftBtn) p1LeftBtn.disabled = false;
       if (p1RightBtn) p1RightBtn.disabled = false;
@@ -271,8 +282,8 @@
 
     } else if (currentStep === 2) {
       if (headerText) headerText.textContent = 'STEP 2: SELECT PLAYER 2 RIDER';
-      if (p1Card) p1Card.className = 'rider-card locked-slot';
-      if (p2Card) p2Card.className = 'rider-card active-slot';
+      setCardSlotClasses(p1Card, false);
+      setCardSlotClasses(p2Card, true);
 
       if (p1LeftBtn) p1LeftBtn.disabled = true;
       if (p1RightBtn) p1RightBtn.disabled = true;
@@ -294,8 +305,8 @@
 
     } else if (currentStep === 3) {
       if (headerText) headerText.textContent = 'READY FOR BATTLE!';
-      if (p1Card) p1Card.className = 'rider-card active-slot';
-      if (p2Card) p2Card.className = 'rider-card active-slot';
+      setCardSlotClasses(p1Card, true);
+      setCardSlotClasses(p2Card, true);
 
       if (p1LeftBtn) p1LeftBtn.disabled = true;
       if (p1RightBtn) p1RightBtn.disabled = true;
