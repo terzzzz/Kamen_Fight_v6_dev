@@ -6,13 +6,14 @@
   'use strict';
 
   /**
-   * Target charge % based on move type + difficulty
-   * @returns {number} 0–100
+   * Pure evaluation function: computes target charge % without side effects.
+   * @param {Object} cpuPlayer - CPU player instance
+   * @param {string} moveKey - Selected move key (e.g. 'S+L')
+   * @param {string} difficulty - AI difficulty level
+   * @returns {number} Target charge percentage (0–100)
    */
   function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty = 'normal') {
-    if (!cpuPlayer) return 85;
-    if (!moveKey || moveKey === 'DO_NOTHING') {
-      cpuPlayer.activeChargePercent = 0;
+    if (!cpuPlayer || !moveKey || moveKey === 'DO_NOTHING') {
       return 0;
     }
 
@@ -20,20 +21,19 @@
     const keyStr = String(moveKey);
     const dirKey = keyStr.split('+')[0] || 'D';
 
-    // Zero-cost guards → full lock
-    const moves = (cpuPlayer === window.gameState?.p1)
-      ? window.gameState?.p1Moves
-      : window.gameState?.p2Moves;
+    // Zero-cost guards → full 100% lock
+    const moves = (window.gameState && cpuPlayer === window.gameState.p1)
+      ? window.gameState.p1Moves
+      : (window.gameState ? window.gameState.p2Moves : null);
     const moveData = moves ? moves[moveKey] : null;
+
     if (dirKey === 'A' && moveData && (moveData.chiCost || 0) === 0) {
-      cpuPlayer.activeChargePercent = 100;
       return 100;
     }
 
     let target = 85;
 
     if (dirKey === 'A') {
-      // Other guards: Master locks full, others lock fast/low
       target = (diff === 'master') ? 100 : 20;
     } else if (diff === 'easy') {
       target = Math.floor(Math.random() * 16) + 65;      // 65–80
@@ -47,18 +47,17 @@
       target = Math.floor(Math.random() * 11) + 85;      // 85–95
     }
 
-    // Specials on hard/master: keep a high floor
     if (dirKey === 'S' && (diff === 'hard' || diff === 'master')) {
       target = Math.max(target, 92);
     }
 
-    target = Math.min(100, Math.max(25, target));
-    cpuPlayer.activeChargePercent = target;
-    return target;
+    return Math.min(100, Math.max(25, target));
   }
 
   /**
    * Human-like reaction delay before CPU starts charging (ms)
+   * @param {string} difficulty - AI difficulty level
+   * @returns {number} Delay in milliseconds
    */
   function getCPUReactionDelay(difficulty = 'normal') {
     const diff = String(difficulty).toLowerCase();
@@ -70,6 +69,7 @@
 
   /**
    * Trigger CPU turn routine for a slot
+   * @param {string} slotKey - Slot identifier ('p1' or 'p2')
    */
   function triggerCPUTurn(slotKey) {
     if (typeof window.startCPUTurnRoutine === 'function') {
