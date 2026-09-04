@@ -23,23 +23,35 @@
     const chiEl = document.getElementById(isP1 ? 'p1-chi' : 'p2-chi');
     const chiBarFillEl = document.getElementById(isP1 ? 'p1-chi-bar-fill' : 'p2-chi-bar-fill');
     
-    // Faint meter DOM elements (Numerical text + Fill bar)
+    // LP Bar Fills
+    const maxLp = playerObj.maxLp || 2300;
+    const currentLp = Math.max(0, playerObj.lp || 0);
+    const lpPct = Math.min(100, Math.max(0, (currentLp / maxLp) * 100));
+
+    const lpFills = document.querySelectorAll(`#${slotKey}-lp-fill, .${slotKey}-lp-fill`);
+    lpFills.forEach(el => { el.style.width = `${lpPct}%`; });
+
+    // Faint meter DOM elements
     const faintTextEl = document.getElementById(isP1 ? 'p1-faint-text' : 'p2-faint-text') || 
                         document.getElementById(isP1 ? 'p1-faint' : 'p2-faint');
-    const faintFillEl = document.getElementById(isP1 ? 'p1-faint-fill' : 'p2-faint-fill');
+    const faintFillEls = document.querySelectorAll(`#${slotKey}-faint-fill, .${slotKey}-faint-fill, #${slotKey}-faint-bar-fill`);
     const buffTrayEl = document.getElementById(isP1 ? 'p1-buff-tray' : 'p2-buff-tray');
 
     if (nameEl) nameEl.textContent = playerObj.name || (isP1 ? 'Player 1' : 'Player 2');
-    if (lpEl) lpEl.textContent = `LP: ${playerObj.lp} / ${playerObj.maxLp}`;
+    if (lpEl) lpEl.textContent = `LP: ${currentLp} / ${maxLp}`;
 
-    const faintVal = Math.min(100, Math.max(0, Math.floor(playerObj.faintMeter || 0)));
+    const rules = window.COMBAT_RULES || { FAINT_THRESHOLD: 100 };
+    const faintVal = Math.min(rules.FAINT_THRESHOLD, Math.max(0, Math.floor(playerObj.faintMeter || 0)));
+    const faintPct = Math.min(100, Math.max(0, (faintVal / rules.FAINT_THRESHOLD) * 100));
+
     if (faintTextEl) {
-      faintTextEl.textContent = `FAINT: ${faintVal} / 100`;
+      faintTextEl.textContent = `FAINT: ${faintVal} / ${rules.FAINT_THRESHOLD}`;
     }
 
-    if (faintFillEl) {
-      faintFillEl.style.height = `${faintVal}%`;
-    }
+    faintFillEls.forEach(fillEl => {
+      fillEl.style.width = `${faintPct}%`;
+      fillEl.style.height = `${faintPct}%`;
+    });
 
     const chi = typeof playerObj.chi === 'number' ? playerObj.chi : 0;
     const maxChi = playerObj.maxChi || 16;
@@ -93,7 +105,7 @@
     if (!box) return;
 
     const popup = document.createElement('div');
-    popup.className = `damage-popup ${type}`;
+    popup.classList.add('damage-popup', type);
     popup.textContent = text;
 
     box.appendChild(popup);
@@ -118,6 +130,13 @@
     subBanner.textContent = message;
     subBanner.hidden = !message;
   }
+
+  // Namespace & global export mapping
+  window.UI = window.UI || {};
+  window.UI.updatePlayerHUD = updatePlayerHUD;
+  window.UI.showDamagePopup = showDamagePopup;
+  window.UI.showBattleBanner = showBattleBanner;
+  window.UI.showActionBanner = showActionBanner;
 
   window.updatePlayerHUD = updatePlayerHUD;
   window.showDamagePopup = showDamagePopup;
