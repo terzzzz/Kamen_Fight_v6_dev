@@ -15,12 +15,18 @@
     if (!inputState || !inputState.heldDirection) return 0;
 
     const dir = inputState.heldDirection;
-    const durationMs = typeof window.getChargeTimeMs === 'function' 
-      ? window.getChargeTimeMs(dir) 
-      : 3000;
-
     const elapsedMs = Date.now() - (inputState.chargeStartTime || Date.now());
-    const calculatedPct = Math.min(100, Math.max(0, Math.floor((elapsedMs / durationMs) * 100)));
+
+    let calculatedPct = 0;
+    if (typeof window.calculateChargeProgress === 'function') {
+      calculatedPct = window.calculateChargeProgress(dir, elapsedMs);
+    } else {
+      const durationMs = typeof window.getChargeTimeMs === 'function' 
+        ? window.getChargeTimeMs(dir) 
+        : 3000;
+      calculatedPct = Math.min(100, Math.max(0, Math.floor((elapsedMs / durationMs) * 100)));
+    }
+
     inputState.currentPercent = calculatedPct;
 
     const playerObj = window.gameState[playerKey];
@@ -29,7 +35,7 @@
     }
 
     // Update Player Box Charge Bar Fill (Visible for both Human & CPU)
-    const fillEls = document.querySelectorAll(`#${playerKey}-charge-fill, .${playerKey}-charge-fill`);
+    const fillEls = document.querySelectorAll(`#${playerKey}-charge-fill, .${playerKey}-charge-fill, #${playerKey}-charge-bar-fill`);
     fillEls.forEach(fillEl => {
       fillEl.style.width = `${calculatedPct}%`;
     });
@@ -142,11 +148,24 @@
       });
     }
 
-    const p1Pad = document.querySelector('#p1-controls .pad-container');
+    // Toggle keypad visibility without hiding charge containers
+    const p1Pad = document.querySelector('#p1-controls .key-grid, #p1-keypad .key-grid');
     if (p1Pad) p1Pad.style.visibility = window.gameState.p1?.isCPU ? 'hidden' : 'visible';
 
-    const p2Pad = document.querySelector('#p2-controls .pad-container');
+    const p2Pad = document.querySelector('#p2-controls .key-grid, #p2-keypad .key-grid');
     if (p2Pad) p2Pad.style.visibility = window.gameState.p2?.isCPU ? 'hidden' : 'visible';
+
+    // Ensure Charge UI elements remain unhidden for both CPU and Human slots
+    const chargeMeterEls = document.querySelectorAll(
+      '#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, ' +
+      '.charge-meter, .charge-box, #p1-charge-fill, #p2-charge-fill, ' +
+      '#p1-charge-text, #p2-charge-text, .p1-charge-fill, .p2-charge-fill'
+    );
+    chargeMeterEls.forEach(el => {
+      el.hidden = false;
+      el.style.visibility = 'visible';
+      el.style.display = 'block';
+    });
 
     setTimeout(() => {
       if (window.gameState.input) window.gameState.input.acceptingInputs = true;
