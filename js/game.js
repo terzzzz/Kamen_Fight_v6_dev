@@ -338,25 +338,38 @@
   }
 
   /* ==========================================================================
-     4. HUD DISPLAY ENGINE (WITH DYNAMIC CHI TIER VISUALS)
+     4. HUD DISPLAY ENGINE
      ========================================================================== */
 
   function updatePlayerHUD(slotKey, player) {
     if (!player) return;
 
+    // Delegate to unified UI controller if present
+    if (window.UI && typeof window.UI.updatePlayerHUD === 'function') {
+      window.UI.updatePlayerHUD(slotKey, player);
+      return;
+    }
+
     // LP Display
+    const maxLp = player.maxLp || 2300;
+    const currentLp = Math.max(0, player.lp || 0);
+    const lpPct = Math.min(100, Math.max(0, (currentLp / maxLp) * 100));
+
     const lpVal = document.getElementById(`${slotKey}-lp`);
-    if (lpVal) lpVal.textContent = `LP: ${Math.max(0, player.lp)} / ${player.maxLp || 2300}`;
+    if (lpVal) lpVal.textContent = `LP: ${currentLp} / ${maxLp}`;
+
+    const lpFills = document.querySelectorAll(`#${slotKey}-lp-fill, .${slotKey}-lp-fill`);
+    lpFills.forEach(el => { el.style.width = `${lpPct}%`; });
 
     // Chi Display & Dynamic Tier Styling
     const chiVal = document.getElementById(`${slotKey}-chi`);
     const chiFill = document.getElementById(`${slotKey}-chi-bar-fill`);
     const currentChi = player.chi || 0;
     const maxChi = player.maxChi || 16;
-    const pct = Math.min(100, Math.max(0, (currentChi / maxChi) * 100));
+    const chiPct = Math.min(100, Math.max(0, (currentChi / maxChi) * 100));
 
     if (chiFill) {
-      chiFill.style.width = `${pct}%`;
+      chiFill.style.width = `${chiPct}%`;
       chiFill.classList.remove('chi-tier-low', 'chi-tier-normal', 'chi-tier-max');
     }
 
@@ -364,7 +377,6 @@
       chiVal.classList.remove('chi-text-low', 'chi-text-normal', 'chi-text-max');
     }
 
-    // TIER 1: FULL / MAX POWER CHI (15 - 16 Chi)
     if (currentChi >= 15) {
       if (chiVal) {
         chiVal.textContent = `CHI: ${currentChi} / ${maxChi} [MAX POWER!]`;
@@ -376,9 +388,7 @@
         chiFill.style.boxShadow = '0 0 10px #ffcc00, 0 0 20px #ff9900';
         chiFill.classList.add('chi-tier-max');
       }
-    } 
-    // TIER 2: LOW CHI DANGER (< 5 Chi)
-    else if (currentChi < 5) {
+    } else if (currentChi < 5) {
       if (chiVal) {
         chiVal.textContent = `CHI: ${currentChi} / ${maxChi} (LOW CHI!)`;
         chiVal.style.color = '#ff3366';
@@ -389,9 +399,7 @@
         chiFill.style.boxShadow = '0 0 8px #ff3366';
         chiFill.classList.add('chi-tier-low');
       }
-    } 
-    // TIER 3: STANDARD CHI (5 - 14 Chi)
-    else {
+    } else {
       if (chiVal) {
         chiVal.textContent = `CHI: ${currentChi} / ${maxChi}`;
         chiVal.style.color = '#00ffcc';
@@ -405,12 +413,15 @@
     }
 
     // Faint Display
-    const faintFill = document.getElementById(`${slotKey}-faint-fill`);
-    if (faintFill) {
-      const rules = window.COMBAT_RULES || { FAINT_THRESHOLD: 100 };
-      const faintPct = Math.min(100, Math.max(0, (player.faintMeter / rules.FAINT_THRESHOLD) * 100));
-      faintFill.style.width = `${faintPct}%`;
-    }
+    const rules = window.COMBAT_RULES || { FAINT_THRESHOLD: 100 };
+    const faintMeterVal = Math.min(rules.FAINT_THRESHOLD, Math.max(0, player.faintMeter || 0));
+    const faintPct = Math.min(100, Math.max(0, (faintMeterVal / rules.FAINT_THRESHOLD) * 100));
+
+    const faintFills = document.querySelectorAll(`#${slotKey}-faint-fill, .${slotKey}-faint-fill, #${slotKey}-faint-bar-fill`);
+    faintFills.forEach(el => { el.style.width = `${faintPct}%`; });
+
+    const faintTexts = document.querySelectorAll(`#${slotKey}-faint-text, .${slotKey}-faint-text`);
+    faintTexts.forEach(el => { el.textContent = `${Math.round(faintMeterVal)} / ${rules.FAINT_THRESHOLD}`; });
 
     // Status & Buff Tray
     const trayEl = document.getElementById(`${slotKey}-buff-tray`);
@@ -428,15 +439,21 @@
   }
 
   /* ==========================================================================
-     5. KEYBOARD & INPUT EVENT LISTENERS (WITH HUMAN CHARGE CALCULATION)
+     5. KEYBOARD & INPUT EVENT LISTENERS (CANONICAL CHARGE CALCULATIONS)
      ========================================================================== */
 
   function calculateHumanCharge(dir, chargeStartTime) {
     if (!chargeStartTime) return 100;
-    const chargeTimes = window.CHARGE_TIMES || { W: 3.5, A: 2.2, S: 4.2, D: 3.0 };
-    let rawTime = chargeTimes[dir] !== undefined ? chargeTimes[dir] : 3.0;
-    const totalChargeMs = rawTime < 50 ? rawTime * 1000 : rawTime;
     const elapsedMs = Date.now() - chargeStartTime;
+
+    if (typeof window.calculateChargeProgress === 'function') {
+      return window.calculateChargeProgress(dir, elapsedMs);
+    }
+
+    const totalChargeMs = typeof window.getChargeTimeMs === 'function' 
+      ? window.getChargeTimeMs(dir) 
+      : 3000;
+
     return Math.min(100, Math.max(10, Math.round((elapsedMs / totalChargeMs) * 100)));
   }
 
