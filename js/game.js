@@ -185,7 +185,7 @@
   }
 
   /* ==========================================================================
-     2. CONTROL PANEL VISIBILITY TOGGLE (SPECTATOR MODE SUPPORT)
+     2. CONTROL PANEL VISIBILITY TOGGLE (PRESERVES CHARGE BARS)
      ========================================================================== */
 
   function updateControlPanelsVisibility() {
@@ -193,31 +193,62 @@
     const p1IsCPU = !!(window.gameState.p1 && window.gameState.p1.isCPU);
     const p2IsCPU = !!(window.gameState.p2 && window.gameState.p2.isCPU);
 
-    // Target specifically the button keypads / touch pads (do NOT target parent containers)
-    const p1ButtonEls = document.querySelectorAll(
-      '#p1-keypad, #p1-touch-pad, .p1-keypad, .p1-touch-pad, .p1-control-buttons, #p1-controls .keypad'
-    );
-    const p2ButtonEls = document.querySelectorAll(
-      '#p2-keypad, #p2-touch-pad, .p2-keypad, .p2-touch-pad, .p2-control-buttons, #p2-controls .keypad'
-    );
+    // Target ONLY the 8 key buttons, grid wrappers, and button prompts (DO NOT hide main card containers)
+    const p1ButtonSelectors = [
+      '#key-W', '#key-A', '#key-S', '#key-D',
+      '#key-I', '#key-J', '#key-K', '#key-L',
+      '#p1-keypad .key-grid', '#p1-keypad .key-button', '#p1-touch-pad',
+      '.p1-control-buttons', '.p1-key-grid', '.p1-instructions', '#p1-keypad'
+    ];
 
-    p1ButtonEls.forEach(el => {
-      el.style.display = p1IsCPU ? 'none' : '';
-      el.hidden = p1IsCPU;
+    const p2ButtonSelectors = [
+      '#p2-key-W', '#p2-key-A', '#p2-key-S', '#p2-key-D',
+      '#p2-key-I', '#p2-key-J', '#p2-key-K', '#p2-key-L',
+      '#p2-keypad .key-grid', '#p2-keypad .key-button', '#p2-touch-pad',
+      '.p2-control-buttons', '.p2-key-grid', '.p2-instructions', '#p2-keypad'
+    ];
+
+    // Hide/Show P1 key buttons
+    p1ButtonSelectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        el.style.setProperty('display', p1IsCPU ? 'none' : '', 'important');
+      });
     });
 
-    p2ButtonEls.forEach(el => {
-      el.style.display = p2IsCPU ? 'none' : '';
-      el.hidden = p2IsCPU;
+    // Hide/Show P2 key buttons
+    p2ButtonSelectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        el.style.setProperty('display', p2IsCPU ? 'none' : '', 'important');
+      });
     });
 
-    // Ensure Charge Display Box remains explicitly visible
+    // Target sub-elements inside input containers without hiding the outer box container
+    document.querySelectorAll('#p1-controls, #p1-input-card, #p2-controls, #p2-input-card, .p1-input-box, .p2-input-box').forEach(box => {
+      const isP1 = box.id?.includes('p1') || box.className?.includes('p1');
+      const isCPU = isP1 ? p1IsCPU : p2IsCPU;
+
+      // Keep box container visible so the charge bar inside renders properly
+      box.style.setProperty('display', 'block', 'important');
+      box.hidden = false;
+
+      // Hide only button grid / text nodes inside this container
+      box.querySelectorAll('.key-button, .key, button, .keypad, .touch-pad, .instructions, p, header').forEach(subEl => {
+        if (!subEl.id?.includes('charge') && !subEl.className?.includes('charge')) {
+          subEl.style.setProperty('display', isCPU ? 'none' : '', 'important');
+        }
+      });
+    });
+
+    // Explicitly guarantee Charge Bar elements remain visible
     const chargeMeterEls = document.querySelectorAll(
-      '#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, .charge-meter, .charge-box'
+      '#p1-charge-box, #p2-charge-box, #p1-charge-container, #p2-charge-container, ' +
+      '.charge-meter, .charge-box, #p1-charge-fill, #p2-charge-fill, ' +
+      '#p1-charge-text, #p2-charge-text, .p1-charge-fill, .p2-charge-fill'
     );
     chargeMeterEls.forEach(el => {
       el.hidden = false;
-      el.style.display = 'block';
+      el.style.setProperty('display', 'block', 'important');
+      el.style.setProperty('visibility', 'visible', 'important');
     });
   }
 
