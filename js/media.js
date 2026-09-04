@@ -55,7 +55,7 @@
 
     const cleanFile = fileName.replace(/\.(mp4|webm)$/i, '');
 
-    // Check if video element is already loaded with target source to prevent redundant reloads
+    // Prevent redundant DOM reload if video is already playing target clip
     const currentSrc = videoEl.src || '';
     if (currentSrc.includes(`/${cleanFile}.mp4`) || currentSrc.includes(`_${cleanFile}.mp4`)) {
       videoEl.hidden = false;
@@ -151,6 +151,7 @@
     tryNextVideo();
   }
 
+  // Action Cutscene Video Player (Center Box)
   function playCenterVideo(playerKey, videoFile, actionName = '', maxDurationMs = null, moveObj = null) {
     return new Promise((resolve) => {
       const centerBox = document.getElementById('center-box');
