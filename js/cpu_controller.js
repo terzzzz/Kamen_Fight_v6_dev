@@ -1,143 +1,77 @@
 /**
- * Universal CPU Charge & Target Manager & Turn Routine Engine
+ * Master CPU Controller & Reaction Coordinator Facade
  * Path: js/cpu_controller.js
  */
 
-window.cpuChargeIntervals = window.cpuChargeIntervals || { p1: null, p2: null };
+(function (window) {
+  'use strict';
 
-function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty, profile) {
-  if (!cpuPlayer) return 85;
+  /**
+   * Calculates target charge percentage based on move cost, type, and CPU difficulty level
+   * @param {Object} cpuPlayer - CPU player state object
+   * @param {string} moveKey - Chosen move command key (e.g., "S+L", "A+J")
+   * @param {string} difficulty - CPU difficulty ('easy', 'normal', 'hard', 'master')
+   * @returns {number} Target charge percentage (25 to 100)
+   */
+  function setUniversalChargeTarget(cpuPlayer, moveKey, difficulty = 'normal') {
+    if (!moveKey || moveKey === 'DO_NOTHING') return 0;
 
-  let target = 100;
-  const keyStr = typeof moveKey === 'string' ? moveKey : 'D+J';
-  const diff = String(difficulty || 'normal').toLowerCase();
+    const diff = String(difficulty).toLowerCase();
+    const parts = moveKey.split('+');
+    const dirKey = parts[0] || 'D';
 
-  if (keyStr.startsWith('A+')) {
-    target = 15;
-  } else if (diff === 'easy') {
-    target = Math.floor(Math.random() * 16) + 65;
-  } else if (diff === 'hard') {
-    target = Math.floor(Math.random() * 9) + 92;
-  } else if (diff === 'master') {
-    if (keyStr.startsWith('S')) target = Math.floor(Math.random() * 4) + 96;
-    else if (keyStr.startsWith('W')) target = Math.floor(Math.random() * 6) + 90;
-    else target = Math.floor(Math.random() * 5) + 94;
-  } else if (keyStr.startsWith('D')) {
-    target = Math.floor(Math.random() * 11) + 85;
-  } else {
-    target = Math.floor(Math.random() * 11) + 85;
+    // Zero-Chi Guards require full 100% lock to trigger counter windows
+    const moves = (cpuPlayer && cpuPlayer === window.gameState?.p1) 
+      ? window.gameState?.p1Moves 
+      : window.gameState?.p2Moves;
+    const moveData = moves ? moves[moveKey] : null;
+
+    if (dirKey === 'A' && moveData && (moveData.chiCost || 0) === 0) {
+      return 100;
+    }
+
+    let baseTarget = 85;
+    if (diff === 'master') baseTarget = 98;
+    else if (diff === 'hard') baseTarget = 95;
+    else if (diff === 'easy') baseTarget = 70;
+
+    // Special attacks demand higher minimum charge thresholds on hard/master
+    if (dirKey === 'S' && (diff === 'hard' || diff === 'master')) {
+      baseTarget = Math.max(baseTarget, 92);
+    }
+
+    const variance = (diff === 'master' || diff === 'hard') ? 0 : (Math.floor(Math.random() * 11) - 5);
+    return Math.min(100, Math.max(25, baseTarget + variance));
   }
 
-  return target;
-}
-
-/**
- * Real-Time CPU Turn Orchestrator
- * Visually accumulates charge percentage frame-by-frame like a human player holding a direction key.
- */
-function startCPUTurnRoutine(slotKey) {
-  if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
-
-  const cpuPlayer = window.gameState[slotKey];
-  const opponentPlayer = slotKey === 'p1' ? window.gameState.p2 : window.gameState.p1;
-  if (!cpuPlayer || !cpuPlayer.isCPU) return;
-
-  const currentRound = window.gameState.roundCounter || 1;
-
-  // Prevent re-entrant triggers from overriding an active charge loop
-  if (cpuPlayer.chargingRound === currentRound && window.cpuChargeIntervals[slotKey]) {
-    return;
-  }
-  cpuPlayer.chargingRound = currentRound;
-
-  // Clear existing timers for this slot
-  if (window.cpuChargeIntervals[slotKey]) {
-    clearInterval(window.cpuChargeIntervals[slotKey]);
-    window.cpuChargeIntervals[slotKey] = null;
+  /**
+   * Returns human-like reaction time delay in milliseconds before CPU begins charging
+   * @param {string} difficulty - CPU difficulty level
+   * @returns {number} Delay in milliseconds
+   */
+  function getCPUReactionDelay(difficulty = 'normal') {
+    const diff = String(difficulty).toLowerCase();
+    if (diff === 'master') return 120;
+    if (diff === 'hard') return 200;
+    if (diff === 'easy') return 450;
+    return 320; // normal
   }
 
-  // Reset confirmation state & start active charge at 0%
-  cpuPlayer.activeChargePercent = 0;
-  if (slotKey === 'p1') {
-    window.gameState.p1SelectedMoveKey = null;
-    window.gameState.p1IsConfirmed = false;
-  } else {
-    window.gameState.p2SelectedMoveKey = null;
-    window.gameState.p2IsConfirmed = false;
+  /**
+   * Triggers turn execution routine for specified CPU slot key
+   * @param {string} slotKey - Player slot key ('p1' or 'p2')
+   */
+  function triggerCPUTurn(slotKey) {
+    if (typeof window.startCPUTurnRoutine === 'function') {
+      window.startCPUTurnRoutine(slotKey);
+    } else {
+      console.warn("startCPUTurnRoutine not found on window. Ensure combat_engine.js is loaded.");
+    }
   }
 
-  // 1. Pick target move and charge goal
-  let choice = { moveKey: 'D+J', targetChargePct: 85 };
-  if (typeof window.selectCPUMoveAndCharge === 'function') {
-    choice = window.selectCPUMoveAndCharge(cpuPlayer, opponentPlayer, slotKey);
-  }
-
-  const chosenMoveKey = choice.moveKey || 'D+J';
-  const targetPct = choice.targetChargePct || 85;
-  const dir = chosenMoveKey.split('+')[0] || 'D';
-
-  // 2. Ensure charge meter UI elements are unhidden and initialized to 0%
-  const chargeBoxEls = document.querySelectorAll(`#${slotKey}-charge-box, #${slotKey}-charge-container, .${slotKey}-charge-display`);
-  chargeBoxEls.forEach(el => {
-    el.hidden = false;
-    el.style.display = 'block';
-  });
-
-  const fillEls = document.querySelectorAll(`#${slotKey}-charge-fill, #${slotKey}-charge-bar-fill, .${slotKey}-charge-fill`);
-  const textEls = document.querySelectorAll(`#${slotKey}-charge-text, #${slotKey}-charge-display, .${slotKey}-charge-text`);
-
-  fillEls.forEach(el => { el.style.width = '0%'; });
-  textEls.forEach(el => { el.textContent = `CHARGING [${dir}]: 0%`; });
-
-  // 3. Calculate human-equivalent holding speed (CHARGE_TIMES)
-  const chargeTimes = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
-  const baseDurationMs = chargeTimes[dir] || 3000;
-  const totalChargeTimeMs = Math.max(1200, Math.min(3800, (targetPct / 100) * (baseDurationMs * 0.55)));
-
-  let currentPct = 0;
-  const stepIntervalMs = 20; // 50 updates per second for smooth visual animation
-  const pctIncrement = targetPct / (totalChargeTimeMs / stepIntervalMs);
-
-  const diff = String(cpuPlayer.difficulty || 'normal').toLowerCase();
-  const reactionDelay = diff === 'master' ? 150 : (diff === 'hard' ? 250 : 450);
-
-  setTimeout(() => {
-    if (!window.gameState || window.gameState.roundPhase !== 'INPUT') return;
-
-    window.cpuChargeIntervals[slotKey] = setInterval(() => {
-      if (!window.gameState || window.gameState.roundPhase !== 'INPUT') {
-        clearInterval(window.cpuChargeIntervals[slotKey]);
-        window.cpuChargeIntervals[slotKey] = null;
-        return;
-      }
-
-      currentPct = Math.min(targetPct, currentPct + pctIncrement);
-      cpuPlayer.activeChargePercent = currentPct;
-
-      // Real-time visual updating of the charge bar and readout text
-      fillEls.forEach(el => { el.style.width = `${currentPct}%`; });
-      textEls.forEach(el => { el.textContent = `CHARGING [${dir}]: ${Math.floor(currentPct)}%`; });
-
-      // 4. Lock in move once charge threshold is reached
-      if (currentPct >= targetPct) {
-        clearInterval(window.cpuChargeIntervals[slotKey]);
-        window.cpuChargeIntervals[slotKey] = null;
-
-        if (slotKey === 'p1') {
-          window.gameState.p1SelectedMoveKey = chosenMoveKey;
-          window.gameState.p1IsConfirmed = true;
-        } else {
-          window.gameState.p2SelectedMoveKey = chosenMoveKey;
-          window.gameState.p2IsConfirmed = true;
-        }
-
-        textEls.forEach(el => { el.textContent = `LOCKED: ${chosenMoveKey} (${Math.floor(targetPct)}%)`; });
-      }
-    }, stepIntervalMs);
-  }, reactionDelay);
-}
-
-if (typeof window !== 'undefined') {
+  // Export Facade Methods
   window.setUniversalChargeTarget = setUniversalChargeTarget;
-  window.startCPUTurnRoutine = startCPUTurnRoutine;
-}
+  window.getCPUReactionDelay = getCPUReactionDelay;
+  window.triggerCPUTurn = triggerCPUTurn;
+
+})(window);
