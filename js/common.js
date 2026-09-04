@@ -43,8 +43,22 @@ window.CHARGE_TIMES = Object.assign({
  */
 function getChargeTimeMs(dirKey) {
   const times = window.CHARGE_TIMES || { W: 3500, A: 2200, S: 4200, D: 3000 };
-  const raw = times[dirKey] !== undefined ? times[dirKey] : 3000;
+  const key = typeof dirKey === 'string' ? dirKey.toUpperCase() : 'D';
+  const raw = times[key] !== undefined ? times[key] : 3000;
   return raw < 50 ? raw * 1000 : raw;
+}
+
+/**
+ * Computes charge percentage given elapsed holding duration
+ * @param {string} dirKey - Directional key ('W', 'A', 'S', 'D')
+ * @param {number} elapsedMs - Duration held in milliseconds
+ * @returns {number} Normalized charge percentage (0 to 100)
+ */
+function calculateChargeProgress(dirKey, elapsedMs) {
+  const totalMs = getChargeTimeMs(dirKey);
+  if (totalMs <= 0) return 100;
+  const pct = (elapsedMs / totalMs) * 100;
+  return Math.min(100, Math.max(0, Math.round(pct)));
 }
 
 /**
@@ -60,7 +74,6 @@ function getOpponentMovesData(opponentPlayer) {
     if (opponentPlayer === 'p2' || (opponentPlayer && opponentPlayer === window.gameState.p2)) {
       return window.gameState.p2Moves || window.FALLBACK_ICHIGO_MOVES || {};
     }
-    // Fallback ID match if object references differ
     if (opponentPlayer && opponentPlayer.id) {
       if (window.gameState.p1 && opponentPlayer.id === window.gameState.p1.id) return window.gameState.p1Moves || {};
       if (window.gameState.p2 && opponentPlayer.id === window.gameState.p2.id) return window.gameState.p2Moves || {};
@@ -100,8 +113,8 @@ function getMatchTimingConfig() {
 
 /**
  * Calculates elapsed time in seconds from the remaining countdown value
- * @param {number} remainingTime - Current countdown value (e.g. 7.9 down to 0)
- * @returns {number} Seconds elapsed in round (e.g. 8.0 - 7.9 = 0.1s elapsed)
+ * @param {number} remainingTime - Current countdown value
+ * @returns {number} Seconds elapsed in round
  */
 function getElapsedTime(remainingTime) {
   const { baseRoundWindow } = getMatchTimingConfig();
@@ -121,6 +134,7 @@ function isLateRound(remainingTime) {
 }
 
 window.getChargeTimeMs = getChargeTimeMs;
+window.calculateChargeProgress = calculateChargeProgress;
 window.getOpponentMovesData = getOpponentMovesData;
 window.getMatchTimingConfig = getMatchTimingConfig;
 window.getElapsedTime = getElapsedTime;
