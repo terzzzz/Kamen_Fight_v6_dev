@@ -233,18 +233,31 @@
     </div>
   </div>
 
-  <!-- SCRIPT IMPORTS -->
+<!-- SCRIPT IMPORTS -->
+  <!-- 1. Core Configs & Shared Utilities -->
   <script src="js/common.js"></script>
-  <script src="js/foresee_engine.js"></script>
-  <script src="js/cpu_controller.js"></script>
-  <script src="js/ai.js"></script>
+  
+  <!-- 2. Storage Manager (Must load before AI.js attempts to read STORAGE_KEYS) -->
   <script src="js/storage.js"></script>
-  <script src="js/media.js"></script>
-  <script src="js/simulator.js"></script>
+  
+  <!-- 3. AI & Search Engines (Foresee -> AI -> CPU Controller) -->
+  <script src="js/foresee_engine.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/cpu_controller.js"></script>
+  
+  <!-- 4. Game Rules & Video Controller -->
   <script src="js/combat_engine.js"></script>
-  <script src="js/match_manager.js"></script>
+  <script src="js/media.js"></script>
+  
+  <!-- 5. UI Renderers & Screens (UI defines HUD & default riders for Selection Screen) -->
   <script src="js/ui.js"></script>
   <script src="js/vs_select.js"></script>
+  
+  <!-- 6. Simulation & Match Input Managers -->
+  <script src="js/simulator.js"></script>
+  <script src="js/match_manager.js"></script>
+  
+  <!-- 7. Main Game Loop Orchestrator -->
   <script src="js/game.js"></script>
 </body>
 
