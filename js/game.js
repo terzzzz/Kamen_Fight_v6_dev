@@ -150,7 +150,6 @@
      ========================================================================== */
 
   function resetBattleViewportAndVideos() {
-    // Reset video elements and pause lingering playback
     const videoElements = document.querySelectorAll('video');
     videoElements.forEach(vid => {
       try {
@@ -159,15 +158,12 @@
       } catch (e) {}
     });
 
-    // Reset player box blanked state
     document.querySelectorAll('.player-box').forEach(box => {
       box.classList.remove('blanked');
     });
 
-    // Remove leftover damage popups
     document.querySelectorAll('.damage-popup').forEach(el => el.remove());
 
-    // Reset Banners and Prompts
     const startPrompt = document.getElementById('start-prompt');
     if (startPrompt) startPrompt.hidden = true;
 
@@ -187,7 +183,6 @@
   async function startBattle(matchConfig) {
     const cfg = matchConfig || {};
 
-    // Clear all existing intervals
     if (window.cpuChargeIntervals) {
       if (window.cpuChargeIntervals.p1) {
         clearInterval(window.cpuChargeIntervals.p1);
@@ -204,7 +199,6 @@
       roundTimerInterval = null;
     }
 
-    // Clean previous match visuals and states
     resetBattleViewportAndVideos();
 
     window.gameState.matchConfig = cfg;
@@ -304,6 +298,7 @@
       maxChi: rules.MAX_CHI || 16,
       faintMeter: 0,
       activeChargePercent: 0,
+      idleStreak: 0,
       activeBuffs: [],
       isFainted: false,
       willBeFaintedNextRound: false
@@ -320,6 +315,7 @@
       maxChi: rules.MAX_CHI || 16,
       faintMeter: 0,
       activeChargePercent: 0,
+      idleStreak: 0,
       activeBuffs: [],
       isFainted: false,
       willBeFaintedNextRound: false
@@ -423,6 +419,12 @@
     window.gameState.p1IsConfirmed = false;
     window.gameState.p2IsConfirmed = false;
 
+    // Display "ROUND X / 50" HUD Header
+    const roundTitleEl = document.getElementById('turn-display') || document.getElementById('round-title') || document.querySelector('.round-title');
+    if (roundTitleEl) {
+      roundTitleEl.textContent = `ROUND ${window.gameState.roundCounter} / 50`;
+    }
+
     updateControlPanelsVisibility();
 
     ['input', 'p2Input'].forEach(inputKey => {
@@ -507,7 +509,6 @@
       return;
     }
 
-    // LP Display
     const maxLp = player.maxLp || 2300;
     const currentLp = Math.max(0, player.lp || 0);
     const lpPct = Math.min(100, Math.max(0, (currentLp / maxLp) * 100));
@@ -518,7 +519,6 @@
     const lpFills = document.querySelectorAll(`#${slotKey}-lp-fill, .${slotKey}-lp-fill`);
     lpFills.forEach(el => { el.style.width = `${lpPct}%`; });
 
-    // Chi Display & Dynamic Tier Styling
     const chiVal = document.getElementById(`${slotKey}-chi`);
     const chiFill = document.getElementById(`${slotKey}-chi-bar-fill`);
     const currentChi = player.chi || 0;
@@ -569,7 +569,6 @@
       }
     }
 
-    // Faint Display
     const rules = window.COMBAT_RULES || { FAINT_THRESHOLD: 100 };
     const faintMeterVal = Math.min(rules.FAINT_THRESHOLD, Math.max(0, player.faintMeter || 0));
     const faintPct = Math.min(100, Math.max(0, (faintMeterVal / rules.FAINT_THRESHOLD) * 100));
@@ -580,7 +579,6 @@
     const faintTexts = document.querySelectorAll(`#${slotKey}-faint-text, .${slotKey}-faint-text`);
     faintTexts.forEach(el => { el.textContent = `${Math.round(faintMeterVal)} / ${rules.FAINT_THRESHOLD}`; });
 
-    // Status & Buff Tray
     const trayEl = document.getElementById(`${slotKey}-buff-tray`);
     if (trayEl) {
       trayEl.innerHTML = '';
@@ -653,7 +651,6 @@
 
     const allHandledCodes = [...p1DirKeys, ...p1ActKeys, ...p2DirKeys, ...p2ActKeys];
 
-    // Pointer/Click listener for GAME OVER screen return
     document.addEventListener('pointerdown', (e) => {
       if (window.gameState && window.gameState.roundPhase === 'GAME_OVER' && window.gameState.canContinueFromGameOver) {
         handleGameOverReturn();
@@ -675,7 +672,6 @@
 
       if (window.gameState.roundPhase !== 'INPUT') return;
 
-      // Player 1 Input
       if (window.gameState.p1 && !window.gameState.p1.isCPU && !window.gameState.p1IsConfirmed) {
         if (p1DirKeys.includes(e.code) && !window.gameState.input.heldDirection) {
           const dirMap = { KeyW: 'W', KeyA: 'A', KeyS: 'S', KeyD: 'D' };
@@ -702,7 +698,6 @@
         }
       }
 
-      // Player 2 Input
       if (window.gameState.p2 && !window.gameState.p2.isCPU && !window.gameState.p2IsConfirmed) {
         if (p2DirKeys.includes(e.code) && !window.gameState.p2Input.heldDirection) {
           const p2DirMap = { ArrowUp: 'W', ArrowLeft: 'A', ArrowDown: 'S', ArrowRight: 'D' };
@@ -758,7 +753,6 @@
     });
   }
 
-  // Initialize preloader & input handling on DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       setupInputListeners();
