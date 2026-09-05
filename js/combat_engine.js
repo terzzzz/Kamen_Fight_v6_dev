@@ -622,6 +622,12 @@ function resolveAttack(attacker, defender, atkMove, atkMoveKey, defMove, defMove
     let rawHitRate = (baseHitChance * accuracyDiscount) + attackerHitBonus;
 
     let baseEvasionPct = (defender && defender.evasionRate !== undefined) ? defender.evasionRate : 0.0;
+
+    // Apply Low Chi Evasion Penalty (-25% evasion / +25% hit vulnerability)
+    if (defender.chi < 5) {
+      baseEvasionPct -= 0.25;
+    }
+
     if (defender.airborneTicks > 0 && defender.activeBuffs) {
       if (defender.activeBuffs.some(b => b.id === 'airborne_evasion')) {
         baseEvasionPct += 0.20;
