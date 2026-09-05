@@ -67,23 +67,27 @@
 
     const diff = String(difficulty || 'normal').toLowerCase();
 
-    /* 1. Direct ForeseeEngine integration for Master (Depth 4) and Hard (Depth 3) */
+    /* 1. 支援選單字串配對："master", "aggressive", "hard" */
     if (window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
-      if (diff === 'master') {
-        const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: true, depth: 4 });
-        if (res && res.moveKey) return res.moveKey;
-      } else if (diff === 'hard') {
-        const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: false, depth: 3 });
-        if (res && res.moveKey) return res.moveKey;
+      try {
+        if (diff === 'master') {
+          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: true, depth: 4 });
+          if (res && res.moveKey) return res.moveKey;
+        } else if (diff === 'hard' || diff === 'aggressive') {
+          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: false, depth: 3 });
+          if (res && res.moveKey) return res.moveKey;
+        }
+      } catch (e) {
+        console.error("ForeseeEngine exception caught in simulator:", e);
       }
     }
 
-    /* 2. Global AI decision function fallback */
+    /* 2. Global AI 降級備用 */
     if (typeof window.selectCPUMove === 'function') {
       return window.selectCPUMove(cpu, opp, moves, difficulty);
     }
 
-    /* 3. Static Heuristic fallback for Normal / Easy or when ForeseeEngine is offline */
+    /* 3. 靜態 Heuristic 防護網 */
     const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
     if (validKeys.length === 0) return 'DO_NOTHING';
 
@@ -91,7 +95,7 @@
     const dMoves = validKeys.filter(k => k.startsWith('D'));
     const aMoves = validKeys.filter(k => k.startsWith('A'));
 
-    if (diff === 'master' || diff === 'hard' || diff === 'normal') {
+    if (diff === 'master' || diff === 'hard' || diff === 'aggressive' || diff === 'normal' || diff === 'balanced') {
       if (opp.isFainted || opp.faintMeter >= 100) {
         if (sMoves.length > 0) return sMoves[0];
       }
@@ -148,11 +152,11 @@
 
       try {
         let p1MaxLp = p1Rider.maxLp || 2300;
-        if (p1Diff === 'hard') p1MaxLp = Math.floor(p1MaxLp * hardHpMult);
+        if (p1Diff === 'hard' || p1Diff === 'aggressive') p1MaxLp = Math.floor(p1MaxLp * hardHpMult);
         if (p1Diff === 'master') p1MaxLp = Math.floor(p1MaxLp * masterHpMult);
 
         let p2MaxLp = p2Rider.maxLp || 2500;
-        if (p2Diff === 'hard') p2MaxLp = Math.floor(p2MaxLp * hardHpMult);
+        if (p2Diff === 'hard' || p2Diff === 'aggressive') p2MaxLp = Math.floor(p2MaxLp * hardHpMult);
         if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * masterHpMult);
 
         let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
@@ -192,7 +196,6 @@
 
           let p1GoesFirst = false;
 
-          /* Priority Hierarchy: Range -> Stance Tier -> 50/50 Coin Flip */
           if (!p1IsIdle && p2IsIdle) {
             p1GoesFirst = true;
           } else if (p1IsIdle && !p2IsIdle) {
@@ -237,7 +240,7 @@
 
             let hitChance = mFirst.hitChance || 80;
             if (first.chi > 14) hitChance = Math.min(100, hitChance + 20);
-            if (second.chi < 5) hitChance = Math.min(100, hitChance + 25); // Low Chi evasion penalty (+25% hit chance)
+            if (second.chi < 5) hitChance = Math.min(100, hitChance + 25);
 
             let hitRoll = second.isFainted || isSecondIdle || isSecondGuarding || (Math.random() * 100 < hitChance);
 
@@ -268,7 +271,7 @@
               if (first.chi > 14) baseDmg *= 1.20;
               if (second.chi < 5) baseDmg *= 1.25;
               if (first.difficulty === 'master') baseDmg *= masterDmgMult;
-              else if (first.difficulty === 'hard') baseDmg *= hardDmgMult;
+              else if (first.difficulty === 'hard' || first.difficulty === 'aggressive') baseDmg *= hardDmgMult;
 
               let dmg = Math.floor(baseDmg * damageMult);
               second.lp = Math.max(0, second.lp - dmg);
@@ -305,7 +308,7 @@
 
             let hitChance = mSecond.hitChance || 80;
             if (second.chi > 14) hitChance = Math.min(100, hitChance + 20);
-            if (first.chi < 5) hitChance = Math.min(100, hitChance + 25); // Low Chi evasion penalty (+25% hit chance)
+            if (first.chi < 5) hitChance = Math.min(100, hitChance + 25);
 
             let hitRoll = first.isFainted || isFirstIdle || isFirstGuarding || (Math.random() * 100 < hitChance);
 
@@ -336,7 +339,7 @@
               if (second.chi > 14) baseDmg *= 1.20;
               if (first.chi < 5) baseDmg *= 1.25;
               if (second.difficulty === 'master') baseDmg *= masterDmgMult;
-              else if (second.difficulty === 'hard') baseDmg *= hardDmgMult;
+              else if (second.difficulty === 'hard' || second.difficulty === 'aggressive') baseDmg *= hardDmgMult;
 
               let dmg = Math.floor(baseDmg * damageMult);
               first.lp = Math.max(0, first.lp - dmg);
