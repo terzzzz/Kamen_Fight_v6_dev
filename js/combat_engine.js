@@ -77,7 +77,6 @@ window.startCPUTurnRoutine = function(slotKey) {
     window.cpuChargeIntervals[slotKey] = null;
   }
 
-  // Clear stale charge state
   delete playerObj._chosenTargetChargePct;
   playerObj.activeChargePercent = 0;
 
@@ -122,7 +121,6 @@ window.startCPUTurnRoutine = function(slotKey) {
   const isZeroChiGuard = (dirKey === 'A' && (move.chiCost || 0) === 0);
   const diff = playerObj.difficulty || 'normal';
 
-  // Read AI-provided target or fallback
   let targetChargePct = playerObj._chosenTargetChargePct;
   if (targetChargePct === undefined || targetChargePct === null) {
     const baseTarget = isZeroChiGuard 
@@ -421,8 +419,8 @@ function updateHUD() {
     window.updatePlayerHUD('p2', window.gameState.p2);
   }
 
-  const turnDisp = document.getElementById('turn-display');
-  if (turnDisp) turnDisp.textContent = `ROUND ${window.gameState.roundCounter}`;
+  const turnDisp = document.getElementById('turn-display') || document.getElementById('round-title') || document.querySelector('.round-title');
+  if (turnDisp) turnDisp.textContent = `ROUND ${window.gameState.roundCounter} / 50`;
 }
 
 function getMoveForPlayer(slotKey, moveKey) {
@@ -623,7 +621,6 @@ function resolveAttack(attacker, defender, atkMove, atkMoveKey, defMove, defMove
 
     let baseEvasionPct = (defender && defender.evasionRate !== undefined) ? defender.evasionRate : 0.0;
 
-    // Apply Low Chi Evasion Penalty (-25% evasion / +25% hit vulnerability)
     if (defender.chi < 5) {
       baseEvasionPct -= 0.25;
     }
@@ -725,6 +722,16 @@ async function executeTurnResolutionPhase() {
 
   if (!p1MoveKey) p1MoveKey = 'DO_NOTHING';
   if (!p2MoveKey) p2MoveKey = 'DO_NOTHING';
+
+  // Update AI Idle Streaks for anti-turtling tracking
+  if (window.gameState.p1) {
+    if (p1MoveKey === 'DO_NOTHING') window.gameState.p1.idleStreak = (window.gameState.p1.idleStreak || 0) + 1;
+    else window.gameState.p1.idleStreak = 0;
+  }
+  if (window.gameState.p2) {
+    if (p2MoveKey === 'DO_NOTHING') window.gameState.p2.idleStreak = (window.gameState.p2.idleStreak || 0) + 1;
+    else window.gameState.p2.idleStreak = 0;
+  }
 
   let p1Move = getMoveForPlayer('p1', p1MoveKey);
   let p2Move = getMoveForPlayer('p2', p2MoveKey);
@@ -1084,7 +1091,6 @@ async function executeTurnResolutionPhase() {
 
           triggerFloatingText(slot, 'RECOVERED!', 'heal');
 
-          // Explicitly restore side HUD video back to idle.mp4 upon recovery
           if (typeof window.updateCharacterMedia === 'function') {
             window.updateCharacterMedia(slot, 'IDLE');
           }
@@ -1098,12 +1104,47 @@ async function executeTurnResolutionPhase() {
 
   updateHUD();
 
+  // --- END-OF-ROUND EVALUATION INCLUDING 50-ROUND MATCH LIMIT ---
+  const MAX_MATCH_ROUNDS = 50;
+
   if (window.gameState.p1.lp > 0 && window.gameState.p2.lp > 0) {
-    window.gameState.roundCounter++;
-    
-    window.gameState.roundPhase = 'INPUT';
-    if (typeof window.launchRoundTimer === 'function') window.launchRoundTimer();
+    if (window.gameState.roundCounter >= MAX_MATCH_ROUNDS) {
+      // 50-ROUND TIME OVER DRAW GAME
+      window.gameState.roundPhase = 'GAME_OVER';
+      if (battleMsg) battleMsg.hidden = false;
+
+      if (typeof window.saveAIKnowledge === 'function') {
+        window.saveAIKnowledge();
+      }
+
+      ['p1', 'p2'].forEach(slot => {
+        const stunOverlay = document.getElementById(`${slot}-stun-overlay`);
+        if (stunOverlay) stunOverlay.hidden = true;
+        if (window.gameState[slot]) {
+          window.gameState[slot].isFainted = false;
+          window.gameState[slot].justFainted = false;
+        }
+      });
+
+      // BOTH Riders trigger Victory Poses on Draw Game
+      if (typeof window.updateCharacterMedia === 'function') {
+        window.updateCharacterMedia('p1', 'VICTORY');
+        window.updateCharacterMedia('p2', 'VICTORY');
+      }
+
+      battleMsg.innerHTML = `DRAW GAME!<br>TIME OVER (${MAX_MATCH_ROUNDS} ROUNDS)<br><span class="continue-prompt">PRESS ANY KEY OR CLICK TO CONTINUE</span>`;
+
+      window.gameState.canContinueFromGameOver = false;
+      setTimeout(() => {
+        window.gameState.canContinueFromGameOver = true;
+      }, 1000);
+    } else {
+      window.gameState.roundCounter++;
+      window.gameState.roundPhase = 'INPUT';
+      if (typeof window.launchRoundTimer === 'function') window.launchRoundTimer();
+    }
   } else {
+    // Standard Single or Double KO
     window.gameState.roundPhase = 'GAME_OVER';
     if (battleMsg) battleMsg.hidden = false;
 
