@@ -53,6 +53,73 @@ body {
   align-items: center;
 }
 
+/* PRELOADER / LAUNCH LOADING SCREEN */
+#loading-screen {
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background: #08090d;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 90%;
+  max-width: 480px;
+}
+
+.game-launch-title {
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  font-size: clamp(2rem, 8vw, 3.5rem);
+  color: var(--text-yellow);
+  text-shadow: 0 0 15px rgba(255, 204, 0, 0.7), 2px 2px 0 #000;
+  margin-bottom: 24px;
+  letter-spacing: 2px;
+}
+
+.loading-status {
+  font-size: clamp(0.75rem, 2.5vw, 1rem);
+  color: var(--border-cyan);
+  margin-bottom: 12px;
+  font-weight: bold;
+}
+
+.loading-bar-wrapper {
+  width: 100%;
+  height: 18px;
+  background: #11141e;
+  border: 2px solid var(--border-cyan);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+}
+
+.loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0088aa, var(--border-cyan));
+  transition: width 0.1s linear;
+}
+
+.start-prompt {
+  font-size: clamp(0.9rem, 3.5vw, 1.25rem);
+  color: var(--text-yellow);
+  font-weight: 900;
+  margin-top: 25px;
+  animation: pulseStartPrompt 1.2s infinite alternate ease-in-out;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+@keyframes pulseStartPrompt {
+  0% { transform: scale(0.98); opacity: 0.5; text-shadow: 0 0 5px var(--text-yellow); }
+  100% { transform: scale(1.04); opacity: 1; text-shadow: 0 0 20px var(--text-yellow); }
+}
+
 /* PORTRAIT ORIENTATION LOCK OVERLAY */
 #portrait-orientation-overlay {
   display: none;
