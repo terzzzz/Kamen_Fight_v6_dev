@@ -62,6 +62,16 @@
     return 0;
   }
 
+  function generateSimChargePercent(moveKey, moveData, difficulty) {
+    const isZeroChiGuard = moveKey.startsWith('A+') && (moveData?.chiCost || 0) === 0;
+    if (isZeroChiGuard) return 100;
+    const diff = String(difficulty || 'normal').toLowerCase();
+    if (diff === 'master') return Math.floor(Math.random() * 4) + 96;
+    if (diff === 'hard' || diff === 'aggressive') return Math.floor(Math.random() * 8) + 88;
+    if (diff === 'novice' || diff === 'easy') return Math.floor(Math.random() * 16) + 65;
+    return Math.floor(Math.random() * 11) + 80;
+  }
+
   function selectCPUMoveSim(cpu, opp, moves, difficulty) {
     if (cpu.isFainted) return 'DO_NOTHING';
 
@@ -159,8 +169,8 @@
         if (p2Diff === 'hard' || p2Diff === 'aggressive') p2MaxLp = Math.floor(p2MaxLp * hardHpMult);
         if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * masterHpMult);
 
-        let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
-        let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false };
+        let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
+        let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
 
         let roundCounter = 1;
         const MAX_ROUNDS = 50;
@@ -191,11 +201,15 @@
           let m1 = getSimMove(p1Moves, p1Key);
           let m2 = getSimMove(p2Moves, p2Key);
 
+          p1.activeChargePercent = generateSimChargePercent(p1Key, m1, p1Diff);
+          p2.activeChargePercent = generateSimChargePercent(p2Key, m2, p2Diff);
+
           let p1IsIdle = p1Key === 'DO_NOTHING' || m1.type === 'IDLE';
           let p2IsIdle = p2Key === 'DO_NOTHING' || m2.type === 'IDLE';
 
           let p1GoesFirst = false;
 
+          /* Priority Hierarchy: Range -> Stance Tier -> Lower Charge % -> 50/50 Coin Flip */
           if (!p1IsIdle && p2IsIdle) {
             p1GoesFirst = true;
           } else if (p1IsIdle && !p2IsIdle) {
@@ -215,7 +229,14 @@
               if (p1Stance !== p2Stance) {
                 p1GoesFirst = p1Stance > p2Stance;
               } else {
-                p1GoesFirst = Math.random() < 0.5;
+                let p1Charge = p1.activeChargePercent !== undefined ? p1.activeChargePercent : 100;
+                let p2Charge = p2.activeChargePercent !== undefined ? p2.activeChargePercent : 100;
+
+                if (p1Charge !== p2Charge) {
+                  p1GoesFirst = p1Charge < p2Charge;
+                } else {
+                  p1GoesFirst = Math.random() < 0.5;
+                }
               }
             }
           }
@@ -251,7 +272,10 @@
               if (isSecondGuarding) {
                 const atkButton = keyFirst.includes('+') ? keyFirst.split('+')[1] : null;
                 const isSpecialGuard = keySecond === 'A+I' || mSecond.name === 'Windmill Guard' || mSecond.isSpecialGuard === true;
-                const probGood = Math.random() < 0.70;
+
+                const defenderChargeRatio = Math.min(1.0, Math.max(0.0, (second.activeChargePercent !== undefined ? second.activeChargePercent : 100) / 100));
+                const defenderChargeFactor = Math.sqrt(0.5 + (0.5 * defenderChargeRatio));
+                const probGood = Math.random() < (0.70 * defenderChargeFactor);
 
                 if (isSpecialGuard) {
                   guardSuccess = true;
@@ -319,7 +343,10 @@
               if (isFirstGuarding) {
                 const atkButton = keySecond.includes('+') ? keySecond.split('+')[1] : null;
                 const isSpecialGuard = keyFirst === 'A+I' || mFirst.name === 'Windmill Guard' || mFirst.isSpecialGuard === true;
-                const probGood = Math.random() < 0.70;
+
+                const defenderChargeRatio = Math.min(1.0, Math.max(0.0, (first.activeChargePercent !== undefined ? first.activeChargePercent : 100) / 100));
+                const defenderChargeFactor = Math.sqrt(0.5 + (0.5 * defenderChargeRatio));
+                const probGood = Math.random() < (0.70 * defenderChargeFactor);
 
                 if (isSpecialGuard) {
                   guardSuccess = true;
@@ -413,4 +440,3 @@
   window.runBatchSimulation = runBatchSimulation;
 
 })(window);
-
