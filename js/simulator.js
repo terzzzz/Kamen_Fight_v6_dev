@@ -65,11 +65,25 @@
   function selectCPUMoveSim(cpu, opp, moves, difficulty) {
     if (cpu.isFainted) return 'DO_NOTHING';
 
+    const diff = String(difficulty || 'normal').toLowerCase();
+
+    /* 1. Direct ForeseeEngine integration for Master (Depth 4) and Hard (Depth 3) */
+    if (window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
+      if (diff === 'master') {
+        const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: true, depth: 4 });
+        if (res && res.moveKey) return res.moveKey;
+      } else if (diff === 'hard') {
+        const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: false, depth: 3 });
+        if (res && res.moveKey) return res.moveKey;
+      }
+    }
+
+    /* 2. Global AI decision function fallback */
     if (typeof window.selectCPUMove === 'function') {
       return window.selectCPUMove(cpu, opp, moves, difficulty);
     }
 
-    const diff = String(difficulty || 'normal').toLowerCase();
+    /* 3. Static Heuristic fallback for Normal / Easy or when ForeseeEngine is offline */
     const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
     if (validKeys.length === 0) return 'DO_NOTHING';
 
@@ -77,30 +91,7 @@
     const dMoves = validKeys.filter(k => k.startsWith('D'));
     const aMoves = validKeys.filter(k => k.startsWith('A'));
 
-    if (diff === 'master') {
-      // 1. Instantly capitalize on a fainted opponent with high-damage moves
-      if (opp.isFainted || opp.faintMeter >= 100) {
-        if (sMoves.length > 0) return sMoves[0];
-        if (dMoves.length > 0) return dMoves[Math.floor(Math.random() * dMoves.length)];
-      }
-
-      // 2. Aggressive S-move execution starting at 5 Chi
-      if (cpu.chi >= 5 && sMoves.length > 0 && Math.random() < 0.80) {
-        return sMoves[Math.floor(Math.random() * sMoves.length)];
-      }
-
-      // 3. Selective Guarding: Guard ONLY if faint meter is safe (<50) and opponent has high Chi
-      if (opp.chi >= 7 && cpu.faintMeter < 50 && aMoves.length > 0 && Math.random() < 0.20) {
-        return aMoves[Math.floor(Math.random() * aMoves.length)];
-      }
-
-      // 4. Default to heavy physical pressure (D-moves) to maintain Chi momentum
-      if (dMoves.length > 0) {
-        return dMoves[Math.floor(Math.random() * dMoves.length)];
-      }
-    }
-
-    if (diff === 'hard' || diff === 'normal') {
+    if (diff === 'master' || diff === 'hard' || diff === 'normal') {
       if (opp.isFainted || opp.faintMeter >= 100) {
         if (sMoves.length > 0) return sMoves[0];
       }
@@ -119,6 +110,7 @@
   }
 
   async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = 'normal', p2Difficulty = 'normal', progressCallback = null) {
+    const startTimeMs = performance.now();
     const allMoves = await loadSimulatorMoves();
     const rules = window.COMBAT_RULES || { STARTING_CHI: 8, MAX_CHI: 16, FAINT_THRESHOLD: 100, HIT_BUILDUP: 25, ROUND_RECOVERY: 13 };
     
@@ -146,7 +138,7 @@
     };
 
     for (let matchIndex = 0; matchIndex < count; matchIndex++) {
-      if (matchIndex % 3 === 0) {
+      if (matchIndex % 2 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
       }
 
@@ -394,6 +386,9 @@
       }
     }
 
+    const elapsedMs = performance.now() - startTimeMs;
+    const executionTimeSec = (elapsedMs / 1000).toFixed(2);
+
     return {
       p1Name: p1Rider.name || 'Player 1',
       p2Name: p2Rider.name || 'Player 2',
@@ -407,11 +402,11 @@
       p2AvgLpLeft: Math.round(stats.p2EndLpSum / count),
       p1AvgChiLeft: (stats.p1EndChiSum / count).toFixed(1),
       p2AvgChiLeft: (stats.p2EndChiSum / count).toFixed(1),
-      avgRounds: (stats.totalRounds / count).toFixed(1)
+      avgRounds: (stats.totalRounds / count).toFixed(1),
+      executionTimeSec: executionTimeSec
     };
   }
 
   window.runBatchSimulation = runBatchSimulation;
 
 })(window);
-  
