@@ -1,15 +1,6 @@
 /**
  * Shared Foresee Simulation Engine (Expectimax + Beam Search)
  * Path: js/foresee_engine.js
- *
- * NOTE: ForeseeEngine.getBestMove is synchronous and CPU-bound.
- * For deep lookaheads (e.g. Master level depth 4), higher node limits and 
- * time budgets are used to ensure accurate evaluation.
- *
- * Compatible calls:
- *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 3)
- *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, riderProfile, 4, { isMaster: true })
- *    ForeseeEngine.getBestMove(cpu, opp, availableMoves, 4, { isMaster: true, samples: 8 })
  */
 (function (window) {
   'use strict';
@@ -69,7 +60,6 @@
     const selfPri = getMoveRangePrioritySim(selfMove);
     const oppPri = getMoveRangePrioritySim(oppMove);
 
-    /* Priority Hierarchy: Range -> Stance Tier -> 50/50 Coin Flip */
     let selfGoesFirst = true;
     if (selfPri !== oppPri) {
       selfGoesFirst = selfPri > oppPri;
@@ -136,7 +126,7 @@
           expectedDamageMult = (1 - probGoodGuard) * 0.50;
           defenderChiReward = probGoodGuard * 2 + (1 - probGoodGuard) * 1;
         } else if (atkButton && defKeyStr === ('A+' + atkButton)) {
-          guardWasSuccessful = true;
+          guardSuccess = true;
           expectedDamageMult = probGoodGuard * 0.25 + (1 - probGoodGuard) * 0.70;
           defenderChiReward = probGoodGuard * 4 + (1 - probGoodGuard) * 2;
         } else {
@@ -154,12 +144,7 @@
       } else {
         hitRate = (step.move.hitChance || 80) / 100;
         if (isFullPowerAtk) hitRate = Math.min(1.0, hitRate + 0.20);
-        if (isLowPowerDef) hitRate = Math.min(1.0, hitRate + 0.25); // Model Low Chi evasion penalty (+25% hit chance)
-        if (step.atk.activeBuffs && step.atk.activeBuffs.some(function (b) {
-          return b.id === 'arm_calibration' || b.id === 'red_lamp_boost' || b.id === 'accuracy_focus';
-        })) {
-          hitRate = Math.min(1.0, hitRate + 0.15);
-        }
+        if (isLowPowerDef) hitRate = Math.min(1.0, hitRate + 0.25);
       }
 
       let baseDmg = step.move.baseDamage || 0;
@@ -229,19 +214,16 @@
       lpUrgencyMultiplier = 1.0 + ((0.30 - selfHpRatio) / 0.30) * 2.0;
     }
 
-    const resourceDiscount = Math.min(1.0, Math.max(0.15, selfHpRatio / 0.35));
-
-    const W_LP = (characterWeights.W_LP || 1.2) * lpUrgencyMultiplier;
-    const W_CHI = (characterWeights.W_CHI || 10.0) * resourceDiscount;
-    const W_FAINT = (characterWeights.W_FAINT || 2.5) * resourceDiscount;
+    const W_LP = (characterWeights.W_LP || 1.5) * lpUrgencyMultiplier;
+    const W_CHI = (characterWeights.W_CHI || 5.0);
+    const W_FAINT = (characterWeights.W_FAINT || 3.0);
 
     let score = ((selfState.lp - oppState.lp) * W_LP) +
                 ((selfState.chi - oppState.chi) * W_CHI);
 
-    if (selfState.chi < 5) score -= 160 * resourceDiscount; // Discourage staying in low chi
-    if (oppState.chi < 5) score += 160 * resourceDiscount;  // Reward punishing opponent in low chi
-    if (selfState.chi > 14) score += 120 * resourceDiscount;
-    if (oppState.chi > 14) score -= 120 * resourceDiscount;
+    // 平衡 Low Chi 懲罰：由 160 降至 35，避免 AI 產生「不敢用必殺技」的恐懼
+    if (selfState.chi < 3) score -= 35;
+    if (oppState.chi < 3) score += 35;
 
     const oppFaintVal = (oppState.isFainted || oppState.faintMeter >= 100 || oppState.cashedInFaint) ? 100 : oppState.faintMeter;
     const selfFaintVal = (selfState.isFainted || selfState.faintMeter >= 100 || selfState.cashedInFaint) ? 100 : selfState.faintMeter;
@@ -249,26 +231,16 @@
     score += (oppFaintVal - selfFaintVal) * W_FAINT;
 
     if (oppState.isFainted || oppState.faintMeter >= 100 || oppState.cashedInFaint) {
-      score += 450 * resourceDiscount;
+      score += 500; // 高額獎勵趁暈猛攻
     }
     if (selfState.isFainted || selfState.faintMeter >= 100 || selfState.cashedInFaint) {
-      score -= 450 * lpUrgencyMultiplier;
+      score -= 500;
     }
 
     if (isMaster) {
-      const oppHpRatio = oppState.lp / (oppState.maxLp || 2300);
-      if (oppHpRatio < 0.25) score += (0.25 - oppHpRatio) * 500;
-
-      // Penalize self high faint meter to discourage turtling into faint traps
-      if (selfState.faintMeter >= 50) score -= (selfState.faintMeter - 40) * 4;
-      if (oppState.faintMeter >= 50) score += (oppState.faintMeter - 40) * 4;
-
-      // Reward offensive resource accumulation & usage
-      if (selfState.chi >= 5 && selfState.chi <= 12) score += 30;
-
-      if ((oppState.activeChargePercent || 0) >= 88 && selfState.chi >= 0) {
-        score += 15;
-      }
+      // 鼓勵當對手 Faint 或暈眩時用 S 大招殺傷
+      if (oppState.faintMeter >= 60 && selfState.chi >= 5) score += 80;
+      if (selfState.faintMeter >= 50) score -= (selfState.faintMeter - 40) * 5;
     }
 
     return score;
@@ -280,51 +252,46 @@
     if (cost > (player.chi || 0)) return -9999;
     const dmg = move.baseDamage || 0;
     const hit = (move.hitChance || 80) / 100;
-    let s = dmg * hit;
-
-    if (move.type === 'DEFENSE') {
-      s += (player.faintMeter >= 50) ? -30 : 5;
-    }
-    if (String(key).startsWith('D')) {
-      s += (cost === 0 ? 35 : 25);
-    }
-    if (String(key).startsWith('S')) {
-      s += cost * 6;
-    }
-    s -= cost * 2;
-    return s;
+    return dmg * hit;
   }
 
+  // 強制多樣性 Beam 選擇：確保取出的 Candidate 必定包含 D攻、S必殺、A防禦！
   function beamKeys(player, movesData, keys, limit) {
     if (!limit || keys.length <= limit) return keys.slice();
-    return keys
-      .map(function (k) { return { k: k, s: cheapMoveScore(player, k, movesData[k]) }; })
-      .sort(function (a, b) { return b.s - a.s; })
-      .slice(0, limit)
-      .map(function (x) { return x.k; });
+
+    const validKeys = keys.filter(k => (movesData[k]?.chiCost || 0) <= (player.chi || 0));
+
+    const dKeys = validKeys.filter(k => String(k).startsWith('D')).sort((a, b) => cheapMoveScore(player, b, movesData[b]) - cheapMoveScore(player, a, movesData[a]));
+    const sKeys = validKeys.filter(k => String(k).startsWith('S')).sort((a, b) => cheapMoveScore(player, b, movesData[b]) - cheapMoveScore(player, a, movesData[a]));
+    const aKeys = validKeys.filter(k => String(k).startsWith('A')).sort((a, b) => cheapMoveScore(player, b, movesData[b]) - cheapMoveScore(player, a, movesData[a]));
+
+    const picked = [];
+
+    // 優先放入 Top 1 S大招 (如有 Chi)
+    if (sKeys.length > 0) picked.push(sKeys[0]);
+    // 優先放入 Top 1 A防禦 (確保 Master 能防禦)
+    if (aKeys.length > 0) picked.push(aKeys[0]);
+    // 放入 Top 1 & Top 2 D普通攻
+    if (dKeys.length > 0) picked.push(dKeys[0]);
+    if (dKeys.length > 1) picked.push(dKeys[1]);
+
+    // 若未滿 limit，按剩餘牌填滿
+    for (let i = 0; i < validKeys.length && picked.length < limit; i++) {
+      if (!picked.includes(validKeys[i])) {
+        picked.push(validKeys[i]);
+      }
+    }
+
+    return picked.slice(0, limit);
   }
 
   function getOppWeights(oppValid, opponentPlayer, oppMovesData) {
     const weights = {};
     let total = 0;
-    const oppId = opponentPlayer && opponentPlayer.id ? opponentPlayer.id : 'human';
-    const prof = (window.globalAIKnowledge && window.globalAIKnowledge.playerProfiles)
-      ? window.globalAIKnowledge.playerProfiles[oppId]
-      : null;
-
-    const attackRatio = prof ? (prof.attackCount / Math.max(1, prof.totalRounds)) : 0.65;
-    const guardRatio = prof ? (prof.guardCount / Math.max(1, prof.totalRounds)) : 0.20;
-
     oppValid.forEach(function (k) {
       const m = oppMovesData[k] || {};
-      let w = 1;
-      if (String(k).startsWith('A') || m.type === 'DEFENSE') {
-        w = 0.4 + guardRatio * 1.5;
-      } else if (String(k).startsWith('S')) {
-        w = 0.8 + attackRatio * 1.6;
-      } else {
-        w = 0.9 + attackRatio * 1.4;
-      }
+      let w = 1.0;
+      if (String(k).startsWith('S')) w = 1.5;
       if ((m.chiCost || 0) > (opponentPlayer.chi || 0)) w = 0.05;
       weights[k] = w;
       total += w;
@@ -397,7 +364,6 @@
     const isOpponentLocked = !!searchOptions.isOpponentLocked;
     const lockedOpponentMoveKey = searchOptions.lockedOpponentMoveKey || null;
 
-    // Configured for Un-Capped Master AI Depth 4 Search
     const selfBeam = searchOptions.selfBeam || (isMaster ? 4 : 8);
     const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
     const nodeLimit = searchOptions.nodeLimit || (isMaster ? 8000 : 900);
@@ -494,7 +460,7 @@
       const isMaster = !!(options.isMaster || options.master);
 
       if (isMaster) {
-        depth = 4; // Fixed depth 4 for Master AI
+        depth = 4;
       } else {
         depth = Math.min(depth, 3);
       }
