@@ -18,6 +18,7 @@
     p2SelectedMoveKey: null,
     p1IsConfirmed: false,
     p2IsConfirmed: false,
+    canContinueFromGameOver: false,
     matchConfig: {},
     videoCache: {},
     input: {},
@@ -49,7 +50,9 @@
     'assets/videos/faint.mp4',
     'assets/videos/dodge.mp4',
     'assets/videos/hit.mp4',
-    'assets/videos/hit_physical.mp4'
+    'assets/videos/hit_physical.mp4',
+    'assets/videos/ko.mp4',
+    'assets/videos/victory.mp4'
   ];
 
   let loadedCount = 0;
@@ -59,13 +62,13 @@
   function updateLoadingProgress() {
     loadedCount++;
     const total = PRELOAD_VIDEOS.length;
-    const pct = Math.min(100, Math.round((loadedCount / total) * 100));
+    const realPct = Math.min(100, Math.round((loadedCount / total) * 100));
 
     const fillEl = document.getElementById('loading-bar-fill');
     const statusEl = document.getElementById('loading-status');
 
-    if (fillEl) fillEl.style.width = `${pct}%`;
-    if (statusEl) statusEl.textContent = `PRELOADING MEDIA ASSETS... ${pct}%`;
+    if (fillEl) fillEl.style.width = `${realPct}%`;
+    if (statusEl) statusEl.textContent = `PRELOADING MEDIA ASSETS... ${realPct}% (${loadedCount}/${total})`;
 
     if (loadedCount >= total && !isPreloadDone) {
       onPreloadComplete();
@@ -73,14 +76,15 @@
   }
 
   function onPreloadComplete() {
+    if (isPreloadDone) return;
     isPreloadDone = true;
 
+    const fillEl = document.getElementById('loading-bar-fill');
     const statusEl = document.getElementById('loading-status');
-    const barWrapper = document.getElementById('loading-bar-wrapper');
     const startPrompt = document.getElementById('start-prompt');
 
-    if (statusEl) statusEl.hidden = true;
-    if (barWrapper) barWrapper.hidden = true;
+    if (fillEl) fillEl.style.width = '100%';
+    if (statusEl) statusEl.textContent = 'PRELOADING COMPLETE! 100%';
     if (startPrompt) startPrompt.hidden = false;
 
     window.addEventListener('pointerdown', handleUserStart, { once: true });
@@ -93,7 +97,9 @@
 
     const loadingScreen = document.getElementById('loading-screen');
     const vsSelectScreen = document.getElementById('vs-select-screen');
+    const startPrompt = document.getElementById('start-prompt');
 
+    if (startPrompt) startPrompt.hidden = true;
     if (loadingScreen) loadingScreen.hidden = true;
     if (vsSelectScreen) vsSelectScreen.hidden = false;
 
@@ -108,31 +114,80 @@
       return;
     }
 
+    window.gameState.videoCache = window.gameState.videoCache || {};
+
     PRELOAD_VIDEOS.forEach(url => {
       fetch(url)
         .then(response => {
           if (response.ok) return response.blob();
-          throw new Error('Network error');
+          throw new Error(`Failed to load ${url}`);
         })
-        .then(() => updateLoadingProgress())
-        .catch(() => updateLoadingProgress());
+        .then(blob => {
+          const objectUrl = URL.createObjectURL(blob);
+          window.gameState.videoCache[url] = objectUrl;
+
+          const fileName = url.split('/').pop();
+          window.gameState.videoCache[fileName] = objectUrl;
+
+          updateLoadingProgress();
+        })
+        .catch(err => {
+          console.warn(`Preload bypassed for asset: ${url}`, err);
+          updateLoadingProgress();
+        });
     });
 
-    // Fallback safety timeout (6s max)
     setTimeout(() => {
       if (!isPreloadDone) {
+        console.warn('Preloader safety timeout reached. Proceeding with game launch.');
         onPreloadComplete();
       }
-    }, 6000);
+    }, 35000);
   }
 
   /* ==========================================================================
-     2. MATCH INITIALIZATION & BATTLE SETUP
+     2. MATCH INITIALIZATION & BATTLE SETUP (CLEAN RESTART)
      ========================================================================== */
+
+  function resetBattleViewportAndVideos() {
+    // Reset video elements and pause lingering playback
+    const videoElements = document.querySelectorAll('video');
+    videoElements.forEach(vid => {
+      try {
+        vid.pause();
+        vid.currentTime = 0;
+      } catch (e) {}
+    });
+
+    // Reset player box blanked state
+    document.querySelectorAll('.player-box').forEach(box => {
+      box.classList.remove('blanked');
+    });
+
+    // Remove leftover damage popups
+    document.querySelectorAll('.damage-popup').forEach(el => el.remove());
+
+    // Reset Banners and Prompts
+    const startPrompt = document.getElementById('start-prompt');
+    if (startPrompt) startPrompt.hidden = true;
+
+    const battleBanner = document.getElementById('battle-banner') || document.querySelector('.battle-banner');
+    if (battleBanner) {
+      battleBanner.textContent = '';
+      battleBanner.style.display = 'none';
+    }
+
+    const actionBanner = document.getElementById('action-sub-banner') || document.querySelector('.action-sub-banner');
+    if (actionBanner) {
+      actionBanner.textContent = '';
+      actionBanner.style.display = 'none';
+    }
+  }
 
   async function startBattle(matchConfig) {
     const cfg = matchConfig || {};
 
+    // Clear all existing intervals
     if (window.cpuChargeIntervals) {
       if (window.cpuChargeIntervals.p1) {
         clearInterval(window.cpuChargeIntervals.p1);
@@ -149,7 +204,11 @@
       roundTimerInterval = null;
     }
 
+    // Clean previous match visuals and states
+    resetBattleViewportAndVideos();
+
     window.gameState.matchConfig = cfg;
+    window.gameState.canContinueFromGameOver = false;
     if (!window.gameState.videoCache) window.gameState.videoCache = {};
 
     window.gameState.p1SelectedMoveKey = null;
@@ -537,7 +596,7 @@
   }
 
   /* ==========================================================================
-     6. KEYBOARD & INPUT EVENT LISTENERS (CANONICAL CHARGE CALCULATIONS)
+     6. INPUT EVENT LISTENERS & GAME OVER RETURN HANDLERS
      ========================================================================== */
 
   function calculateHumanCharge(dir, chargeStartTime) {
@@ -555,6 +614,33 @@
     return Math.min(100, Math.max(10, Math.round((elapsedMs / totalChargeMs) * 100)));
   }
 
+  function handleGameOverReturn() {
+    if (!window.gameState || window.gameState.roundPhase !== 'GAME_OVER' || !window.gameState.canContinueFromGameOver) {
+      return;
+    }
+
+    window.gameState.canContinueFromGameOver = false;
+    window.gameState.roundPhase = 'IDLE';
+
+    resetBattleViewportAndVideos();
+
+    if (typeof window.stopBattleBGM === 'function') window.stopBattleBGM();
+    if (typeof window.playSelectionBGM === 'function') window.playSelectionBGM();
+
+    if (typeof window.returnToCharacterSelection === 'function') {
+      window.returnToCharacterSelection();
+    } else {
+      const selectScreen = document.getElementById('vs-select-screen');
+      const battleScreen = document.getElementById('battle-screen');
+      if (battleScreen) battleScreen.hidden = true;
+      if (selectScreen) selectScreen.hidden = false;
+
+      if (typeof window.initVSSelectScreen === 'function') {
+        window.initVSSelectScreen();
+      }
+    }
+  }
+
   function setupInputListeners() {
     if (window.__gameKeyListenersInstalled) return;
     window.__gameKeyListenersInstalled = true;
@@ -567,6 +653,13 @@
 
     const allHandledCodes = [...p1DirKeys, ...p1ActKeys, ...p2DirKeys, ...p2ActKeys];
 
+    // Pointer/Click listener for GAME OVER screen return
+    document.addEventListener('pointerdown', (e) => {
+      if (window.gameState && window.gameState.roundPhase === 'GAME_OVER' && window.gameState.canContinueFromGameOver) {
+        handleGameOverReturn();
+      }
+    });
+
     document.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       if (!window.gameState) return;
@@ -576,15 +669,7 @@
       }
 
       if (window.gameState.roundPhase === 'GAME_OVER' && window.gameState.canContinueFromGameOver) {
-        if (typeof window.returnToCharacterSelection === 'function') {
-          window.returnToCharacterSelection();
-        } else {
-          const selectScreen = document.getElementById('vs-select-screen');
-          const battleScreen = document.getElementById('battle-screen');
-          if (battleScreen) battleScreen.hidden = true;
-          if (selectScreen) selectScreen.hidden = false;
-          window.gameState.roundPhase = 'IDLE';
-        }
+        handleGameOverReturn();
         return;
       }
 
