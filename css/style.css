@@ -55,15 +55,35 @@ body {
 
 /* PRELOADER / LAUNCH LOADING SCREEN */
 #loading-screen {
+  position: relative;
   z-index: 99999;
   display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
   background: #08090d;
+  overflow: hidden;
+}
+
+/* DULLED BACKGROUND IMAGE OVERLAY */
+#loading-screen::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('IMG_2309.jpeg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: brightness(0.32) contrast(0.85) grayscale(25%);
+  z-index: 0;
 }
 
 .loading-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -91,7 +111,7 @@ body {
 .loading-bar-wrapper {
   width: 100%;
   height: 18px;
-  background: #11141e;
+  background: rgba(17, 20, 30, 0.85);
   border: 2px solid var(--border-cyan);
   border-radius: 4px;
   overflow: hidden;
