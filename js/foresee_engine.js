@@ -238,7 +238,7 @@
     let score = ((selfState.lp - oppState.lp) * W_LP) +
                 ((selfState.chi - oppState.chi) * W_CHI);
 
-    if (selfState.chi < 5) score -= 160 * resourceDiscount; // Increased penalty to strongly discourage staying in low chi
+    if (selfState.chi < 5) score -= 160 * resourceDiscount; // Discourage staying in low chi
     if (oppState.chi < 5) score += 160 * resourceDiscount;  // Reward punishing opponent in low chi
     if (selfState.chi > 14) score += 120 * resourceDiscount;
     if (oppState.chi > 14) score -= 120 * resourceDiscount;
@@ -282,7 +282,6 @@
     const hit = (move.hitChance || 80) / 100;
     let s = dmg * hit;
 
-    // Rebalanced beam ordering: prevent Guard moves from clogging beam slots
     if (move.type === 'DEFENSE') {
       s += (player.faintMeter >= 50) ? -30 : 5;
     }
@@ -398,11 +397,12 @@
     const isOpponentLocked = !!searchOptions.isOpponentLocked;
     const lockedOpponentMoveKey = searchOptions.lockedOpponentMoveKey || null;
 
-    const selfBeam = searchOptions.selfBeam || (isMaster ? 5 : 8);
-    const oppBeam = searchOptions.oppBeam || (isMaster ? 3 : 8);
-    const nodeLimit = searchOptions.nodeLimit || (isMaster ? 3500 : 900);
+    // Configured for Un-Capped Master AI Depth 4 Search
+    const selfBeam = searchOptions.selfBeam || (isMaster ? 4 : 8);
+    const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
+    const nodeLimit = searchOptions.nodeLimit || (isMaster ? 8000 : 900);
+    const timeBudgetMs = searchOptions.timeBudgetMs || (isMaster ? 55 : 15);
     const startTime = Date.now();
-    const timeBudgetMs = searchOptions.timeBudgetMs || (isMaster ? 35 : 15);
 
     let nodes = 0;
 
@@ -494,7 +494,7 @@
       const isMaster = !!(options.isMaster || options.master);
 
       if (isMaster) {
-        depth = Math.min(Math.max(depth, 3), 4);
+        depth = 4; // Fixed depth 4 for Master AI
       } else {
         depth = Math.min(depth, 3);
       }
@@ -506,10 +506,10 @@
         isMaster: isMaster,
         isOpponentLocked: options.isOpponentLocked,
         lockedOpponentMoveKey: options.lockedOpponentMoveKey,
-        selfBeam: options.selfBeam || (isMaster ? 5 : 8),
-        oppBeam: options.oppBeam || (isMaster ? 3 : 8),
-        nodeLimit: options.nodeLimit || (isMaster ? 3500 : 900),
-        timeBudgetMs: options.timeBudgetMs || (isMaster ? 35 : 15)
+        selfBeam: options.selfBeam || (isMaster ? 4 : 8),
+        oppBeam: options.oppBeam || (isMaster ? 2 : 8),
+        nodeLimit: options.nodeLimit || (isMaster ? 8000 : 900),
+        timeBudgetMs: options.timeBudgetMs || (isMaster ? 55 : 15)
       });
 
       window.ForeseeEngine.lastResult = result;
