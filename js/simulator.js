@@ -67,7 +67,7 @@
 
     const diff = String(difficulty || 'normal').toLowerCase();
 
-    /* 1. 支援選單字串配對："master", "aggressive", "hard" */
+    /* 1. ForeseeEngine Integration */
     if (window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
       try {
         if (diff === 'master') {
@@ -82,12 +82,12 @@
       }
     }
 
-    /* 2. Global AI 降級備用 */
+    /* 2. Global AI Fallback */
     if (typeof window.selectCPUMove === 'function') {
       return window.selectCPUMove(cpu, opp, moves, difficulty);
     }
 
-    /* 3. 靜態 Heuristic 防護網 */
+    /* 3. Heuristic Fallback */
     const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
     if (validKeys.length === 0) return 'DO_NOTHING';
 
@@ -413,3 +413,4 @@
   window.runBatchSimulation = runBatchSimulation;
 
 })(window);
+
