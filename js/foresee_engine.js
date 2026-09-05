@@ -60,6 +60,7 @@
     const selfPri = getMoveRangePrioritySim(selfMove);
     const oppPri = getMoveRangePrioritySim(oppMove);
 
+    /* Priority Hierarchy: Range -> Stance Tier -> Lower Charge % -> 50/50 Coin Flip */
     let selfGoesFirst = true;
     if (selfPri !== oppPri) {
       selfGoesFirst = selfPri > oppPri;
@@ -70,7 +71,14 @@
       if (selfStance !== oppStance) {
         selfGoesFirst = selfStance > oppStance;
       } else {
-        selfGoesFirst = Math.random() < 0.5;
+        const selfCharge = selfState.activeChargePercent !== undefined ? selfState.activeChargePercent : 100;
+        const oppCharge = oppState.activeChargePercent !== undefined ? oppState.activeChargePercent : 100;
+
+        if (selfCharge !== oppCharge) {
+          selfGoesFirst = selfCharge < oppCharge;
+        } else {
+          selfGoesFirst = Math.random() < 0.5;
+        }
       }
     }
 
@@ -252,12 +260,11 @@
     const hit = (move.hitChance || 80) / 100;
     let s = dmg * hit;
 
-    if (String(key).startsWith('D')) s += 50; // Ensure physical moves stay prominent in search
+    if (String(key).startsWith('D')) s += 50;
     if (String(key).startsWith('S')) s += cost * 10;
     return s;
   }
 
-  // CORRECTED BEAM KEYS SELECTION LOGIC
   function beamKeys(player, movesData, keys, limit) {
     if (!limit || keys.length <= limit) return keys.slice();
 
@@ -269,17 +276,14 @@
 
     const picked = [];
 
-    // 1. D Move ALWAYS gets candidate slot #1 (Crucial for predicting physical hits)
     if (dKeys.length > 0) picked.push(dKeys[0]);
 
-    // 2. S Special or A Guard gets candidate slot #2
     if (sKeys.length > 0) {
       picked.push(sKeys[0]);
     } else if (aKeys.length > 0) {
       picked.push(aKeys[0]);
     }
 
-    // 3. Populate remaining slots up to limit (Guard / 2nd D move)
     if (aKeys.length > 0 && !picked.includes(aKeys[0])) picked.push(aKeys[0]);
     if (dKeys.length > 1 && !picked.includes(dKeys[1])) picked.push(dKeys[1]);
 
@@ -298,7 +302,7 @@
     oppValid.forEach(function (k) {
       const m = oppMovesData[k] || {};
       let w = 1.0;
-      if (String(k).startsWith('D')) w = 2.0;      // D moves are played most frequently by CPU/Players
+      if (String(k).startsWith('D')) w = 2.0;
       else if (String(k).startsWith('S')) w = 1.5;
       else if (String(k).startsWith('A')) w = 0.8;
 
