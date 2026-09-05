@@ -18,8 +18,22 @@
     <p>This game is designed to be played in Portrait orientation.</p>
   </div>
 
-  <!-- CHARACTER SELECTION SCREEN (VISIBLE ON BOOT) -->
-  <div id="vs-select-screen" class="screen-container">
+  <!-- LAUNCH PRELOADER / LOADING SCREEN -->
+  <div id="loading-screen" class="screen-container">
+    <div class="loading-content">
+      <h1 class="game-launch-title">KAMEN FIGHT</h1>
+      <div id="loading-status" class="loading-status">PRELOADING MEDIA ASSETS... 0%</div>
+      <div id="loading-bar-wrapper" class="loading-bar-wrapper">
+        <div id="loading-bar-fill" class="loading-bar-fill"></div>
+      </div>
+      <div id="start-prompt" class="start-prompt" hidden>
+        PRESS ANY KEY OR TAP TO START
+      </div>
+    </div>
+  </div>
+
+  <!-- CHARACTER SELECTION SCREEN (HIDDEN UNTIL STARTED) -->
+  <div id="vs-select-screen" class="screen-container" hidden>
     <div class="bgm-volume-control">
       <label for="bgm-slider">🔊 BGM:</label>
       <input type="range" id="bgm-slider" min="0" max="1" step="0.05" value="0.5" oninput="changeBGMVolume(this.value)">
@@ -89,7 +103,7 @@
     </div>
   </div>
 
-  <!-- MATCH TRANSITION SPLASH SCREEN (HIDDEN ON BOOT) -->
+  <!-- MATCH TRANSITION SPLASH SCREEN -->
   <div id="match-transition-screen" class="splash-screen" hidden>
     <div class="splash-content">
       <h1 id="splash-round-text">GET READY FOR THE FIGHT!</h1>
@@ -97,7 +111,7 @@
     </div>
   </div>
 
-  <!-- MAIN BATTLE SCREEN (HIDDEN ON BOOT) -->
+  <!-- MAIN BATTLE SCREEN -->
   <div id="battle-screen" class="screen-container" hidden>
 
     <!-- TOP HUD BAR -->
