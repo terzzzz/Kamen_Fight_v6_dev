@@ -53,6 +53,58 @@ body {
   align-items: center;
 }
 
+/* PORTRAIT ORIENTATION LOCK OVERLAY */
+#portrait-orientation-overlay {
+  display: none;
+}
+
+@media screen and (orientation: landscape) and (max-width: 1024px) {
+  #portrait-orientation-overlay {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: #08090d;
+    border: 3px solid #00ffcc;
+    color: #00ffcc;
+    z-index: 999999;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+
+  #portrait-orientation-overlay .rotate-icon {
+    font-size: 3.5rem;
+    margin-bottom: 15px;
+    animation: rotateDeviceAnim 2s infinite ease-in-out;
+  }
+
+  #portrait-orientation-overlay h2 {
+    font-size: 1.4rem;
+    color: #ffcc00;
+    margin-bottom: 8px;
+    text-shadow: 0 0 8px rgba(255, 204, 0, 0.6);
+  }
+
+  #portrait-orientation-overlay p {
+    font-size: 0.95rem;
+    color: #e2e8f0;
+    max-width: 80%;
+  }
+}
+
+@keyframes rotateDeviceAnim {
+  0%, 15% { transform: rotate(0deg); }
+  50%, 65% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
+
 /* FULL-SCREEN CONTAINER */
 .screen-container,
 .splash-screen {
@@ -465,47 +517,6 @@ body {
   }
 }
 
-/* Landscape Layout Adjustments */
-@media (orientation: landscape) {
-  #vs-select-screen {
-    padding-top: max(6px, env(safe-area-inset-top, 0px));
-    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
-  }
-
-  #vs-select-screen h1 {
-    font-size: clamp(0.8rem, 2.4vh, 1.15rem);
-    margin: 2px 0 4px;
-    padding-right: 140px;
-  }
-
-  .portrait-box {
-    max-height: 42dvh;
-    min-height: 70px;
-  }
-
-  .rider-card {
-    padding: 6px;
-    max-height: calc(100dvh - 92px);
-  }
-
-  .vs-divider {
-    margin-top: 12px;
-    font-size: clamp(1.4rem, 6vh, 2.4rem);
-  }
-
-  .selection-actions {
-    margin-top: 4px;
-    gap: 8px;
-  }
-
-  .nav-btn,
-  .action-btn,
-  #sim-count-select {
-    padding: 6px 12px;
-    font-size: 13px;
-  }
-}
-
 /* TOP HUD BAR */
 .hud-bar {
   position: relative;
@@ -688,6 +699,15 @@ body {
   width: 100%;
   letter-spacing: 0.5px;
   flex-shrink: 0;
+  cursor: pointer;
+}
+
+.continue-prompt {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--border-cyan);
+  font-size: 0.85rem;
+  animation: pulseYellow 1.2s infinite alternate;
 }
 
 .action-sub-banner,
