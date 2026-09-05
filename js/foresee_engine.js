@@ -154,6 +154,7 @@
       } else {
         hitRate = (step.move.hitChance || 80) / 100;
         if (isFullPowerAtk) hitRate = Math.min(1.0, hitRate + 0.20);
+        if (isLowPowerDef) hitRate = Math.min(1.0, hitRate + 0.25); // Model Low Chi evasion penalty (+25% hit chance)
         if (step.atk.activeBuffs && step.atk.activeBuffs.some(function (b) {
           return b.id === 'arm_calibration' || b.id === 'red_lamp_boost' || b.id === 'accuracy_focus';
         })) {
@@ -237,8 +238,8 @@
     let score = ((selfState.lp - oppState.lp) * W_LP) +
                 ((selfState.chi - oppState.chi) * W_CHI);
 
-    if (selfState.chi < 5) score -= 90 * resourceDiscount;
-    if (oppState.chi < 5) score += 90 * resourceDiscount;
+    if (selfState.chi < 5) score -= 160 * resourceDiscount; // Increased penalty to strongly discourage staying in low chi
+    if (oppState.chi < 5) score += 160 * resourceDiscount;  // Reward punishing opponent in low chi
     if (selfState.chi > 14) score += 120 * resourceDiscount;
     if (oppState.chi > 14) score -= 120 * resourceDiscount;
 
