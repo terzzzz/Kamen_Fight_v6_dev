@@ -747,7 +747,7 @@ async function executeTurnResolutionPhase() {
   let p2IsIdle = p2MoveKey === 'DO_NOTHING' || p2Move.type === 'IDLE';
   let p1GoesFirst = false;
 
-  /* Priority Hierarchy: Range -> Stance Tier -> 50/50 Coin Flip */
+  /* Priority Hierarchy: Range -> Stance Tier -> Lower Charge % -> 50/50 Coin Flip */
   if (!p1IsIdle && p2IsIdle) {
     p1GoesFirst = true;
   } else if (p1IsIdle && !p2IsIdle) {
@@ -767,7 +767,11 @@ async function executeTurnResolutionPhase() {
       if (p1Stance !== p2Stance) {
         p1GoesFirst = p1Stance > p2Stance;
       } else {
-        p1GoesFirst = Math.random() < 0.5;
+        if (p1Charge !== p2Charge) {
+          p1GoesFirst = p1Charge < p2Charge;
+        } else {
+          p1GoesFirst = Math.random() < 0.5;
+        }
       }
     }
   }
