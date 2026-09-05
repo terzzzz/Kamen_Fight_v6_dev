@@ -72,19 +72,19 @@
     return Math.floor(Math.random() * 11) + 80;
   }
 
-  function selectCPUMoveSim(cpu, opp, moves, difficulty) {
+  function selectCPUMoveSim(cpu, opp, moves, difficulty, currentRound) {
     if (cpu.isFainted) return 'DO_NOTHING';
 
     const diff = String(difficulty || 'normal').toLowerCase();
 
-    /* 1. ForeseeEngine Integration */
+    /* 1. ForeseeEngine Integration with Round Counter */
     if (window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
       try {
         if (diff === 'master') {
-          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: true, depth: 4 });
+          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: true, depth: 4, roundCounter: currentRound });
           if (res && res.moveKey) return res.moveKey;
         } else if (diff === 'hard' || diff === 'aggressive') {
-          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: false, depth: 3 });
+          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: false, depth: 3, roundCounter: currentRound });
           if (res && res.moveKey) return res.moveKey;
         }
       } catch (e) {
@@ -97,8 +97,11 @@
       return window.selectCPUMove(cpu, opp, moves, difficulty);
     }
 
-    /* 3. Heuristic Fallback */
-    const validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
+    /* 3. Heuristic Fallback with Anti-Turtling Logic */
+    let validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
+    if (cpu.chi >= (cpu.maxChi || 16) && validKeys.length > 1) {
+      validKeys = validKeys.filter(k => k !== 'DO_NOTHING');
+    }
     if (validKeys.length === 0) return 'DO_NOTHING';
 
     const sMoves = validKeys.filter(k => k.startsWith('S'));
@@ -109,13 +112,10 @@
       if (opp.isFainted || opp.faintMeter >= 100) {
         if (sMoves.length > 0) return sMoves[0];
       }
-      if (cpu.chi >= 6 && sMoves.length > 0 && Math.random() < 0.65) {
+      if (cpu.chi >= 6 && sMoves.length > 0 && Math.random() < 0.70) {
         return sMoves[Math.floor(Math.random() * sMoves.length)];
       }
-      if (opp.chi >= 6 && aMoves.length > 0 && Math.random() < 0.30) {
-        return aMoves[Math.floor(Math.random() * aMoves.length)];
-      }
-      if (dMoves.length > 0 && Math.random() < 0.70) {
+      if (dMoves.length > 0 && Math.random() < 0.75) {
         return dMoves[Math.floor(Math.random() * dMoves.length)];
       }
     }
@@ -169,8 +169,8 @@
         if (p2Diff === 'hard' || p2Diff === 'aggressive') p2MaxLp = Math.floor(p2MaxLp * hardHpMult);
         if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * masterHpMult);
 
-        let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
-        let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
+        let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, idleStreak: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
+        let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, idleStreak: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
 
         let roundCounter = 1;
         const MAX_ROUNDS = 50;
@@ -195,8 +195,11 @@
             }
           });
 
-          let p1Key = selectCPUMoveSim(p1, p2, p1Moves, p1Diff);
-          let p2Key = selectCPUMoveSim(p2, p1, p2Moves, p2Diff);
+          let p1Key = selectCPUMoveSim(p1, p2, p1Moves, p1Diff, roundCounter);
+          let p2Key = selectCPUMoveSim(p2, p1, p2Moves, p2Diff, roundCounter);
+
+          if (p1Key === 'DO_NOTHING') p1.idleStreak++; else p1.idleStreak = 0;
+          if (p2Key === 'DO_NOTHING') p2.idleStreak++; else p2.idleStreak = 0;
 
           let m1 = getSimMove(p1Moves, p1Key);
           let m2 = getSimMove(p2Moves, p2Key);
