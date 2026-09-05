@@ -10,6 +10,13 @@
   window.battleBGM = window.battleBGM || null;
   window.currentVolume = typeof window.currentVolume === 'number' ? window.currentVolume : 0.5;
 
+  // Available background tracks for selection / matchup screen
+  const SELECTION_BGM_TRACKS = [
+    'assets/sounds/matchup.mp3',
+    'assets/sounds/matchup1.mp3',
+    'assets/sounds/matchup2.mp3'
+  ];
+
   const DIFF_LABELS = {
     easy: 'NOVICE',
     normal: 'BALANCED',
@@ -101,7 +108,11 @@
   window.playSelectionBGM = function() {
     if (window.selectionBGM) return;
     try {
-      window.selectionBGM = new Audio('assets/sounds/matchup.mp3');
+      // Pick a random track from SELECTION_BGM_TRACKS
+      const randomIndex = Math.floor(Math.random() * SELECTION_BGM_TRACKS.length);
+      const randomTrack = SELECTION_BGM_TRACKS[randomIndex];
+
+      window.selectionBGM = new Audio(randomTrack);
       window.selectionBGM.loop = true;
       window.selectionBGM.volume = window.currentVolume;
       const playPromise = window.selectionBGM.play();
