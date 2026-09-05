@@ -28,6 +28,7 @@
       maxLp: p.maxLp || 2300,
       chi: typeof p.chi === 'number' ? p.chi : 0,
       faintMeter: p.faintMeter || 0,
+      idleStreak: p.idleStreak || 0,
       isFainted: !!p.isFainted,
       cashedInFaint: !!p.cashedInFaint,
       wasHitThisTurn: false,
@@ -57,10 +58,15 @@
     nextSelf.chi = Math.max(0, nextSelf.chi - (selfMove.chiCost || 0));
     nextOpp.chi = Math.max(0, nextOpp.chi - (oppMove.chiCost || 0));
 
+    if (selfMoveKey === 'DO_NOTHING' || selfMove.type === 'IDLE') nextSelf.idleStreak++;
+    else nextSelf.idleStreak = 0;
+
+    if (oppMoveKey === 'DO_NOTHING' || oppMove.type === 'IDLE') nextOpp.idleStreak++;
+    else nextOpp.idleStreak = 0;
+
     const selfPri = getMoveRangePrioritySim(selfMove);
     const oppPri = getMoveRangePrioritySim(oppMove);
 
-    /* Priority Hierarchy: Range -> Stance Tier -> Lower Charge % -> 50/50 Coin Flip */
     let selfGoesFirst = true;
     if (selfPri !== oppPri) {
       selfGoesFirst = selfPri > oppPri;
@@ -210,16 +216,21 @@
     return { nextSelf: nextSelf, nextOpp: nextOpp };
   }
 
-  function evaluateLeafState(selfState, oppState, characterWeights, isMaster) {
+  function evaluateLeafState(selfState, oppState, characterWeights, isMaster, currentRound) {
     if (oppState.lp <= 0) return 10000;
     if (selfState.lp <= 0) return -10000;
 
-    const selfMaxLp = selfState.maxLp || 2300;
-    const selfHpRatio = selfState.lp / selfMaxLp;
+    const round = currentRound || (window.gameState ? window.gameState.roundCounter : 1);
+    const roundRatio = Math.min(1.0, Math.max(0.0, round / 50.0));
 
-    let lpUrgencyMultiplier = 1.0;
+    const selfMaxLp = selfState.maxLp || 2300;
+    const oppMaxLp = oppState.maxLp || 2300;
+    const selfHpRatio = selfState.lp / selfMaxLp;
+    const oppHpRatio = oppState.lp / oppMaxLp;
+
+    let lpUrgencyMultiplier = 1.0 + (roundRatio * 1.5);
     if (selfHpRatio < 0.30) {
-      lpUrgencyMultiplier = 1.0 + ((0.30 - selfHpRatio) / 0.30) * 2.0;
+      lpUrgencyMultiplier += ((0.30 - selfHpRatio) / 0.30) * 2.0;
     }
 
     const W_LP = (characterWeights.W_LP || 1.5) * lpUrgencyMultiplier;
@@ -247,6 +258,19 @@
     if (isMaster) {
       if (oppState.faintMeter >= 60 && selfState.chi >= 5) score += 80;
       if (selfState.faintMeter >= 50) score -= (selfState.faintMeter - 40) * 5;
+    }
+
+    // --- ESCALATING 50-ROUND TIME OVER URGENCY & STAGNATION PENALTY ---
+    if (round > 20) {
+      // If losing on LP near round 50, apply massive penalty to defensive/stale states
+      if (selfHpRatio < oppHpRatio) {
+        score -= (oppHpRatio - selfHpRatio) * 400 * roundRatio;
+      }
+    }
+
+    // Penalize holding max Chi without attacking
+    if (selfState.chi >= (selfState.maxChi || 16)) {
+      score -= 150 * roundRatio;
     }
 
     return score;
@@ -378,6 +402,9 @@
     const isOpponentLocked = !!searchOptions.isOpponentLocked;
     const lockedOpponentMoveKey = searchOptions.lockedOpponentMoveKey || null;
 
+    const currentRound = searchOptions.roundCounter || (window.gameState ? window.gameState.roundCounter : 1);
+    const roundRatio = Math.min(1.0, currentRound / 50.0);
+
     const selfBeam = searchOptions.selfBeam || (isMaster ? 4 : 8);
     const oppBeam = searchOptions.oppBeam || (isMaster ? 2 : 8);
     const nodeLimit = searchOptions.nodeLimit || (isMaster ? 8000 : 900);
@@ -387,16 +414,22 @@
     let nodes = 0;
 
     const getValidMoves = function (player, moves) {
-      const valid = Object.keys(moves || {}).filter(function (k) {
+      let valid = Object.keys(moves || {}).filter(function (k) {
         return (moves[k] && (moves[k].chiCost || 0) <= (player.chi || 0));
       });
+
+      // Disable DO_NOTHING completely if Chi is at max
+      if (player.chi >= (player.maxChi || 16) && valid.length > 1) {
+        valid = valid.filter(k => k !== 'DO_NOTHING' && moves[k]?.type !== 'IDLE');
+      }
+
       return valid.length > 0 ? valid : ['DO_NOTHING'];
     };
 
     function searchTree(selfState, oppState, depth) {
       nodes++;
       if (nodes > nodeLimit || (Date.now() - startTime) > timeBudgetMs || depth === 0 || selfState.lp <= 0 || oppState.lp <= 0) {
-        return evaluateLeafState(selfState, oppState, characterWeights, isMaster);
+        return evaluateLeafState(selfState, oppState, characterWeights, isMaster, currentRound);
       }
 
       let selfValid = getValidMoves(selfState, selfMovesData);
@@ -453,6 +486,16 @@
         if (nodes > nodeLimit || (Date.now() - startTime) > timeBudgetMs) break;
       }
 
+      // --- APPLY ESCALATING IDLE & STAGNATION PENALTY ---
+      const isMoveIdle = sMove === 'DO_NOTHING' || (selfMovesData[sMove] && selfMovesData[sMove].type === 'IDLE');
+      if (isMoveIdle) {
+        const escalatingRoundPenalty = roundRatio * 350; // Penalty up to -350 near round 50
+        const idleStreakPenalty = (cpuPlayer.idleStreak || 0) * 120; // Escalates with consecutive idles
+        const maxChiPenalty = (cpuPlayer.chi >= (cpuPlayer.maxChi || 16)) ? 500 : 0;
+
+        moveScore -= (escalatingRoundPenalty + idleStreakPenalty + maxChiPenalty);
+      }
+
       if (moveScore > bestScore) {
         bestScore = moveScore;
         bestMove = sMove;
@@ -479,9 +522,12 @@
         depth = Math.min(depth, 3);
       }
 
+      const currentRound = options.roundCounter || (window.gameState ? window.gameState.roundCounter : 1);
       const oppMovesData = resolveOppMoves(opponentPlayer);
+
       const result = runForeseeSearch(cpuPlayer, opponentPlayer, availableMoves, oppMovesData, {
         maxDepth: depth,
+        roundCounter: currentRound,
         characterWeights: profile.weights || options.characterWeights || {},
         isMaster: isMaster,
         isOpponentLocked: options.isOpponentLocked,
