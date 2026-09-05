@@ -155,7 +155,7 @@
       <div class="player-box" id="p1-box">
         <div id="p1-stun-overlay" class="stun-overlay" hidden>FAINTED!</div>
         <video id="p1-video" autoplay muted playsinline loop></video>
-        <img id="p1-sprite" hidden>
+        <img id="p1-sprite" hidden alt="P1 Sprite">
         <div class="player-charge-container">
           <div class="player-charge-track">
             <div id="p1-charge-fill" class="player-charge-fill" style="width: 0%;"></div>
@@ -171,7 +171,7 @@
       <div class="player-box" id="p2-box">
         <div id="p2-stun-overlay" class="stun-overlay" hidden>FAINTED!</div>
         <video id="p2-video" autoplay muted playsinline loop></video>
-        <img id="p2-sprite" hidden>
+        <img id="p2-sprite" hidden alt="P2 Sprite">
         <div class="player-charge-container">
           <div class="player-charge-track">
             <div id="p2-charge-fill" class="player-charge-fill" style="width: 0%;"></div>
@@ -233,31 +233,18 @@
     </div>
   </div>
 
-<!-- SCRIPT IMPORTS -->
-  <!-- 1. Core Configs & Shared Utilities -->
+  <!-- SCRIPT IMPORTS -->
   <script src="js/common.js"></script>
-  
-  <!-- 2. Storage Manager (Must load before AI.js attempts to read STORAGE_KEYS) -->
   <script src="js/storage.js"></script>
-  
-  <!-- 3. AI & Search Engines (Foresee -> AI -> CPU Controller) -->
   <script src="js/foresee_engine.js"></script>
   <script src="js/ai.js"></script>
   <script src="js/cpu_controller.js"></script>
-  
-  <!-- 4. Game Rules & Video Controller -->
   <script src="js/combat_engine.js"></script>
   <script src="js/media.js"></script>
-  
-  <!-- 5. UI Renderers & Screens (UI defines HUD & default riders for Selection Screen) -->
   <script src="js/ui.js"></script>
   <script src="js/vs_select.js"></script>
-  
-  <!-- 6. Simulation & Match Input Managers -->
   <script src="js/simulator.js"></script>
   <script src="js/match_manager.js"></script>
-  
-  <!-- 7. Main Game Loop Orchestrator -->
   <script src="js/game.js"></script>
 </body>
 
