@@ -126,7 +126,7 @@
           expectedDamageMult = (1 - probGoodGuard) * 0.50;
           defenderChiReward = probGoodGuard * 2 + (1 - probGoodGuard) * 1;
         } else if (atkButton && defKeyStr === ('A+' + atkButton)) {
-          guardSuccess = true;
+          guardWasSuccessful = true; // Fixed reference bug!
           expectedDamageMult = probGoodGuard * 0.25 + (1 - probGoodGuard) * 0.70;
           defenderChiReward = probGoodGuard * 4 + (1 - probGoodGuard) * 2;
         } else {
@@ -221,7 +221,6 @@
     let score = ((selfState.lp - oppState.lp) * W_LP) +
                 ((selfState.chi - oppState.chi) * W_CHI);
 
-    // 平衡 Low Chi 懲罰：由 160 降至 35，避免 AI 產生「不敢用必殺技」的恐懼
     if (selfState.chi < 3) score -= 35;
     if (oppState.chi < 3) score += 35;
 
@@ -231,14 +230,13 @@
     score += (oppFaintVal - selfFaintVal) * W_FAINT;
 
     if (oppState.isFainted || oppState.faintMeter >= 100 || oppState.cashedInFaint) {
-      score += 500; // 高額獎勵趁暈猛攻
+      score += 500;
     }
     if (selfState.isFainted || selfState.faintMeter >= 100 || selfState.cashedInFaint) {
       score -= 500;
     }
 
     if (isMaster) {
-      // 鼓勵當對手 Faint 或暈眩時用 S 大招殺傷
       if (oppState.faintMeter >= 60 && selfState.chi >= 5) score += 80;
       if (selfState.faintMeter >= 50) score -= (selfState.faintMeter - 40) * 5;
     }
@@ -255,7 +253,6 @@
     return dmg * hit;
   }
 
-  // 強制多樣性 Beam 選擇：確保取出的 Candidate 必定包含 D攻、S必殺、A防禦！
   function beamKeys(player, movesData, keys, limit) {
     if (!limit || keys.length <= limit) return keys.slice();
 
@@ -267,15 +264,11 @@
 
     const picked = [];
 
-    // 優先放入 Top 1 S大招 (如有 Chi)
     if (sKeys.length > 0) picked.push(sKeys[0]);
-    // 優先放入 Top 1 A防禦 (確保 Master 能防禦)
     if (aKeys.length > 0) picked.push(aKeys[0]);
-    // 放入 Top 1 & Top 2 D普通攻
     if (dKeys.length > 0) picked.push(dKeys[0]);
     if (dKeys.length > 1) picked.push(dKeys[1]);
 
-    // 若未滿 limit，按剩餘牌填滿
     for (let i = 0; i < validKeys.length && picked.length < limit; i++) {
       if (!picked.includes(validKeys[i])) {
         picked.push(validKeys[i]);
