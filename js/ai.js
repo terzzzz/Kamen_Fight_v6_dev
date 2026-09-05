@@ -3,10 +3,10 @@
  * Path: js/ai.js
  *
  * Difficulties:
- *    easy   = NOVICE
- *    normal = BALANCED
- *    hard   = AGGRESSIVE  (Foresee depth 2 + noise)
- *    master = MASTER      (Foresee depth 4 + safe overrides)
+ *    easy / novice      = NOVICE (Sub-optimal heuristics, low charge)
+ *    normal / balanced  = BALANCED (Rule-based state checks)
+ *    hard / aggressive  = AGGRESSIVE (Foresee depth 3 + noise)
+ *    master             = MASTER (Foresee depth 4 + safe overrides)
  */
 
 window.RIDER_AI_PROFILES = {
@@ -180,7 +180,11 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
 
   if (moveKeys.length === 0) return 'DO_NOTHING';
 
-  const diff = String(difficulty).toLowerCase();
+  let diff = String(difficulty).toLowerCase();
+  if (diff === 'easy') diff = 'novice';
+  if (diff === 'normal') diff = 'balanced';
+  if (diff === 'hard') diff = 'aggressive';
+
   const riderProfile = (window.RIDER_AI_PROFILES && window.RIDER_AI_PROFILES[cpuPlayer.id])
     ? window.RIDER_AI_PROFILES[cpuPlayer.id]
     : { weights: { W_LP: 1.0, W_CHI: 5.0, W_FAINT: 2.0 }, preferredChiGoal: 4 };
@@ -206,7 +210,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
   }
 
   /* ===== NOVICE (easy) ===== */
-  if (diff === 'easy') {
+  if (diff === 'novice') {
     const roll = Math.random();
     if (roll < 0.15) return 'DO_NOTHING';
     const physicalKeys = _getKeysByPrefix(moveKeys, 'D');
@@ -224,7 +228,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
     }
   }
 
-  if ((diff === 'master' || diff === 'hard') && _getKeysByPrefix(moveKeys, 'A').length) {
+  if ((diff === 'master' || diff === 'aggressive') && _getKeysByPrefix(moveKeys, 'A').length) {
     const guardChance = (diff === 'master')
       ? (oppCharge >= 88 ? 0.75 : (oppChi >= 7 ? 0.45 : 0.15))
       : (oppCharge >= 90 ? 0.45 : (oppChi >= 8 ? 0.30 : 0.10));
@@ -239,21 +243,23 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
   }
 
   /* ===== FORESEE SEARCH (Master & Aggressive) ===== */
-  if ((diff === 'master' || diff === 'hard') && window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
+  if ((diff === 'master' || diff === 'aggressive') && window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
     try {
-      const depth = (diff === 'master') ? 4 : 2;
+      const isMaster = (diff === 'master');
+      const depth = isMaster ? 4 : 3;
 
       const result = window.ForeseeEngine.getBestMove(
         cpuPlayer,
         opponentPlayer,
         availableMoves,
         riderProfile,
-        depth
+        depth,
+        { isMaster: isMaster, characterWeights: riderProfile.weights }
       );
 
       let chosenKey = (result && typeof result === 'object' && result.moveKey) ? result.moveKey : result;
 
-      if (diff === 'hard' && Math.random() < 0.25) {
+      if (diff === 'aggressive' && Math.random() < 0.25) {
         const alt = _pickRandom(moveKeys);
         if (alt) chosenKey = alt;
       }
@@ -263,7 +269,7 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
           chosenKey = _pickSafeAlternative(moveKeys, availableMoves, cpuPlayer);
         }
 
-        if (diff === 'hard' && _shouldAvoidSpecial(cpuPlayer, opponentPlayer, chosenKey, availableMoves) && Math.random() < 0.55) {
+        if (diff === 'aggressive' && _shouldAvoidSpecial(cpuPlayer, opponentPlayer, chosenKey, availableMoves) && Math.random() < 0.55) {
           chosenKey = _pickSafeAlternative(moveKeys, availableMoves, cpuPlayer);
         }
 
@@ -357,9 +363,14 @@ window.selectCPUMove = function(cpuPlayer, opponentPlayer, availableMoves, diffi
 
 window.selectCPUMoveAndCharge = function(cpuPlayer, opponentPlayer, slotKey) {
   const movesData = slotKey === 'p1' ? window.gameState?.p1Moves : window.gameState?.p2Moves;
-  const difficulty = slotKey === 'p1'
+  const rawDifficulty = slotKey === 'p1'
     ? (window.gameState?.matchConfig?.p1Difficulty || 'normal')
     : (window.gameState?.matchConfig?.p2Difficulty || 'normal');
+
+  let diff = String(rawDifficulty).toLowerCase();
+  if (diff === 'easy') diff = 'novice';
+  if (diff === 'normal') diff = 'balanced';
+  if (diff === 'hard') diff = 'aggressive';
 
   let availableMoves = {};
   if (movesData) {
@@ -376,20 +387,20 @@ window.selectCPUMoveAndCharge = function(cpuPlayer, opponentPlayer, slotKey) {
     delete cpuPlayer._chosenTargetChargePct;
   }
 
-  const chosenMoveKey = window.selectCPUMove(cpuPlayer, opponentPlayer, availableMoves, difficulty);
+  const chosenMoveKey = window.selectCPUMove(cpuPlayer, opponentPlayer, availableMoves, diff);
 
   let targetChargePct = 85;
   if (typeof window.setUniversalChargeTarget === 'function') {
-    targetChargePct = window.setUniversalChargeTarget(cpuPlayer, chosenMoveKey, difficulty);
+    targetChargePct = window.setUniversalChargeTarget(cpuPlayer, chosenMoveKey, diff);
   } else {
     const isZeroChiGuard = chosenMoveKey.startsWith('A+') && availableMoves[chosenMoveKey] && (availableMoves[chosenMoveKey].chiCost || 0) === 0;
     if (isZeroChiGuard) {
       targetChargePct = 100;
-    } else if (difficulty === 'master') {
+    } else if (diff === 'master') {
       targetChargePct = Math.floor(Math.random() * 4) + 96;
-    } else if (difficulty === 'hard') {
+    } else if (diff === 'aggressive') {
       targetChargePct = Math.floor(Math.random() * 8) + 88;
-    } else if (difficulty === 'easy') {
+    } else if (diff === 'novice') {
       targetChargePct = Math.floor(Math.random() * 16) + 65;
     } else {
       targetChargePct = Math.floor(Math.random() * 11) + 80;
