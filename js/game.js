@@ -1,5 +1,5 @@
 /**
- * Primary Game Orchestrator, UI Controller & Input Handler Engine
+ * Primary Game Orchestrator, UI Controller, Preloader & Input Engine
  * Path: js/game.js
  */
 
@@ -28,7 +28,106 @@
   let remainingRoundTime = 8.0;
 
   /* ==========================================================================
-     1. MATCH INITIALIZATION & BATTLE SETUP
+     1. LAUNCH PRELOADER & ASSET BUFFERING ENGINE
+     ========================================================================== */
+
+  const PRELOAD_VIDEOS = [
+    'assets/videos/idle.mp4',
+    'assets/videos/punch.mp4',
+    'assets/videos/kick.mp4',
+    'assets/videos/combo_punch.mp4',
+    'assets/videos/combo_kick.mp4',
+    'assets/videos/power_chop.mp4',
+    'assets/videos/head_crusher.mp4',
+    'assets/videos/rider_kick.mp4',
+    'assets/videos/kirimomi_kick.mp4',
+    'assets/videos/windmill_guard.mp4',
+    'assets/videos/guard.mp4',
+    'assets/videos/jump.mp4',
+    'assets/videos/charge_up.mp4',
+    'assets/videos/mind.mp4',
+    'assets/videos/faint.mp4',
+    'assets/videos/dodge.mp4',
+    'assets/videos/hit.mp4',
+    'assets/videos/hit_physical.mp4'
+  ];
+
+  let loadedCount = 0;
+  let isPreloadDone = false;
+  let isGameStarted = false;
+
+  function updateLoadingProgress() {
+    loadedCount++;
+    const total = PRELOAD_VIDEOS.length;
+    const pct = Math.min(100, Math.round((loadedCount / total) * 100));
+
+    const fillEl = document.getElementById('loading-bar-fill');
+    const statusEl = document.getElementById('loading-status');
+
+    if (fillEl) fillEl.style.width = `${pct}%`;
+    if (statusEl) statusEl.textContent = `PRELOADING MEDIA ASSETS... ${pct}%`;
+
+    if (loadedCount >= total && !isPreloadDone) {
+      onPreloadComplete();
+    }
+  }
+
+  function onPreloadComplete() {
+    isPreloadDone = true;
+
+    const statusEl = document.getElementById('loading-status');
+    const barWrapper = document.getElementById('loading-bar-wrapper');
+    const startPrompt = document.getElementById('start-prompt');
+
+    if (statusEl) statusEl.hidden = true;
+    if (barWrapper) barWrapper.hidden = true;
+    if (startPrompt) startPrompt.hidden = false;
+
+    window.addEventListener('pointerdown', handleUserStart, { once: true });
+    window.addEventListener('keydown', handleUserStart, { once: true });
+  }
+
+  function handleUserStart() {
+    if (isGameStarted) return;
+    isGameStarted = true;
+
+    const loadingScreen = document.getElementById('loading-screen');
+    const vsSelectScreen = document.getElementById('vs-select-screen');
+
+    if (loadingScreen) loadingScreen.hidden = true;
+    if (vsSelectScreen) vsSelectScreen.hidden = false;
+
+    if (typeof window.initVSSelectScreen === 'function') {
+      window.initVSSelectScreen();
+    }
+  }
+
+  function startPreloading() {
+    if (!PRELOAD_VIDEOS || PRELOAD_VIDEOS.length === 0) {
+      onPreloadComplete();
+      return;
+    }
+
+    PRELOAD_VIDEOS.forEach(url => {
+      fetch(url)
+        .then(response => {
+          if (response.ok) return response.blob();
+          throw new Error('Network error');
+        })
+        .then(() => updateLoadingProgress())
+        .catch(() => updateLoadingProgress());
+    });
+
+    // Fallback safety timeout (6s max)
+    setTimeout(() => {
+      if (!isPreloadDone) {
+        onPreloadComplete();
+      }
+    }, 6000);
+  }
+
+  /* ==========================================================================
+     2. MATCH INITIALIZATION & BATTLE SETUP
      ========================================================================== */
 
   async function startBattle(matchConfig) {
@@ -187,7 +286,7 @@
   }
 
   /* ==========================================================================
-     2. CONTROL PANEL VISIBILITY TOGGLE (PRESERVES CHARGE BARS)
+     3. CONTROL PANEL VISIBILITY TOGGLE (PRESERVES CHARGE BARS)
      ========================================================================== */
 
   function updateControlPanelsVisibility() {
@@ -248,7 +347,7 @@
   }
 
   /* ==========================================================================
-     3. ROUND TIMER & INPUT PHASE CONTROL
+     4. ROUND TIMER & INPUT PHASE CONTROL
      ========================================================================== */
 
   function launchRoundTimer() {
@@ -338,13 +437,12 @@
   }
 
   /* ==========================================================================
-     4. HUD DISPLAY ENGINE
+     5. HUD DISPLAY ENGINE
      ========================================================================== */
 
   function updatePlayerHUD(slotKey, player) {
     if (!player) return;
 
-    // Delegate to unified UI controller if present
     if (window.UI && typeof window.UI.updatePlayerHUD === 'function') {
       window.UI.updatePlayerHUD(slotKey, player);
       return;
@@ -439,7 +537,7 @@
   }
 
   /* ==========================================================================
-     5. KEYBOARD & INPUT EVENT LISTENERS (CANONICAL CHARGE CALCULATIONS)
+     6. KEYBOARD & INPUT EVENT LISTENERS (CANONICAL CHARGE CALCULATIONS)
      ========================================================================== */
 
   function calculateHumanCharge(dir, chargeStartTime) {
@@ -478,11 +576,15 @@
       }
 
       if (window.gameState.roundPhase === 'GAME_OVER' && window.gameState.canContinueFromGameOver) {
-        const selectScreen = document.getElementById('vs-select-screen');
-        const battleScreen = document.getElementById('battle-screen');
-        if (battleScreen) battleScreen.hidden = true;
-        if (selectScreen) selectScreen.hidden = false;
-        window.gameState.roundPhase = 'IDLE';
+        if (typeof window.returnToCharacterSelection === 'function') {
+          window.returnToCharacterSelection();
+        } else {
+          const selectScreen = document.getElementById('vs-select-screen');
+          const battleScreen = document.getElementById('battle-screen');
+          if (battleScreen) battleScreen.hidden = true;
+          if (selectScreen) selectScreen.hidden = false;
+          window.gameState.roundPhase = 'IDLE';
+        }
         return;
       }
 
@@ -571,14 +673,19 @@
     });
   }
 
+  // Initialize preloader & input handling on DOM ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupInputListeners);
+    document.addEventListener('DOMContentLoaded', () => {
+      setupInputListeners();
+      startPreloading();
+    });
   } else {
     setupInputListeners();
+    startPreloading();
   }
 
   /* ==========================================================================
-     6. EXPORTS
+     7. EXPORTS
      ========================================================================== */
 
   window.startBattle = startBattle;
