@@ -83,7 +83,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     if (chi < 5) {
       activeTags.push({
         id: 'low_power_tag',
-        label: 'LOW POWER (DEF -25%)',
+        label: 'LOW POWER (DEF -25%, EVA -25%)',
         type: 'debuff-low-power'
       });
     } else if (chi > 14) {
