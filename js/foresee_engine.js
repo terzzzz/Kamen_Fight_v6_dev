@@ -126,7 +126,7 @@
           expectedDamageMult = (1 - probGoodGuard) * 0.50;
           defenderChiReward = probGoodGuard * 2 + (1 - probGoodGuard) * 1;
         } else if (atkButton && defKeyStr === ('A+' + atkButton)) {
-          guardWasSuccessful = true; // Fixed reference bug!
+          guardWasSuccessful = true;
           expectedDamageMult = probGoodGuard * 0.25 + (1 - probGoodGuard) * 0.70;
           defenderChiReward = probGoodGuard * 4 + (1 - probGoodGuard) * 2;
         } else {
@@ -250,9 +250,14 @@
     if (cost > (player.chi || 0)) return -9999;
     const dmg = move.baseDamage || 0;
     const hit = (move.hitChance || 80) / 100;
-    return dmg * hit;
+    let s = dmg * hit;
+
+    if (String(key).startsWith('D')) s += 50; // Ensure physical moves stay prominent in search
+    if (String(key).startsWith('S')) s += cost * 10;
+    return s;
   }
 
+  // CORRECTED BEAM KEYS SELECTION LOGIC
   function beamKeys(player, movesData, keys, limit) {
     if (!limit || keys.length <= limit) return keys.slice();
 
@@ -264,10 +269,19 @@
 
     const picked = [];
 
-    if (sKeys.length > 0) picked.push(sKeys[0]);
-    if (aKeys.length > 0) picked.push(aKeys[0]);
+    // 1. D Move ALWAYS gets candidate slot #1 (Crucial for predicting physical hits)
     if (dKeys.length > 0) picked.push(dKeys[0]);
-    if (dKeys.length > 1) picked.push(dKeys[1]);
+
+    // 2. S Special or A Guard gets candidate slot #2
+    if (sKeys.length > 0) {
+      picked.push(sKeys[0]);
+    } else if (aKeys.length > 0) {
+      picked.push(aKeys[0]);
+    }
+
+    // 3. Populate remaining slots up to limit (Guard / 2nd D move)
+    if (aKeys.length > 0 && !picked.includes(aKeys[0])) picked.push(aKeys[0]);
+    if (dKeys.length > 1 && !picked.includes(dKeys[1])) picked.push(dKeys[1]);
 
     for (let i = 0; i < validKeys.length && picked.length < limit; i++) {
       if (!picked.includes(validKeys[i])) {
@@ -284,7 +298,10 @@
     oppValid.forEach(function (k) {
       const m = oppMovesData[k] || {};
       let w = 1.0;
-      if (String(k).startsWith('S')) w = 1.5;
+      if (String(k).startsWith('D')) w = 2.0;      // D moves are played most frequently by CPU/Players
+      else if (String(k).startsWith('S')) w = 1.5;
+      else if (String(k).startsWith('A')) w = 0.8;
+
       if ((m.chiCost || 0) > (opponentPlayer.chi || 0)) w = 0.05;
       weights[k] = w;
       total += w;
