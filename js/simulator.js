@@ -245,6 +245,7 @@
 
             let hitChance = mFirst.hitChance || 80;
             if (first.chi > 14) hitChance = Math.min(100, hitChance + 20);
+            if (second.chi < 5) hitChance = Math.min(100, hitChance + 25); // Low Chi evasion penalty (+25% hit chance)
 
             let hitRoll = second.isFainted || isSecondIdle || isSecondGuarding || (Math.random() * 100 < hitChance);
 
@@ -312,6 +313,7 @@
 
             let hitChance = mSecond.hitChance || 80;
             if (second.chi > 14) hitChance = Math.min(100, hitChance + 20);
+            if (first.chi < 5) hitChance = Math.min(100, hitChance + 25); // Low Chi evasion penalty (+25% hit chance)
 
             let hitRoll = first.isFainted || isFirstIdle || isFirstGuarding || (Math.random() * 100 < hitChance);
 
