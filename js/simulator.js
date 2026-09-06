@@ -1,445 +1,188 @@
-/**
- * Synchronized Headless Match Simulator Engine
- * Path: js/simulator.js
- */
+(function (g) {
+  "use strict";
 
-(function (window) {
-  'use strict';
+  const K = g.KF;
+  const C = g.CombatCore;
 
-  let cachedSimulatorMoves = null;
+  async function playMatch(
+    rider1,
+    rider2,
+    moves,
+    difficulty1,
+    difficulty2,
+    seed,
+    capture = false
+  ) {
+    let state = C.createMatch(rider1, rider2, moves);
+    let history = [];
 
-  function deepClone(obj) {
-    if (!obj) return {};
-    return JSON.parse(JSON.stringify(obj));
-  }
+    const initial = capture ? C.copyState(state) : null;
+    const turns = [];
+    const rng = K.rng(K.hash(seed, "combat"));
 
-  async function loadSimulatorMoves() {
-    if (cachedSimulatorMoves) return cachedSimulatorMoves;
+    let rounds = 0;
 
-    try {
-      const res = await fetch('data/moves.json');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Object.keys(data).length > 0) {
-          cachedSimulatorMoves = deepClone(data);
-          return cachedSimulatorMoves;
-        }
+    while (!state.winner) {
+      const snapshot = C.copyState(state);
+
+      const [decision1, decision2] = await Promise.all([
+        g.AIService.plan({
+          state: snapshot,
+          slot: "p1",
+          difficulty: difficulty1,
+          history,
+          seed: K.hash(seed, "decision", state.round, "p1")
+        }),
+
+        g.AIService.plan({
+          state: snapshot,
+          slot: "p2",
+          difficulty: difficulty2,
+          history,
+          seed: K.hash(seed, "decision", state.round, "p2")
+        })
+      ]);
+
+      const result = C.resolve(
+        state,
+        decision1.action,
+        decision2.action,
+        rng,
+        false
+      );
+
+      history = g.KF_AI.remember(history, state, result.actions);
+
+      if (capture) {
+        turns.push({
+          p1: { ...result.actions.p1 },
+          p2: { ...result.actions.p2 }
+        });
       }
-    } catch (e) {
-      console.warn("Simulator: Could not load data/moves.json, using fallback roster.");
+
+      state = result.state;
+      rounds++;
+
+      if (rounds > g.COMBAT_RULES.MAX_ROUNDS) {
+        throw new Error("Simulation exceeded the round limit.");
+      }
+
+      await K.wait(0);
     }
-
-    const fallback = typeof window.FALLBACK_ICHIGO_MOVES !== 'undefined' ? window.FALLBACK_ICHIGO_MOVES : {};
-    cachedSimulatorMoves = {
-      'ichigo': deepClone(fallback),
-      'nigo': deepClone(fallback),
-      'v3': deepClone(fallback),
-      'riderman': deepClone(fallback),
-      'x': deepClone(fallback)
-    };
-    return cachedSimulatorMoves;
-  }
-
-  function getSimMove(moves, key) {
-    if (moves && moves[key]) return moves[key];
-    if (key === 'DO_NOTHING') return { name: "Do Nothing", type: "IDLE", chiCost: 0, baseDamage: 0, hitChance: 100 };
-    return { name: "Standard Punch", type: "PHYSICAL", chiCost: 0, baseDamage: 66, hitChance: 85 };
-  }
-
-  function getSimMovePriority(move) {
-    if (!move) return 1;
-    const range = (move.rangeType || 'MELEE').toUpperCase();
-    if (range === 'PROJECTILE') return 3;
-    if (range === 'REACH' || range === 'ROPE' || range === 'MID_RANGE') return 2;
-    return 1;
-  }
-
-  function getSimStanceTier(key) {
-    if (typeof key !== 'string') return 0;
-    if (key.startsWith('S')) return 3;
-    if (key.startsWith('W')) return 2;
-    if (key.startsWith('D')) return 1;
-    return 0;
-  }
-
-  function generateSimChargePercent(moveKey, moveData, difficulty) {
-    const isZeroChiGuard = moveKey.startsWith('A+') && (moveData?.chiCost || 0) === 0;
-    if (isZeroChiGuard) return 100;
-    const diff = String(difficulty || 'normal').toLowerCase();
-    if (diff === 'master') return Math.floor(Math.random() * 4) + 96;
-    if (diff === 'hard' || diff === 'aggressive') return Math.floor(Math.random() * 8) + 88;
-    if (diff === 'novice' || diff === 'easy') return Math.floor(Math.random() * 16) + 65;
-    return Math.floor(Math.random() * 11) + 80;
-  }
-
-  function selectCPUMoveSim(cpu, opp, moves, difficulty, currentRound) {
-    if (cpu.isFainted) return 'DO_NOTHING';
-
-    const diff = String(difficulty || 'normal').toLowerCase();
-
-    /* 1. ForeseeEngine Integration with Round Counter */
-    if (window.ForeseeEngine && typeof window.ForeseeEngine.getBestMove === 'function') {
-      try {
-        if (diff === 'master') {
-          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: true, depth: 4, roundCounter: currentRound });
-          if (res && res.moveKey) return res.moveKey;
-        } else if (diff === 'hard' || diff === 'aggressive') {
-          const res = window.ForeseeEngine.getBestMove(cpu, opp, moves, { isMaster: false, depth: 3, roundCounter: currentRound });
-          if (res && res.moveKey) return res.moveKey;
-        }
-      } catch (e) {
-        console.error("ForeseeEngine exception caught in simulator:", e);
-      }
-    }
-
-    /* 2. Global AI Fallback */
-    if (typeof window.selectCPUMove === 'function') {
-      return window.selectCPUMove(cpu, opp, moves, difficulty);
-    }
-
-    /* 3. Heuristic Fallback with Anti-Turtling Logic */
-    let validKeys = Object.keys(moves || {}).filter(k => (moves[k]?.chiCost || 0) <= cpu.chi);
-    if (cpu.chi >= (cpu.maxChi || 16) && validKeys.length > 1) {
-      validKeys = validKeys.filter(k => k !== 'DO_NOTHING');
-    }
-    if (validKeys.length === 0) return 'DO_NOTHING';
-
-    const sMoves = validKeys.filter(k => k.startsWith('S'));
-    const dMoves = validKeys.filter(k => k.startsWith('D'));
-    const aMoves = validKeys.filter(k => k.startsWith('A'));
-
-    if (diff === 'master' || diff === 'hard' || diff === 'aggressive' || diff === 'normal' || diff === 'balanced') {
-      if (opp.isFainted || opp.faintMeter >= 100) {
-        if (sMoves.length > 0) return sMoves[0];
-      }
-      if (cpu.chi >= 6 && sMoves.length > 0 && Math.random() < 0.70) {
-        return sMoves[Math.floor(Math.random() * sMoves.length)];
-      }
-      if (dMoves.length > 0 && Math.random() < 0.75) {
-        return dMoves[Math.floor(Math.random() * dMoves.length)];
-      }
-    }
-
-    return validKeys[Math.floor(Math.random() * validKeys.length)];
-  }
-
-  async function runBatchSimulation(p1Rider, p2Rider, count = 50, p1Difficulty = 'normal', p2Difficulty = 'normal', progressCallback = null) {
-    const startTimeMs = performance.now();
-    const allMoves = await loadSimulatorMoves();
-    const rules = window.COMBAT_RULES || { STARTING_CHI: 8, MAX_CHI: 16, FAINT_THRESHOLD: 100, HIT_BUILDUP: 25, ROUND_RECOVERY: 13 };
-    
-    const hardHpMult = (window.GAME_CONFIG && window.GAME_CONFIG.HARD_CPU_HP_MULTIPLIER) || 1.10;
-    const masterHpMult = (window.GAME_CONFIG && window.GAME_CONFIG.MASTER_CPU_HP_MULTIPLIER) || 1.18;
-    const hardDmgMult = (window.GAME_CONFIG && window.GAME_CONFIG.HARD_CPU_DMG_MULTIPLIER) || 1.10;
-    const masterDmgMult = (window.GAME_CONFIG && window.GAME_CONFIG.MASTER_CPU_DMG_MULTIPLIER) || 1.15;
-
-    const p1Diff = String(p1Difficulty || 'normal').toLowerCase();
-    const p2Diff = String(p2Difficulty || 'normal').toLowerCase();
-
-    const p1Moves = deepClone((allMoves && allMoves[p1Rider.id]) || allMoves['ichigo'] || {});
-    const p2Moves = deepClone((allMoves && allMoves[p2Rider.id]) || allMoves['ichigo'] || {});
-
-    const stats = {
-      totalMatches: count,
-      p1Wins: 0,
-      p2Wins: 0,
-      draws: 0,
-      totalRounds: 0,
-      p1EndLpSum: 0,
-      p2EndLpSum: 0,
-      p1EndChiSum: 0,
-      p2EndChiSum: 0
-    };
-
-    for (let matchIndex = 0; matchIndex < count; matchIndex++) {
-      if (matchIndex % 2 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
-
-      if (typeof progressCallback === 'function') {
-        progressCallback(matchIndex + 1, count);
-      }
-
-      try {
-        let p1MaxLp = p1Rider.maxLp || 2300;
-        if (p1Diff === 'hard' || p1Diff === 'aggressive') p1MaxLp = Math.floor(p1MaxLp * hardHpMult);
-        if (p1Diff === 'master') p1MaxLp = Math.floor(p1MaxLp * masterHpMult);
-
-        let p2MaxLp = p2Rider.maxLp || 2500;
-        if (p2Diff === 'hard' || p2Diff === 'aggressive') p2MaxLp = Math.floor(p2MaxLp * hardHpMult);
-        if (p2Diff === 'master') p2MaxLp = Math.floor(p2MaxLp * masterHpMult);
-
-        let p1 = { id: p1Rider.id || 'ichigo', name: p1Rider.name || 'P1', isCPU: true, difficulty: p1Diff, maxLp: p1MaxLp, lp: p1MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, idleStreak: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
-        let p2 = { id: p2Rider.id || 'nigo', name: p2Rider.name || 'P2', isCPU: true, difficulty: p2Diff, maxLp: p2MaxLp, lp: p2MaxLp, chi: rules.STARTING_CHI || 8, maxChi: rules.MAX_CHI || 16, faintMeter: 0, idleStreak: 0, isFainted: false, willBeFainted: false, activeChargePercent: 100 };
-
-        let roundCounter = 1;
-        const MAX_ROUNDS = 50;
-
-        while (p1.lp > 0 && p2.lp > 0 && roundCounter <= MAX_ROUNDS) {
-          if (roundCounter > 1) {
-            p1.chi = Math.min(p1.maxChi, p1.chi + 1);
-            p2.chi = Math.min(p2.maxChi, p2.chi + 1);
-          }
-
-          let p1HitThisTurn = false;
-          let p2HitThisTurn = false;
-
-          [p1, p2].forEach(p => {
-            if (p.willBeFainted) {
-              p.isFainted = true;
-              p.willBeFainted = false;
-              p.faintMeter = rules.FAINT_THRESHOLD;
-            } else if (p.isFainted) {
-              p.isFainted = false;
-              p.faintMeter = 0;
-            }
-          });
-
-          let p1Key = selectCPUMoveSim(p1, p2, p1Moves, p1Diff, roundCounter);
-          let p2Key = selectCPUMoveSim(p2, p1, p2Moves, p2Diff, roundCounter);
-
-          if (p1Key === 'DO_NOTHING') p1.idleStreak++; else p1.idleStreak = 0;
-          if (p2Key === 'DO_NOTHING') p2.idleStreak++; else p2.idleStreak = 0;
-
-          let m1 = getSimMove(p1Moves, p1Key);
-          let m2 = getSimMove(p2Moves, p2Key);
-
-          p1.activeChargePercent = generateSimChargePercent(p1Key, m1, p1Diff);
-          p2.activeChargePercent = generateSimChargePercent(p2Key, m2, p2Diff);
-
-          let p1IsIdle = p1Key === 'DO_NOTHING' || m1.type === 'IDLE';
-          let p2IsIdle = p2Key === 'DO_NOTHING' || m2.type === 'IDLE';
-
-          let p1GoesFirst = false;
-
-          /* Priority Hierarchy: Range -> Stance Tier -> Lower Charge % -> 50/50 Coin Flip */
-          if (!p1IsIdle && p2IsIdle) {
-            p1GoesFirst = true;
-          } else if (p1IsIdle && !p2IsIdle) {
-            p1GoesFirst = false;
-          } else if (p1IsIdle && p2IsIdle) {
-            p1GoesFirst = Math.random() < 0.5;
-          } else {
-            let p1Pri = getSimMovePriority(m1);
-            let p2Pri = getSimMovePriority(m2);
-
-            if (p1Pri !== p2Pri) {
-              p1GoesFirst = p1Pri > p2Pri;
-            } else {
-              let p1Stance = getSimStanceTier(p1Key);
-              let p2Stance = getSimStanceTier(p2Key);
-
-              if (p1Stance !== p2Stance) {
-                p1GoesFirst = p1Stance > p2Stance;
-              } else {
-                let p1Charge = p1.activeChargePercent !== undefined ? p1.activeChargePercent : 100;
-                let p2Charge = p2.activeChargePercent !== undefined ? p2.activeChargePercent : 100;
-
-                if (p1Charge !== p2Charge) {
-                  p1GoesFirst = p1Charge < p2Charge;
-                } else {
-                  p1GoesFirst = Math.random() < 0.5;
-                }
-              }
-            }
-          }
-
-          let first = p1GoesFirst ? p1 : p2;
-          let second = p1GoesFirst ? p2 : p1;
-          let mFirst = p1GoesFirst ? m1 : m2;
-          let mSecond = p1GoesFirst ? m2 : m1;
-          let keyFirst = p1GoesFirst ? p1Key : p2Key;
-          let keySecond = p1GoesFirst ? p2Key : p1Key;
-
-          let firstInterrupted = false;
-
-          first.chi = Math.max(0, first.chi - (mFirst.chiCost || 0));
-          if (mFirst.faintRecovery && first.faintMeter > 0) {
-            first.faintMeter = Math.max(0, first.faintMeter - mFirst.faintRecovery);
-          }
-
-          if (mFirst.baseDamage > 0 && keyFirst !== 'DO_NOTHING' && !first.isFainted) {
-            let isSecondGuarding = mSecond.type === 'DEFENSE' && !second.isFainted;
-            let isSecondIdle = keySecond === 'DO_NOTHING' || mSecond.type === 'IDLE';
-
-            let hitChance = mFirst.hitChance || 80;
-            if (first.chi > 14) hitChance = Math.min(100, hitChance + 20);
-            if (second.chi < 5) hitChance = Math.min(100, hitChance + 25);
-
-            let hitRoll = second.isFainted || isSecondIdle || isSecondGuarding || (Math.random() * 100 < hitChance);
-
-            if (hitRoll) {
-              let damageMult = 1.0;
-              let guardSuccess = false;
-
-              if (isSecondGuarding) {
-                const atkButton = keyFirst.includes('+') ? keyFirst.split('+')[1] : null;
-                const isSpecialGuard = keySecond === 'A+I' || mSecond.name === 'Windmill Guard' || mSecond.isSpecialGuard === true;
-
-                const defenderChargeRatio = Math.min(1.0, Math.max(0.0, (second.activeChargePercent !== undefined ? second.activeChargePercent : 100) / 100));
-                const defenderChargeFactor = Math.sqrt(0.5 + (0.5 * defenderChargeRatio));
-                const probGood = Math.random() < (0.70 * defenderChargeFactor);
-
-                if (isSpecialGuard) {
-                  guardSuccess = true;
-                  damageMult = probGood ? 0.0 : 0.50;
-                  second.chi = Math.min(second.maxChi, second.chi + (probGood ? 2 : 1));
-                } else if (atkButton && keySecond === `A+${atkButton}`) {
-                  guardSuccess = true;
-                  damageMult = probGood ? 0.25 : 0.70;
-                  second.chi = Math.min(second.maxChi, second.chi + (probGood ? 4 : 2));
-                } else {
-                  guardSuccess = false;
-                  damageMult = 1.0;
-                }
-              }
-
-              let baseDmg = mFirst.baseDamage || 60;
-              if (first.chi > 14) baseDmg *= 1.20;
-              if (second.chi < 5) baseDmg *= 1.25;
-              if (first.difficulty === 'master') baseDmg *= masterDmgMult;
-              else if (first.difficulty === 'hard' || first.difficulty === 'aggressive') baseDmg *= hardDmgMult;
-
-              let dmg = Math.floor(baseDmg * damageMult);
-              second.lp = Math.max(0, second.lp - dmg);
-
-              if (!isSecondGuarding || !guardSuccess) {
-                firstInterrupted = true;
-              }
-
-              if (!second.isFainted && !guardSuccess) {
-                let faintDmg = mFirst.baseFaintDamage || rules.HIT_BUILDUP || 25;
-                if (second.chi < 5) faintDmg *= 1.25;
-                second.faintMeter += faintDmg;
-                if (p1GoesFirst) p2HitThisTurn = true; else p1HitThisTurn = true;
-
-                if (second.faintMeter >= rules.FAINT_THRESHOLD) {
-                  second.isFainted = true;
-                  second.willBeFainted = true;
-                }
-              }
-
-              if (keyFirst.startsWith('D')) first.chi = Math.min(first.maxChi, first.chi + 2);
-              if (mFirst.chiRefundOnHit) first.chi = Math.min(first.maxChi, first.chi + mFirst.chiRefundOnHit);
-            }
-          }
-
-          second.chi = Math.max(0, second.chi - (mSecond.chiCost || 0));
-          if (mSecond.faintRecovery && second.faintMeter > 0) {
-            second.faintMeter = Math.max(0, second.faintMeter - mSecond.faintRecovery);
-          }
-
-          if (second.lp > 0 && mSecond.baseDamage > 0 && keySecond !== 'DO_NOTHING' && !second.isFainted && !firstInterrupted) {
-            let isFirstGuarding = mFirst.type === 'DEFENSE' && !first.isFainted;
-            let isFirstIdle = keyFirst === 'DO_NOTHING' || mFirst.type === 'IDLE';
-
-            let hitChance = mSecond.hitChance || 80;
-            if (second.chi > 14) hitChance = Math.min(100, hitChance + 20);
-            if (first.chi < 5) hitChance = Math.min(100, hitChance + 25);
-
-            let hitRoll = first.isFainted || isFirstIdle || isFirstGuarding || (Math.random() * 100 < hitChance);
-
-            if (hitRoll) {
-              let damageMult = 1.0;
-              let guardSuccess = false;
-
-              if (isFirstGuarding) {
-                const atkButton = keySecond.includes('+') ? keySecond.split('+')[1] : null;
-                const isSpecialGuard = keyFirst === 'A+I' || mFirst.name === 'Windmill Guard' || mFirst.isSpecialGuard === true;
-
-                const defenderChargeRatio = Math.min(1.0, Math.max(0.0, (first.activeChargePercent !== undefined ? first.activeChargePercent : 100) / 100));
-                const defenderChargeFactor = Math.sqrt(0.5 + (0.5 * defenderChargeRatio));
-                const probGood = Math.random() < (0.70 * defenderChargeFactor);
-
-                if (isSpecialGuard) {
-                  guardSuccess = true;
-                  damageMult = probGood ? 0.0 : 0.50;
-                  first.chi = Math.min(first.maxChi, first.chi + (probGood ? 2 : 1));
-                } else if (atkButton && keyFirst === `A+${atkButton}`) {
-                  guardSuccess = true;
-                  damageMult = probGood ? 0.25 : 0.70;
-                  first.chi = Math.min(first.maxChi, first.chi + (probGood ? 4 : 2));
-                } else {
-                  guardSuccess = false;
-                  damageMult = 1.0;
-                }
-              }
-
-              let baseDmg = mSecond.baseDamage || 60;
-              if (second.chi > 14) baseDmg *= 1.20;
-              if (first.chi < 5) baseDmg *= 1.25;
-              if (second.difficulty === 'master') baseDmg *= masterDmgMult;
-              else if (second.difficulty === 'hard' || second.difficulty === 'aggressive') baseDmg *= hardDmgMult;
-
-              let dmg = Math.floor(baseDmg * damageMult);
-              first.lp = Math.max(0, first.lp - dmg);
-
-              if (!first.isFainted && !guardSuccess) {
-                let faintDmg = mSecond.baseFaintDamage || rules.HIT_BUILDUP || 25;
-                if (first.chi < 5) faintDmg *= 1.25;
-                first.faintMeter += faintDmg;
-                if (p1GoesFirst) p1HitThisTurn = true; else p2HitThisTurn = true;
-
-                if (first.faintMeter >= rules.FAINT_THRESHOLD) {
-                  first.isFainted = true;
-                  first.willBeFainted = true;
-                }
-              }
-
-              if (keySecond.startsWith('D')) second.chi = Math.min(second.maxChi, second.chi + 2);
-              if (mSecond.chiRefundOnHit) second.chi = Math.min(second.maxChi, second.chi + mSecond.chiRefundOnHit);
-            }
-          }
-
-          if (!p1.isFainted && !p1HitThisTurn && p1.faintMeter > 0) {
-            p1.faintMeter = Math.max(0, p1.faintMeter - (rules.ROUND_RECOVERY || 13));
-          }
-          if (!p2.isFainted && !p2HitThisTurn && p2.faintMeter > 0) {
-            p2.faintMeter = Math.max(0, p2.faintMeter - (rules.ROUND_RECOVERY || 13));
-          }
-
-          roundCounter++;
-        }
-
-        stats.totalRounds += Math.min(roundCounter, MAX_ROUNDS);
-        stats.p1EndLpSum += p1.lp;
-        stats.p2EndLpSum += p2.lp;
-        stats.p1EndChiSum += p1.chi;
-        stats.p2EndChiSum += p2.chi;
-
-        if (p1.lp > 0 && p2.lp <= 0) {
-          stats.p1Wins++;
-        } else if (p2.lp > 0 && p1.lp <= 0) {
-          stats.p2Wins++;
-        } else {
-          stats.draws++;
-        }
-      } catch (err) {
-        console.warn(`Simulation match #${matchIndex + 1} hit error:`, err);
-      }
-    }
-
-    const elapsedMs = performance.now() - startTimeMs;
-    const executionTimeSec = (elapsedMs / 1000).toFixed(2);
 
     return {
-      p1Name: p1Rider.name || 'Player 1',
-      p2Name: p2Rider.name || 'Player 2',
-      totalMatches: count,
-      p1Wins: stats.p1Wins,
-      p2Wins: stats.p2Wins,
-      draws: stats.draws,
-      p1WinRate: ((stats.p1Wins / count) * 100).toFixed(1),
-      p2WinRate: ((stats.p2Wins / count) * 100).toFixed(1),
-      p1AvgLpLeft: Math.round(stats.p1EndLpSum / count),
-      p2AvgLpLeft: Math.round(stats.p2EndLpSum / count),
-      p1AvgChiLeft: (stats.p1EndChiSum / count).toFixed(1),
-      p2AvgChiLeft: (stats.p2EndChiSum / count).toFixed(1),
-      avgRounds: (stats.totalRounds / count).toFixed(1),
-      executionTimeSec: executionTimeSec
+      state,
+      rounds,
+      replay: capture ? { seed, initial, turns, final: state } : null
     };
   }
 
-  window.runBatchSimulation = runBatchSimulation;
+  async function runBatchSimulation(
+    selectedRider1,
+    selectedRider2,
+    matchCount = 20,
+    difficulty1 = "normal",
+    difficulty2 = "normal",
+    onProgress = null,
+    options = {}
+  ) {
+    const count = Math.max(1, Math.floor(Number(matchCount) || 1));
+    const data = await K.loadData();
 
+    const rider1 = data.riders.find(
+      rider => rider.id === selectedRider1.id
+    );
+
+    const rider2 = data.riders.find(
+      rider => rider.id === selectedRider2.id
+    );
+
+    if (!rider1 || !rider2) {
+      throw new Error("Simulation rider not found.");
+    }
+
+    const seed = Number(options.seed ?? Date.now()) >>> 0;
+
+    difficulty1 = K.difficulty(difficulty1);
+    difficulty2 = K.difficulty(difficulty2);
+
+    let p1Wins = 0;
+    let p2Wins = 0;
+    let draws = 0;
+
+    let lp1 = 0;
+    let lp2 = 0;
+    let chi1 = 0;
+    let chi2 = 0;
+    let roundTotal = 0;
+
+    for (let index = 0; index < count; index++) {
+      if (onProgress) onProgress(index + 1, count);
+
+      const result = await playMatch(
+        rider1,
+        rider2,
+        data.moves,
+        difficulty1,
+        difficulty2,
+        K.hash(seed, "match", index),
+        false
+      );
+
+      if (result.state.winner === "p1") p1Wins++;
+      else if (result.state.winner === "p2") p2Wins++;
+      else draws++;
+
+      lp1 += result.state.p1.lp;
+      lp2 += result.state.p2.lp;
+      chi1 += result.state.p1.chi;
+      chi2 += result.state.p2.chi;
+      roundTotal += result.rounds;
+    }
+
+    const summary = {
+      seed,
+      completed: count,
+      p1Name: rider1.name,
+      p2Name: rider2.name,
+      p1Wins,
+      p2Wins,
+      draws,
+      p1WinRate: (100 * p1Wins / count).toFixed(1),
+      p2WinRate: (100 * p2Wins / count).toFixed(1),
+      p1AvgLpLeft: (lp1 / count).toFixed(1),
+      p2AvgLpLeft: (lp2 / count).toFixed(1),
+      p1AvgChiLeft: (chi1 / count).toFixed(1),
+      p2AvgChiLeft: (chi2 / count).toFixed(1),
+      avgRounds: (roundTotal / count).toFixed(1)
+    };
+
+    g.Simulator.lastBatch = summary;
+    return summary;
+  }
+
+  function verifyReplay(replay) {
+    let state = C.copyState(replay.initial);
+    const rng = K.rng(K.hash(replay.seed, "combat"));
+
+    for (const turn of replay.turns) {
+      state = C.resolve(state, turn.p1, turn.p2, rng, false).state;
+    }
+
+    const same = JSON.stringify(state) === JSON.stringify(replay.final);
+
+    if (!same) {
+      throw new Error("Replay diverged from the captured simulation.");
+    }
+
+    return true;
+  }
+
+  g.Simulator = {
+    playMatch,
+    verifyReplay,
+    lastBatch: null
+  };
+
+  g.runBatchSimulation = runBatchSimulation;
 })(window);
