@@ -1,4 +1,6 @@
-(function (g) {
+//cpu_controller.js
+  
+  (function (g) {
   "use strict";
 
   const workers = [null, null];
