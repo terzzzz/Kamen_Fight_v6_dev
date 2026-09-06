@@ -1,3 +1,5 @@
+//combat_core.js
+
 (function (g) {
   "use strict";
 
