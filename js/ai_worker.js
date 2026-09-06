@@ -1,3 +1,5 @@
+// ai_worker.js
+
 "use strict";
 
 importScripts(
