@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kamen Fight</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    [hidden] {
+      display: none !important;
+    }
+
+    .battle-banner {
+      white-space: pre-line;
+    }
+
+    .pad-btn {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .chi-bar-wrapper {
+      width: 100%;
+      height: 8px;
+      background: #111;
+      border: 1px solid #00ffcc;
+      margin: 3px 0;
+      overflow: hidden;
+    }
+
+    .chi-bar-fill {
+      width: 50%;
+      height: 100%;
+      background: #00ffcc;
+      transition: width 0.2s;
+    }
+
+    #start-prompt {
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="portrait-orientation-overlay">
+    <div class="rotate-icon">📱</div>
+    <h2>PLEASE ROTATE DEVICE</h2>
+    <p>Use portrait orientation.</p>
+  </div>
+
+  <main id="loading-screen" class="screen-container">
+    <div class="loading-content">
+      <h1 class="game-launch-title">KAMEN FIGHT</h1>
+      <div id="loading-status" class="loading-status">LOADING…</div>
+
+      <div id="loading-bar-wrapper" class="loading-bar-wrapper">
+        <div id="loading-bar-fill" class="loading-bar-fill"></div>
+      </div>
+
+      <button id="start-prompt" class="start-prompt" hidden>
+        TAP OR PRESS A KEY TO START
+      </button>
+    </div>
+  </main>
+
+  <section id="vs-select-screen" class="screen-container" hidden>
+    <div class="bgm-volume-control">
+      <label for="bgm-slider">BGM</label>
+      <input id="bgm-slider"
+             type="range"
+             min="0"
+             max="1"
+             step="0.05"
+             value="0.5"
+             oninput="changeBGMVolume(this.value)">
+    </div>
+
+    <div class="vs-select-stage">
+      <h1 id="select-step-title" class="vs-header-title">
+        SELECT PLAYER 1
+      </h1>
+
+      <div id="selection-layout" class="selection-layout"></div>
+
+      <div id="vs-error-banner" class="error-banner" hidden>
+        AT LEAST ONE PLAYER MUST BE CPU.
+      </div>
+    </div>
+
+    <div class="selection-actions">
+      <button id="back-btn"
+              class="nav-btn"
+              onclick="handleBackStep()"
+              disabled>
+        BACK
+      </button>
+
+      <button id="confirm-btn"
+              class="action-btn"
+              onclick="handleConfirmStep()">
+        CONFIRM P1
+      </button>
+
+      <button id="start-game-btn"
+              class="action-btn start-glow"
+              onclick="validateAndStartMatch()"
+              hidden>
+        START GAME
+      </button>
+
+      <div class="sim-controls">
+        <select id="sim-count-select">
+          <option value="10" selected>10 Matches</option>
+          <option value="20">20 Matches</option>
+          <option value="50">50 Matches</option>
+        </select>
+
+        <button id="btn-simulate-matches"
+                class="action-btn sim-btn"
+                disabled>
+          SIMULATE
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section id="match-transition-screen" class="splash-screen" hidden>
+    <div class="splash-content">
+      <h1 id="splash-round-text">GET READY!</h1>
+      <h2 id="splash-names-text"></h2>
+    </div>
+  </section>
+
+  <section id="battle-screen" class="screen-container" hidden>
+    <div id="battle-hud" class="hud-bar"></div>
+
+    <div id="battle-message" class="battle-banner" hidden></div>
+    <div id="center-action-label" class="action-sub-banner" hidden></div>
+
+    <div id="battle-viewport" class="battle-viewport"></div>
+
+    <div id="human-control-panel" class="dual-controls-panel"></div>
+  </section>
+
+  <div id="sim-modal" class="sim-modal" hidden>
+    <div class="sim-modal-content">
+      <h2 style="color:#00ffcc;text-align:center">SIMULATION RESULTS</h2>
+      <div id="sim-results-body"></div>
+
+      <div style="text-align:center;margin-top:15px">
+        <button id="btn-close-sim-modal" class="nav-btn">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <noscript>This game requires JavaScript.</noscript>
+
+  <script>
+    (function () {
+      const slots = ["p1", "p2"];
+
+      function card(slot, index) {
+        return `
+          <div id="${slot}-card"
+               class="rider-card ${index === 0 ? "active-slot" : "locked-slot"}">
+            <h2>PLAYER ${index + 1}</h2>
+
+            <div class="portrait-box">
+              <img id="${slot}-img"
+                   src="assets/images/icons/ichigo.png"
+                   alt="Player ${index + 1} rider">
+            </div>
+
+            <h3 id="${slot}-name-display">Kamen Rider Ichigo</h3>
+
+            <div class="card-controls">
+              <button id="${slot}-left-btn"
+                      onclick="cycleRider('${slot}', -1)">
+                &lt;
+              </button>
+
+              <span id="${slot}-type-display"
+                    class="type-badge"
+                    onclick="toggleControlType('${slot}')">
+                ${index === 0 ? "HUMAN" : "CPU"}
+              </span>
+
+              <button id="${slot}-right-btn"
+                      onclick="cycleRider('${slot}', 1)">
+                &gt;
+              </button>
+            </div>
+
+            <div class="difficulty-control-group">
+              <span class="diff-label">DIFFICULTY:</span>
+
+              <span id="${slot}-diff-display"
+                    class="diff-badge"
+                    onclick="toggleDifficulty('${slot}')">
+                ${index === 0 ? "N/A" : "BALANCED"}
+              </span>
+            </div>
+          </div>
+        `;
+      }
+
+      function hud(slot) {
+        return `
+          <div class="player-hud ${slot}-hud">
+            <h2 id="${slot}-name"></h2>
+
+            <div class="stat-line">
+              <span id="${slot}-lp" class="stat-value-styled"></span>
+            </div>
+
+            <div class="stat-line">
+              <span id="${slot}-chi" class="stat-value-styled"></span>
+            </div>
+
+            <div class="chi-bar-wrapper">
+              <div id="${slot}-chi-bar-fill" class="chi-bar-fill"></div>
+            </div>
+
+            <div class="faint-bar-wrapper">
+              <span class="faint-label">FAINT</span>
+              <div class="faint-track">
+                <div id="${slot}-faint-fill" class="faint-fill"></div>
+              </div>
+            </div>
+
+            <div id="${slot}-status" class="status-tag" hidden></div>
+            <div id="${slot}-buff-tray" class="buff-tray"></div>
+          </div>
+        `;
+      }
+
+      function viewport(slot) {
+        return `
+          <div class="player-box" id="${slot}-box">
+            <div id="${slot}-stun-overlay" class="stun-overlay" hidden>
+              FAINTED!
+            </div>
+
+            <video id="${slot}-video" autoplay muted playsinline loop></video>
+            <img id="${slot}-sprite" alt="Rider portrait" hidden>
+
+            <div class="player-charge-container">
+              <div class="player-charge-track">
+                <div id="${slot}-charge-fill"
+                     class="player-charge-fill"
+                     style="width:0%"></div>
+
+                <span id="${slot}-charge-text" class="player-charge-text">
+                  READY
+                </span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function controls(slot, index) {
+        const keys = ["W", "A", "S", "D", "I", "J", "K", "L"];
+        const p2Labels = {
+          W: "▲", A: "◄", S: "▼", D: "►",
+          I: "5", J: "1", K: "2", L: "3"
+        };
+
+        const buttons = keys.map(key => {
+          const direction = "WASD".includes(key);
+          const id = index === 0 ? `key-${key}` : `p2-key-${key}`;
+
+          return `
+            <button id="${id}"
+                    class="pad-btn ${slot}-${direction ? "btn" : "act"}
+                           ${direction ? "dir-btn" : "act-btn"}">
+              ${index === 0 ? key : p2Labels[key]}
+            </button>
+          `;
+        }).join("");
+
+        return `
+          <div id="${slot}-controls"
+               class="compact-pad-container ${slot}-side">
+            <div class="pad-label">
+              ${index === 0
+                ? "PLAYER 1 [W-A-S-D + I-J-K-L]"
+                : "PLAYER 2 [ARROWS + 1-2-3-5]"}
+            </div>
+
+            <div class="charge-bar-wrapper">
+              <div id="${index === 0
+                ? "charge-status-display"
+                : "p2-charge-status-display"}"
+                   class="charge-status">
+                HOLD DIRECTION TO CHARGE
+              </div>
+
+              <div id="${slot}-action-flag" class="action-flag" hidden>
+                LOCKED!
+              </div>
+            </div>
+
+            <div class="pad-grid-4x2">${buttons}</div>
+          </div>
+        `;
+      }
+
+      document.getElementById("selection-layout").innerHTML =
+        card("p1", 0) +
+        '<div class="vs-divider">VS</div>' +
+        card("p2", 1);
+
+      document.getElementById("battle-hud").innerHTML =
+        hud("p1") +
+        `
+          <div class="center-hud">
+            <div id="turn-display" class="round-title">ROUND 1</div>
+            <div id="turn-timer" class="timer-display">TIME: 8.0s</div>
+          </div>
+        ` +
+        hud("p2");
+
+      document.getElementById("battle-viewport").innerHTML =
+        viewport("p1") +
+        `
+          <div class="center-action-box" id="center-box" hidden>
+            <video id="center-video" autoplay muted playsinline></video>
+          </div>
+        ` +
+        viewport("p2");
+
+      document.getElementById("human-control-panel").innerHTML =
+        slots.map(controls).join("");
+    })();
+  </script>
+
+  <!-- Shared data/rules, then pure combat and planning modules. -->
+  <script src="js/common.js"></script>
+  <script src="js/combat_core.js"></script>
+  <script src="js/rider_brains.js"></script>
+  <script src="js/foresee_engine.js"></script>
+  <script src="js/ai.js"></script>
+
+  <!-- Existing presentation files. -->
+  <script src="js/media.js"></script>
+  <script src="js/ui.js"></script>
+
+  <!-- Runtime adapters. -->
+  <script src="js/cpu_controller.js"></script>
+  <script src="js/combat_engine.js"></script>
+  <script src="js/match_manager.js"></script>
+  <script src="js/simulator.js"></script>
+
+  <!-- Existing selection screen; new initialization. -->
+  <script src="js/vs_select.js"></script>
+  <script src="js/game.js"></script>
+
+  <!-- Manual regression/benchmark commands. -->
+  <script src="js/combat_tests.js"></script>
+</body>
+</html>
+
