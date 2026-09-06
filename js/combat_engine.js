@@ -1,379 +1,331 @@
+/*
+ * Kamen Fight — live combat playback adapter
+ * File: js/combat_engine.js
+ * Version: live-ui-2
+ *
+ * CombatCore remains the only combat-rules implementation.
+ * This file displays its events and advances the live match.
+ */
+
 (function (g) {
   "use strict";
 
-  async function runCombatTests() {
-    const data = await g.KF.loadData();
-    const C = g.CombatCore;
+  const VERSION = "live-ui-2";
+  const SLOTS = ["p1", "p2"];
+  const C = g.CombatCore;
+  const K = g.KF;
 
-    let passed = 0;
-
-    function assert(condition, message) {
-      if (!condition) throw new Error(`FAILED: ${message}`);
-      passed++;
-      console.log(`PASS: ${message}`);
+  function assertReady() {
+    if (!C || typeof C.resolve !== "function") {
+      throw new Error("Load combat_core.js before combat_engine.js.");
     }
 
-    function match(id1 = "ichigo", id2 = "ichigo") {
-      const rider1 = data.riders.find(rider => rider.id === id1);
-      const rider2 = data.riders.find(rider => rider.id === id2);
-
-      return C.createMatch(rider1, rider2, data.moves);
-    }
-
-    const idle = { key: "DO_NOTHING", charge: 0 };
-    const action = (key, charge = 100) => ({ key, charge });
-
-    {
-      const state = match();
-      const original = JSON.stringify(state);
-
-      C.resolve(state, action("S+J"), action("D+K"), g.KF.rng(123));
-
-      assert(
-        JSON.stringify(state) === original,
-        "Combat resolution does not mutate its input."
+    if (!K || K.VERSION !== "shared-core-1") {
+      throw new Error(
+        "This playback adapter requires common.js shared-core-1."
       );
     }
 
-    {
-      const state = match();
-
-      const a = C.resolve(
-        state, action("S+J"), action("D+K"), g.KF.rng(456)
-      );
-
-      const b = C.resolve(
-        state, action("S+J"), action("D+K"), g.KF.rng(456)
-      );
-
-      assert(
-        JSON.stringify(a.state) === JSON.stringify(b.state),
-        "Identical state, actions and seed reproduce the result."
-      );
+    if (
+      !g.KF_AI ||
+      typeof g.KF_AI.remember !== "function"
+    ) {
+      throw new Error("The AI history module is not loaded.");
     }
 
-    {
-      const state = match();
-
-      const outcomes = C.distribution(
-        state,
-        action("S+J", 60),
-        action("S+K", 100)
-      );
-
-      const sum = outcomes.reduce(
-        (total, result) => total + result.probability,
-        0
-      );
-
-      assert(
-        Math.abs(sum - 1) < 1e-9,
-        "Enumerated chance probabilities sum to one."
-      );
+    if (
+      !g.UI ||
+      typeof g.UI.showBattleBanner !== "function" ||
+      typeof g.UI.showDamagePopup !== "function"
+    ) {
+      throw new Error("The battle UI module is not loaded.");
     }
 
-    {
-      const state = match();
-
-      const result = C.resolve(
-        state,
-        action("W+K"),
-        idle,
-        () => 0.5
-      ).state;
-
-      assert(
-        result.p2.lp === state.p2.lp &&
-        result.p2.faintMeter === 0,
-        "Non-offensive utility does not cause phantom damage or faint."
-      );
+    if (
+      !g.GameView ||
+      typeof g.GameView.paint !== "function" ||
+      typeof g.GameView.finish !== "function"
+    ) {
+      throw new Error("The game view is not loaded.");
     }
 
-    {
-      const state = match();
-      state.p1.chi = 0;
-
-      assert(
-        !C.isLegal(state, "p1", action("S+I")),
-        "Unaffordable moves are rejected."
-      );
-
-      const result = C.resolve(
-        state,
-        action("S+I"),
-        idle,
-        () => 0.5
-      );
-
-      assert(
-        result.actions.p1.key === "DO_NOTHING",
-        "Invalid combat input safely normalizes to idle."
-      );
+    if (typeof g.playCenterVideo !== "function") {
+      throw new Error("Load media.js before starting a live match.");
     }
 
-    {
-      const state = match();
-
-      const result = C.resolve(
-        state,
-        action("S+J", 0),
-        action("S+K", 100),
-        () => 0.5
-      );
-
-      assert(
-        result.state.p1.lp === state.p1.lp,
-        "A clean first hit interrupts the second attack."
-      );
-
-      assert(
-        result.state.p2.chi === 9,
-        "An interrupted attack does not spend its Chi."
-      );
+    if (
+      !g.MatchManager ||
+      typeof g.MatchManager.begin !== "function"
+    ) {
+      throw new Error("The match manager is not loaded.");
     }
-
-    {
-      const state = match();
-
-      const result = C.resolve(
-        state,
-        action("A+I"),
-        action("D+J"),
-        () => 0.1
-      ).state;
-
-      assert(
-        result.p1.lp === state.p1.lp,
-        "Successful omni-guard can prevent all damage."
-      );
-
-      assert(
-        result.p1.chi === 8,
-        "A zero-damage omni block still receives its Chi reward."
-      );
-    }
-
-    {
-      const state = match("v3", "ichigo");
-
-      const result = C.resolve(
-        state,
-        action("A+I"),
-        action("D+J"),
-        () => 0.1
-      ).state;
-
-      assert(
-        result.p1.lp < state.p1.lp,
-        "Free A+I does not omni-block a J-button attack."
-      );
-    }
-
-    {
-      const state = match();
-
-      const result = C.resolve(
-        state,
-        action("A+J"),
-        action("A+K"),
-        () => 0.5
-      ).state;
-
-      assert(
-        result.round === 2 &&
-        result.p1.lp === state.p1.lp &&
-        result.p2.lp === state.p2.lp,
-        "Two guards resolve without a confirmation deadlock."
-      );
-    }
-
-    {
-      const state = match("riderman", "ichigo");
-
-      const result = C.resolve(
-        state,
-        action("W+L"),
-        idle,
-        () => 0.5
-      ).state;
-
-      assert(
-        result.p2.lp < state.p2.lp,
-        "Riderman's damaging utility resolves offensively."
-      );
-
-      assert(
-        result.p2.activeBuffs.some(buff => buff.id === "rope_bind"),
-        "A clean Rope Arm hit applies Bind."
-      );
-    }
-
-    {
-      const state = match("riderman", "ichigo");
-
-      const result = C.resolve(
-        state,
-        action("W+L"),
-        action("A+L"),
-        () => 0.1
-      ).state;
-
-      assert(
-        !result.p2.activeBuffs.some(buff => buff.id === "rope_bind"),
-        "A blocked Rope Arm hit does not apply Bind."
-      );
-    }
-
-    {
-      const state = match("x", "ichigo");
-      state.p1.lp -= 100;
-
-      const result = C.resolve(
-        state,
-        action("W+L"),
-        idle,
-        () => 0.5
-      ).state;
-
-      assert(
-        result.p1.lp === result.p1.maxLp,
-        "Healing is applied and capped at maximum LP."
-      );
-    }
-
-    {
-      const state = match();
-      state.p2.faintMeter = 90;
-
-      const first = C.resolve(
-        state,
-        action("D+J"),
-        idle,
-        () => 0.5
-      ).state;
-
-      assert(first.p2.isFainted, "Faint threshold schedules a stunned turn.");
-
-      const second = C.resolve(
-        first,
-        idle,
-        action("D+K"),
-        () => 0.5
-      );
-
-      assert(
-        second.actions.p2.key === "DO_NOTHING",
-        "A fainted fighter is forced to idle."
-      );
-
-      assert(
-        !second.state.p2.isFainted &&
-        second.state.p2.faintMeter === 0,
-        "Faint clears after exactly one forced-idle turn."
-      );
-    }
-
-    {
-      let state = match();
-
-      state = C.resolve(
-        state,
-        action("W+K"),
-        idle,
-        () => 0.5
-      ).state;
-
-      assert(
-        state.p1.activeBuffs.find(buff => buff.id === "focus").roundsLeft === 2,
-        "A new buff is not immediately decremented."
-      );
-
-      state = C.resolve(state, idle, idle, () => 0.5).state;
-      state = C.resolve(state, idle, idle, () => 0.5).state;
-
-      assert(
-        !state.p1.activeBuffs.some(buff => buff.id === "focus"),
-        "Buff expiry occurs on subsequent completed turns."
-      );
-    }
-
-    {
-      const state = match();
-
-      const a = C.distribution(
-        state,
-        action("S+J", 60),
-        action("D+K", 90)
-      );
-
-      const b = C.distribution(
-        state,
-        action("D+K", 90),
-        action("S+J", 60)
-      );
-
-      const expectedDifference = results => results.reduce(
-        (sum, result) =>
-          sum +
-          result.probability *
-          (result.state.p1.lp - result.state.p2.lp),
-        0
-      );
-
-      assert(
-        Math.abs(expectedDifference(a) + expectedDifference(b)) < 1e-7,
-        "Swapping sides preserves expected combat symmetry."
-      );
-    }
-
-    console.log(`All ${passed} assertions passed.`);
-    return { passed };
   }
 
-  async function benchmarkDifficulties(matchesPerSide = 10) {
-    const data = await g.KF.loadData();
-    const results = [];
+  function isCurrent(gs, token) {
+    return (
+      g.gameState === gs &&
+      gs.roundToken === token &&
+      gs.roundPhase === "RESOLUTION"
+    );
+  }
 
-    for (const rider of data.riders) {
-      for (const difficulty of ["hard", "master"]) {
-        const seed = g.KF.hash("difficulty-benchmark", rider.id, difficulty);
+  function paintSnapshot(gs, snapshot) {
+    for (const slot of SLOTS) {
+      gs[slot] = C.copyFighter(snapshot[slot]);
+    }
 
-        const forward = await g.runBatchSimulation(
-          rider,
-          rider,
-          matchesPerSide,
-          difficulty,
-          "normal",
-          null,
-          { seed }
+    g.GameView.paint();
+  }
+
+  function showSideMedia(slot, state) {
+    if (typeof g.updateCharacterMedia !== "function") return;
+
+    try {
+      g.updateCharacterMedia(slot, state);
+    } catch (error) {
+      // A presentation error must not recalculate combat.
+      console.warn("Side media warning:", error);
+    }
+  }
+
+  function popup(slot, text, type = "scratch") {
+    g.UI.showDamagePopup(`${slot}-box`, text, type);
+  }
+
+  async function playMoveVideo(gs, token, slot, move) {
+    if (!isCurrent(gs, token) || !move.video) return;
+
+    const timeout = Math.max(
+      1000,
+      Number(g.GAME_CONFIG?.VIDEO_TIMEOUT_MS) || 8000
+    );
+
+    try {
+      // Existing media.js handles missing clips and a bounded timeout.
+      await g.playCenterVideo(
+        slot,
+        move.video,
+        move.name || move.key || "",
+        timeout,
+        move
+      );
+    } catch (error) {
+      console.warn("Action video warning:", error);
+
+      if (isCurrent(gs, token)) {
+        g.UI.showBattleBanner(
+          "VIDEO UNAVAILABLE — continuing the resolved turn."
         );
-
-        const reverse = await g.runBatchSimulation(
-          rider,
-          rider,
-          matchesPerSide,
-          "normal",
-          difficulty,
-          null,
-          { seed }
-        );
-
-        results.push({
-          rider: rider.id,
-          difficulty,
-          strongerWins: forward.p1Wins + reverse.p2Wins,
-          balancedWins: forward.p2Wins + reverse.p1Wins,
-          draws: forward.draws + reverse.draws,
-          matches: matchesPerSide * 2
-        });
-
-        console.table(results);
+        await K.wait(400);
       }
     }
-
-    return results;
   }
 
-  g.runCombatTests = runCombatTests;
-  g.benchmarkDifficulties = benchmarkDifficulties;
+  function attackLabel(event) {
+    const damage = Math.max(0, Number(event.damage) || 0);
+
+    switch (event.outcome) {
+      case "miss":
+        return "MISS";
+
+      case "block":
+        return damage > 0 ? `BLOCK: -${damage}` : "BLOCK";
+
+      case "partialBlock":
+        return `PARTIAL BLOCK: -${damage}`;
+
+      case "guardFail":
+        return `GUARD FAILED: -${damage}`;
+
+      case "glancing":
+        return `SCRATCH: -${damage}`;
+
+      default:
+        return `-${damage}`;
+    }
+  }
+
+  async function presentEvent(gs, token, event) {
+    if (!isCurrent(gs, token) || event.type === "end") return;
+
+    const slot = event.slot;
+    const move = gs.core.moves[slot]?.[event.key] || C.IDLE;
+
+    if (event.type === "interrupted") {
+      paintSnapshot(gs, event);
+
+      g.UI.showBattleBanner(
+        `${gs[slot].name}: ${move.name || event.key} interrupted.`
+      );
+
+      popup(slot, "INTERRUPTED");
+      await K.wait(450);
+      return;
+    }
+
+    if (
+      event.type !== "guardReady" &&
+      event.type !== "utility" &&
+      event.type !== "attack"
+    ) {
+      throw new Error(`Unsupported combat event: ${event.type}`);
+    }
+
+    const previousLp = gs[slot].lp;
+    const actorName = gs[slot].name;
+
+    g.UI.showBattleBanner(
+      `[${slot.toUpperCase()}] ${actorName}: ${move.name || event.key}`
+    );
+
+    await playMoveVideo(gs, token, slot, move);
+
+    if (!isCurrent(gs, token)) return;
+
+    // These snapshots come from CombatCore; no damage is recalculated.
+    paintSnapshot(gs, event);
+
+    if (event.type === "guardReady") {
+      showSideMedia(slot, "GUARD");
+      popup(slot, "GUARD READY");
+      await K.wait(300);
+      return;
+    }
+
+    if (event.type === "utility") {
+      const recovered = Math.max(0, gs[slot].lp - previousLp);
+
+      popup(
+        slot,
+        recovered > 0 ? `+${recovered} LP` : (move.name || "UTILITY")
+      );
+
+      showSideMedia(slot, "IDLE");
+      await K.wait(450);
+      return;
+    }
+
+    const target = event.target;
+    const label = attackLabel(event);
+
+    popup(
+      target,
+      label,
+      Number(event.damage) > 0 ? "damage" : "scratch"
+    );
+
+    g.UI.showBattleBanner(
+      `${actorName}: ${move.name || event.key}\n` +
+      `${gs[target].name}: ${label}`
+    );
+
+    if (gs[target].lp <= 0) {
+      showSideMedia(target, "KO");
+    } else if (gs[target].isFainted) {
+      showSideMedia(target, "FAINT");
+    } else if (event.outcome === "miss") {
+      showSideMedia(target, "DODGE");
+    } else if (event.guarded) {
+      showSideMedia(target, "GUARD");
+    } else {
+      showSideMedia(target, "HIT");
+    }
+
+    await K.wait(650);
+  }
+
+  async function playTurn(gs, token) {
+    assertReady();
+
+    if (!isCurrent(gs, token)) return false;
+
+    // Prevent two callers from resolving the same turn twice.
+    if (gs.playbackToken === token) return false;
+
+    if (!gs.actions?.p1 || !gs.actions?.p2) {
+      throw new Error("Cannot resolve until both actions are locked.");
+    }
+
+    if (typeof gs.combatRng !== "function") {
+      throw new Error("The live match is missing its combat RNG.");
+    }
+
+    gs.playbackToken = token;
+
+    const before = C.copyState(gs.core);
+
+    // Resolve exactly once, with tracing enabled for presentation.
+    const result = C.resolve(
+      before,
+      gs.actions.p1,
+      gs.actions.p2,
+      gs.combatRng,
+      true
+    );
+
+    const nextHistory = g.KF_AI.remember(
+      gs.history || [],
+      before,
+      result.actions
+    );
+
+    const timer = document.getElementById("turn-timer");
+    if (timer) timer.textContent = "RESOLVING…";
+
+    for (const event of result.events) {
+      if (!isCurrent(gs, token)) return false;
+
+      await presentEvent(gs, token, event);
+    }
+
+    if (!isCurrent(gs, token)) return false;
+
+    // Keep a live replay in the existing simulator's replay format.
+    if (!gs.liveReplay) {
+      gs.liveReplay = {
+        seed: gs.seed,
+        initial: C.copyState(before),
+        turns: [],
+        final: null
+      };
+    }
+
+    gs.liveReplay.turns.push({
+      p1: { ...result.actions.p1 },
+      p2: { ...result.actions.p2 }
+    });
+
+    gs.liveReplay.final = C.copyState(result.state);
+
+    // Commit the already-resolved final state once.
+    gs.core = result.state;
+    gs.actions = result.actions;
+    gs.history = nextHistory;
+    gs.roundCounter = gs.core.round;
+
+    paintSnapshot(gs, gs.core);
+    g.UI.showActionBanner("");
+
+    if (gs.core.winner) {
+      g.GameView.finish(gs.core.winner);
+      return true;
+    }
+
+    for (const slot of SLOTS) {
+      showSideMedia(slot, "IDLE");
+    }
+
+    await K.wait(450);
+
+    if (!isCurrent(gs, token)) return false;
+
+    await g.MatchManager.begin();
+    return true;
+  }
+
+  g.CombatPlayback = {
+    VERSION,
+    assertReady,
+    playTurn
+  };
 })(window);
