@@ -2,365 +2,859 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+
   <meta name="viewport"
         content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Kamen Fight</title>
 
-  <link rel="stylesheet" href="css/style.css">
+  <title>Kamen Fight — Test Dashboard</title>
 
   <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", sans-serif;
+      background: #0b1020;
+      color: #edf2ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px 14px 50px;
+    }
+
+    main {
+      width: 100%;
+      max-width: 850px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.65rem;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 1.2rem;
+    }
+
+    p {
+      line-height: 1.55;
+    }
+
+    .muted {
+      color: #b7c2db;
+    }
+
+    .panel {
+      padding: 18px;
+      margin-top: 16px;
+      border: 1px solid #34425e;
+      border-radius: 14px;
+      background: #141d31;
+    }
+
+    #status {
+      padding: 16px;
+      margin-top: 20px;
+      border: 2px solid #e6bf65;
+      border-radius: 12px;
+      color: #ffe2a0;
+      background: #282316;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-weight: 700;
+    }
+
+    #status[data-state="pass"] {
+      color: #b4ffce;
+      border-color: #53d68a;
+      background: #102b21;
+    }
+
+    #status[data-state="fail"] {
+      color: #ffd0d0;
+      border-color: #ff8585;
+      background: #351b24;
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button,
+    select {
+      min-height: 48px;
+      padding: 12px 15px;
+      border: 1px solid #61769e;
+      border-radius: 10px;
+      font: inherit;
+      font-size: 1rem;
+    }
+
+    button {
+      cursor: pointer;
+      background: #265abb;
+      color: white;
+      font-weight: 700;
+    }
+
+    button.secondary {
+      background: #273249;
+    }
+
+    button:disabled,
+    select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid #ffdc88;
+      outline-offset: 3px;
+    }
+
+    select {
+      width: 100%;
+      margin-top: 8px;
+      background: #0b1324;
+      color: white;
+    }
+
+    pre {
+      margin: 0;
+      padding: 15px;
+      background: #080e1a;
+      border-radius: 10px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 240px;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid #61769e;
+      border-radius: 8px;
+      background: #080e1a;
+      color: white;
+      font: inherit;
+    }
+
+    #elapsed,
+    #copy-note {
+      min-height: 1.4em;
+    }
+
     [hidden] {
       display: none !important;
-    }
-
-    .battle-banner {
-      white-space: pre-line;
-    }
-
-    .pad-btn {
-      touch-action: none;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-
-    .chi-bar-wrapper {
-      width: 100%;
-      height: 8px;
-      background: #111;
-      border: 1px solid #00ffcc;
-      margin: 3px 0;
-      overflow: hidden;
-    }
-
-    .chi-bar-fill {
-      width: 50%;
-      height: 100%;
-      background: #00ffcc;
-      transition: width 0.2s;
-    }
-
-    #start-prompt {
-      cursor: pointer;
     }
   </style>
 </head>
 
 <body>
-  <div id="portrait-orientation-overlay">
-    <div class="rotate-icon">📱</div>
-    <h2>PLEASE ROTATE DEVICE</h2>
-    <p>Use portrait orientation.</p>
-  </div>
+  <main>
+    <h1>Kamen Fight — Test Dashboard</h1>
 
-  <main id="loading-screen" class="screen-container">
-    <div class="loading-content">
-      <h1 class="game-launch-title">KAMEN FIGHT</h1>
-      <div id="loading-status" class="loading-status">LOADING…</div>
+    <p class="muted">
+      No console needed. The combat tests start automatically.
+      Results appear below.
+    </p>
 
-      <div id="loading-bar-wrapper" class="loading-bar-wrapper">
-        <div id="loading-bar-fill" class="loading-bar-fill"></div>
-      </div>
-
-      <button id="start-prompt" class="start-prompt" hidden>
-        TAP OR PRESS A KEY TO START
-      </button>
-    </div>
-  </main>
-
-  <section id="vs-select-screen" class="screen-container" hidden>
-    <div class="bgm-volume-control">
-      <label for="bgm-slider">BGM</label>
-      <input id="bgm-slider"
-             type="range"
-             min="0"
-             max="1"
-             step="0.05"
-             value="0.5"
-             oninput="changeBGMVolume(this.value)">
+    <div id="status" role="status" aria-live="polite">
+      Starting…
     </div>
 
-    <div class="vs-select-stage">
-      <h1 id="select-step-title" class="vs-header-title">
-        SELECT PLAYER 1
-      </h1>
+    <div class="buttons">
+      <button id="reload-button" class="secondary" type="button">
+        RELOAD / STOP
+      </button>
 
-      <div id="selection-layout" class="selection-layout"></div>
-
-      <div id="vs-error-banner" class="error-banner" hidden>
-        AT LEAST ONE PLAYER MUST BE CPU.
-      </div>
+      <button id="copy-button" type="button">
+        COPY REPORT
+      </button>
     </div>
 
-    <div class="selection-actions">
-      <button id="back-btn"
-              class="nav-btn"
-              onclick="handleBackStep()"
-              disabled>
-        BACK
-      </button>
+    <p id="copy-note" class="muted" aria-live="polite"></p>
 
-      <button id="confirm-btn"
-              class="action-btn"
-              onclick="handleConfirmStep()">
-        CONFIRM P1
-      </button>
+    <textarea id="copy-text"
+              aria-label="Report for manual copying"
+              readonly
+              hidden></textarea>
 
-      <button id="start-game-btn"
-              class="action-btn start-glow"
-              onclick="validateAndStartMatch()"
-              hidden>
-        START GAME
-      </button>
+    <section class="panel">
+      <h2>Optional: Small AI comparison</h2>
 
-      <div class="sim-controls">
-        <select id="sim-count-select">
-          <option value="10" selected>10 Matches</option>
-          <option value="20">20 Matches</option>
-          <option value="50">50 Matches</option>
-        </select>
+      <p class="muted">
+        Available after the combat tests pass.
+        Runs four mirror matches for the selected rider:
+        Aggressive versus Balanced, then Master versus Balanced,
+        with each difficulty playing both sides.
+      </p>
 
-        <button id="btn-simulate-matches"
-                class="action-btn sim-btn"
-                disabled>
-          SIMULATE
+      <label for="rider-select">Choose a rider</label>
+
+      <select id="rider-select" disabled>
+        <option>Waiting for combat tests…</option>
+      </select>
+
+      <div class="buttons">
+        <button id="ai-button" type="button" disabled>
+          RUN 4 AI MATCHES
         </button>
       </div>
-    </div>
-  </section>
 
-  <section id="match-transition-screen" class="splash-screen" hidden>
-    <div class="splash-content">
-      <h1 id="splash-round-text">GET READY!</h1>
-      <h2 id="splash-names-text"></h2>
-    </div>
-  </section>
+      <p id="elapsed" class="muted" aria-live="polite"></p>
 
-  <section id="battle-screen" class="screen-container" hidden>
-    <div id="battle-hud" class="hud-bar"></div>
+      <p class="muted">
+        This is a small functionality check, not a reliable difficulty
+        ranking. Keep this page open while it runs. To stop, tap
+        RELOAD / STOP; that clears this report and restarts the page.
+      </p>
+    </section>
 
-    <div id="battle-message" class="battle-banner" hidden></div>
-    <div id="center-action-label" class="action-sub-banner" hidden></div>
+    <section class="panel">
+      <h2>Test report</h2>
 
-    <div id="battle-viewport" class="battle-viewport"></div>
+      <pre id="report" aria-label="Test report"></pre>
+    </section>
 
-    <div id="human-control-panel" class="dual-controls-panel"></div>
-  </section>
+    <section class="panel">
+      <h2>What this page does not test</h2>
 
-  <div id="sim-modal" class="sim-modal" hidden>
-    <div class="sim-modal-content">
-      <h2 style="color:#00ffcc;text-align:center">SIMULATION RESULTS</h2>
-      <div id="sim-results-body"></div>
+      <p class="muted">
+        Touch controls, keyboard controls, video playback, the game
+        selection screen, and live match presentation still require
+        testing in the playable game.
+      </p>
 
-      <div style="text-align:center;margin-top:15px">
-        <button id="btn-close-sim-modal" class="nav-btn">CLOSE</button>
-      </div>
-    </div>
-  </div>
+      <p class="muted">
+        This page loads the JavaScript and data saved beside it.
+        It does not contain or install a replacement combat engine.
+      </p>
+    </section>
 
-  <noscript>This game requires JavaScript.</noscript>
+    <noscript>
+      JavaScript is disabled. Enable JavaScript in your browser to run
+      these tests.
+    </noscript>
+  </main>
 
   <script>
     (function () {
-      const slots = ["p1", "p2"];
+      "use strict";
 
-      function card(slot, index) {
-        return `
-          <div id="${slot}-card"
-               class="rider-card ${index === 0 ? "active-slot" : "locked-slot"}">
-            <h2>PLAYER ${index + 1}</h2>
+      const EXPECTED_VERSION = "shared-core-1";
+      const PAGE_VERSION = "phone-test-dashboard-1";
 
-            <div class="portrait-box">
-              <img id="${slot}-img"
-                   src="assets/images/icons/ichigo.png"
-                   alt="Player ${index + 1} rider">
-            </div>
+      const statusBox = document.getElementById("status");
+      const reportBox = document.getElementById("report");
+      const riderSelect = document.getElementById("rider-select");
+      const aiButton = document.getElementById("ai-button");
+      const elapsedBox = document.getElementById("elapsed");
+      const copyNote = document.getElementById("copy-note");
+      const copyText = document.getElementById("copy-text");
 
-            <h3 id="${slot}-name-display">Kamen Rider Ichigo</h3>
+      const reportLines = [];
+      const loadedScripts = new Set();
 
-            <div class="card-controls">
-              <button id="${slot}-left-btn"
-                      onclick="cycleRider('${slot}', -1)">
-                &lt;
-              </button>
+      const requestStamp = Date.now().toString();
 
-              <span id="${slot}-type-display"
-                    class="type-badge"
-                    onclick="toggleControlType('${slot}')">
-                ${index === 0 ? "HUMAN" : "CPU"}
-              </span>
+      let data = null;
+      let rulesPassed = false;
+      let aiRunning = false;
+      let currentFile = "";
 
-              <button id="${slot}-right-btn"
-                      onclick="cycleRider('${slot}', 1)">
-                &gt;
-              </button>
-            </div>
+      function describe(value) {
+        if (value instanceof Error) {
+          return value.stack || value.message;
+        }
 
-            <div class="difficulty-control-group">
-              <span class="diff-label">DIFFICULTY:</span>
+        if (typeof value === "string") {
+          return value;
+        }
 
-              <span id="${slot}-diff-display"
-                    class="diff-badge"
-                    onclick="toggleDifficulty('${slot}')">
-                ${index === 0 ? "N/A" : "BALANCED"}
-              </span>
-            </div>
-          </div>
-        `;
+        try {
+          return JSON.stringify(value);
+        } catch (_) {
+          return String(value);
+        }
       }
 
-      function hud(slot) {
-        return `
-          <div class="player-hud ${slot}-hud">
-            <h2 id="${slot}-name"></h2>
-
-            <div class="stat-line">
-              <span id="${slot}-lp" class="stat-value-styled"></span>
-            </div>
-
-            <div class="stat-line">
-              <span id="${slot}-chi" class="stat-value-styled"></span>
-            </div>
-
-            <div class="chi-bar-wrapper">
-              <div id="${slot}-chi-bar-fill" class="chi-bar-fill"></div>
-            </div>
-
-            <div class="faint-bar-wrapper">
-              <span class="faint-label">FAINT</span>
-              <div class="faint-track">
-                <div id="${slot}-faint-fill" class="faint-fill"></div>
-              </div>
-            </div>
-
-            <div id="${slot}-status" class="status-tag" hidden></div>
-            <div id="${slot}-buff-tray" class="buff-tray"></div>
-          </div>
-        `;
+      function log(message) {
+        reportLines.push(String(message));
+        reportBox.textContent = reportLines.join("\n");
       }
 
-      function viewport(slot) {
-        return `
-          <div class="player-box" id="${slot}-box">
-            <div id="${slot}-stun-overlay" class="stun-overlay" hidden>
-              FAINTED!
-            </div>
-
-            <video id="${slot}-video" autoplay muted playsinline loop></video>
-            <img id="${slot}-sprite" alt="Rider portrait" hidden>
-
-            <div class="player-charge-container">
-              <div class="player-charge-track">
-                <div id="${slot}-charge-fill"
-                     class="player-charge-fill"
-                     style="width:0%"></div>
-
-                <span id="${slot}-charge-text" class="player-charge-text">
-                  READY
-                </span>
-              </div>
-            </div>
-          </div>
-        `;
+      function setStatus(message, state) {
+        statusBox.textContent = message;
+        statusBox.dataset.state = state || "working";
       }
 
-      function controls(slot, index) {
-        const keys = ["W", "A", "S", "D", "I", "J", "K", "L"];
-        const p2Labels = {
-          W: "▲", A: "◄", S: "▼", D: "►",
-          I: "5", J: "1", K: "2", L: "3"
+      function pause() {
+        return new Promise(function (resolve) {
+          setTimeout(resolve, 30);
+        });
+      }
+
+      function showFailure(title, error) {
+        setStatus(title + "\nCopy the report below and send it back.", "fail");
+
+        log("");
+        log("ERROR: " + describe(error));
+
+        if (currentFile) {
+          log("File being checked: " + currentFile);
+        }
+
+        log(
+          "After correcting files, wait for publishing to finish, " +
+          "then tap RELOAD / STOP."
+        );
+      }
+
+      /*
+       * Load scripts one at a time and check that each provides the
+       * interface expected by the replacement engine.
+       *
+       * No game.js, UI, media, selection, or live match controller
+       * is started by this dashboard.
+       */
+      async function loadScript(path, verify) {
+        if (loadedScripts.has(path)) {
+          return;
+        }
+
+        currentFile = path;
+        log("LOAD: " + path);
+
+        await new Promise(function (resolve, reject) {
+          const script = document.createElement("script");
+          const url = new URL(path, document.baseURI);
+
+          url.searchParams.set("tester", requestStamp);
+
+          script.src = url.href;
+          script.async = false;
+
+          let settled = false;
+
+          const timeout = setTimeout(function () {
+            finish(new Error(
+              "Loading timed out: " + path +
+              ". Check your connection and published files."
+            ));
+          }, 25000);
+
+          function finish(error) {
+            if (settled) return;
+            settled = true;
+
+            clearTimeout(timeout);
+            script.onload = null;
+            script.onerror = null;
+
+            if (error) {
+              script.remove();
+              reject(error);
+            } else {
+              resolve();
+            }
+          }
+
+          script.onload = function () {
+            finish();
+          };
+
+          script.onerror = function () {
+            finish(new Error(
+              "Cannot load " + path +
+              ". The file may be missing, blocked, or not yet published. " +
+              "Check its exact filename and folder."
+            ));
+          };
+
+          document.head.appendChild(script);
+        });
+
+        if (!verify()) {
+          throw new Error(
+            path + " loaded, but it is not the expected replacement " +
+            "version, or it contains an error. " +
+            "Use the complete file from the previous replacement set."
+          );
+        }
+
+        loadedScripts.add(path);
+        log("OK: " + path);
+        currentFile = "";
+      }
+
+      /*
+       * Display unexpected browser errors in the report too.
+       */
+      window.addEventListener("error", function (event) {
+        const details = event.message ||
+          "A script or page resource failed to load.";
+
+        log("BROWSER ERROR: " + details);
+
+        if (event.filename) {
+          log(
+            "Location: " + event.filename +
+            ":" + (event.lineno || "?")
+          );
+        }
+
+        setStatus(
+          "A browser error occurred. Check the report below.",
+          "fail"
+        );
+      });
+
+      window.addEventListener("unhandledrejection", function (event) {
+        log("UNHANDLED ERROR: " + describe(event.reason));
+
+        setStatus(
+          "An unexpected error occurred. Copy the report below.",
+          "fail"
+        );
+      });
+
+      /*
+       * The supplied combat_tests.js writes individual assertions to
+       * console.log. Capture those messages for this on-screen report.
+       * Restore console.log after the test completes or throws.
+       */
+      async function runVisibleCombatTests() {
+        const originalLog = console.log;
+
+        console.log = function () {
+          const args = Array.from(arguments);
+
+          log(args.map(describe).join(" "));
+          originalLog.apply(console, args);
         };
 
-        const buttons = keys.map(key => {
-          const direction = "WASD".includes(key);
-          const id = index === 0 ? `key-${key}` : `p2-key-${key}`;
-
-          return `
-            <button id="${id}"
-                    class="pad-btn ${slot}-${direction ? "btn" : "act"}
-                           ${direction ? "dir-btn" : "act-btn"}">
-              ${index === 0 ? key : p2Labels[key]}
-            </button>
-          `;
-        }).join("");
-
-        return `
-          <div id="${slot}-controls"
-               class="compact-pad-container ${slot}-side">
-            <div class="pad-label">
-              ${index === 0
-                ? "PLAYER 1 [W-A-S-D + I-J-K-L]"
-                : "PLAYER 2 [ARROWS + 1-2-3-5]"}
-            </div>
-
-            <div class="charge-bar-wrapper">
-              <div id="${index === 0
-                ? "charge-status-display"
-                : "p2-charge-status-display"}"
-                   class="charge-status">
-                HOLD DIRECTION TO CHARGE
-              </div>
-
-              <div id="${slot}-action-flag" class="action-flag" hidden>
-                LOCKED!
-              </div>
-            </div>
-
-            <div class="pad-grid-4x2">${buttons}</div>
-          </div>
-        `;
+        try {
+          return await window.runCombatTests();
+        } finally {
+          console.log = originalLog;
+        }
       }
 
-      document.getElementById("selection-layout").innerHTML =
-        card("p1", 0) +
-        '<div class="vs-divider">VS</div>' +
-        card("p2", 1);
+      async function start() {
+        log("KAMEN FIGHT TEST REPORT");
+        log("Dashboard: " + PAGE_VERSION);
+        log("Expected engine: " + EXPECTED_VERSION);
+        log("Started: " + new Date().toISOString());
+        log("Page: " + location.origin + location.pathname);
+        log("Browser: " + navigator.userAgent);
+        log("");
 
-      document.getElementById("battle-hud").innerHTML =
-        hud("p1") +
-        `
-          <div class="center-hud">
-            <div id="turn-display" class="round-title">ROUND 1</div>
-            <div id="turn-timer" class="timer-display">TIME: 8.0s</div>
-          </div>
-        ` +
-        hud("p2");
+        try {
+          if (
+            location.protocol !== "https:" &&
+            location.protocol !== "http:"
+          ) {
+            throw new Error(
+              "Open the published website in your browser. " +
+              "Do not run this as a downloaded local HTML file."
+            );
+          }
 
-      document.getElementById("battle-viewport").innerHTML =
-        viewport("p1") +
-        `
-          <div class="center-action-box" id="center-box" hidden>
-            <video id="center-video" autoplay muted playsinline></video>
-          </div>
-        ` +
-        viewport("p2");
+          setStatus("Checking replacement files…", "working");
 
-      document.getElementById("human-control-panel").innerHTML =
-        slots.map(controls).join("");
+          await loadScript("js/common.js", function () {
+            return !!window.KF &&
+              window.KF.VERSION === EXPECTED_VERSION &&
+              typeof window.KF.loadData === "function";
+          });
+
+          await loadScript("js/combat_core.js", function () {
+            return !!window.CombatCore &&
+              typeof window.CombatCore.resolve === "function" &&
+              typeof window.CombatCore.distribution === "function";
+          });
+
+          await loadScript("js/combat_tests.js", function () {
+            return typeof window.runCombatTests === "function";
+          });
+
+          setStatus("Loading rider and move data…", "working");
+
+          log("");
+          log("LOAD: data/riders.json and data/moves.json");
+
+          data = await window.KF.loadData();
+
+          if (!data.riders || !data.riders.length) {
+            throw new Error("No active riders were loaded.");
+          }
+
+          log(
+            "OK: Active riders: " +
+            data.riders.map(function (rider) {
+              return rider.id;
+            }).join(", ")
+          );
+
+          riderSelect.textContent = "";
+
+          for (const rider of data.riders) {
+            const option = document.createElement("option");
+
+            option.value = rider.id;
+            option.textContent = rider.name || rider.id;
+
+            riderSelect.appendChild(option);
+          }
+
+          log("");
+          log("=== COMBAT RULE TESTS ===");
+
+          setStatus("Running combat rule tests…", "working");
+
+          await pause();
+
+          const result = await runVisibleCombatTests();
+
+          if (
+            !result ||
+            !Number.isInteger(result.passed) ||
+            result.passed < 1
+          ) {
+            throw new Error(
+              "The test function did not return a valid assertion count."
+            );
+          }
+
+          rulesPassed = true;
+
+          log("");
+          log("COMBAT RULE TESTS PASSED: " + result.passed + " assertions.");
+          log("Live controls and video playback have NOT been tested.");
+          log("AI comparison has NOT been run.");
+
+          setStatus(
+            "COMBAT TESTS PASSED\n" +
+            result.passed + " assertions passed.\n" +
+            "You can copy the report or run the optional AI comparison.",
+            "pass"
+          );
+
+          riderSelect.disabled = false;
+          aiButton.disabled = false;
+
+        } catch (error) {
+          rulesPassed = false;
+          riderSelect.disabled = true;
+          aiButton.disabled = true;
+
+          showFailure("COMBAT TESTS STOPPED", error);
+        }
+      }
+
+      async function loadAIFiles() {
+        await loadScript("js/rider_brains.js", function () {
+          return !!window.RiderBrains &&
+            typeof window.RiderBrains.evaluate === "function";
+        });
+
+        await loadScript("js/foresee_engine.js", function () {
+          return !!window.ForeseeEngine &&
+            typeof window.ForeseeEngine.search === "function";
+        });
+
+        await loadScript("js/ai.js", function () {
+          return !!window.KF_AI &&
+            typeof window.KF_AI.choose === "function";
+        });
+
+        await loadScript("js/cpu_controller.js", function () {
+          return !!window.AIService &&
+            typeof window.AIService.plan === "function";
+        });
+
+        await loadScript("js/simulator.js", function () {
+          return !!window.Simulator &&
+            typeof window.Simulator.playMatch === "function" &&
+            typeof window.Simulator.verifyReplay === "function";
+        });
+      }
+
+      async function runAIComparison() {
+        if (!rulesPassed || aiRunning) {
+          return;
+        }
+
+        aiRunning = true;
+        aiButton.disabled = true;
+        riderSelect.disabled = true;
+
+        const startedAt = Date.now();
+
+        const clock = setInterval(function () {
+          elapsedBox.textContent =
+            "Elapsed: " +
+            Math.floor((Date.now() - startedAt) / 1000) +
+            " seconds. Keep this page open.";
+        }, 1000);
+
+        try {
+          setStatus("Loading AI test files…", "working");
+
+          log("");
+          log("=== OPTIONAL AI COMPARISON ===");
+
+          if (typeof window.Worker !== "function") {
+            throw new Error(
+              "This browser does not provide Web Workers. " +
+              "The AI comparison was not started. " +
+              "The earlier combat test results still apply."
+            );
+          }
+
+          await loadAIFiles();
+
+          const rider = data.riders.find(function (entry) {
+            return entry.id === riderSelect.value;
+          });
+
+          if (!rider) {
+            throw new Error("The selected rider could not be found.");
+          }
+
+          log("Rider: " + rider.name + " (" + rider.id + ")");
+          log("Four mirror matches; both side assignments are tested.");
+          log("Each completed match will also be replay-checked.");
+          log("This sample is too small to establish a difficulty ranking.");
+
+          const summaries = [];
+          let completed = 0;
+
+          const levels = [
+            { id: "hard", label: "Aggressive" },
+            { id: "master", label: "Master" }
+          ];
+
+          for (const level of levels) {
+            const summary = {
+              label: level.label,
+              testedWins: 0,
+              balancedWins: 0,
+              draws: 0
+            };
+
+            const seed = window.KF.hash(
+              PAGE_VERSION,
+              rider.id,
+              level.id
+            );
+
+            for (const testedSlot of ["p1", "p2"]) {
+              const p1Difficulty = testedSlot === "p1"
+                ? level.id
+                : "normal";
+
+              const p2Difficulty = testedSlot === "p2"
+                ? level.id
+                : "normal";
+
+              const p1Label = testedSlot === "p1"
+                ? level.label
+                : "Balanced";
+
+              const p2Label = testedSlot === "p2"
+                ? level.label
+                : "Balanced";
+
+              const matchNumber = completed + 1;
+
+              setStatus(
+                "RUNNING AI MATCH " + matchNumber + " / 4\n" +
+                rider.name + "\n" +
+                "P1 " + p1Label + " vs P2 " + p2Label + "\n" +
+                "Keep this page open. No videos are played.",
+                "working"
+              );
+
+              log("");
+              log(
+                "Match " + matchNumber + "/4: " +
+                "P1 " + p1Label + " vs P2 " + p2Label
+              );
+              log("Seed: " + seed);
+
+              await pause();
+
+              const result = await window.Simulator.playMatch(
+                rider,
+                rider,
+                data.moves,
+                p1Difficulty,
+                p2Difficulty,
+                seed,
+                true
+              );
+
+              if (
+                !result ||
+                !result.state ||
+                !["p1", "p2", "draw"].includes(result.state.winner)
+              ) {
+                throw new Error(
+                  "The simulator did not return a completed match."
+                );
+              }
+
+              const replayOK =
+                window.Simulator.verifyReplay(result.replay);
+
+              if (replayOK !== true) {
+                throw new Error("Replay verification did not pass.");
+              }
+
+              const winner = result.state.winner;
+
+              if (winner === "draw") {
+                summary.draws++;
+              } else if (winner === testedSlot) {
+                summary.testedWins++;
+              } else {
+                summary.balancedWins++;
+              }
+
+              log(
+                "RESULT: " +
+                (
+                  winner === "draw"
+                    ? "DRAW"
+                    : winner.toUpperCase() + " " +
+                      (winner === "p1" ? p1Label : p2Label) + " WINS"
+                )
+              );
+
+              log("Rounds: " + result.rounds);
+              log("PASS: Replaying the saved actions reproduced the final state.");
+
+              completed++;
+            }
+
+            summaries.push(summary);
+          }
+
+          log("");
+          log("=== AI COMPARISON SUMMARY ===");
+
+          for (const summary of summaries) {
+            log(
+              summary.label + " wins: " + summary.testedWins +
+              " | Balanced wins: " + summary.balancedWins +
+              " | Draws: " + summary.draws +
+              " | Matches: 2"
+            );
+          }
+
+          log("");
+          log("All four simulations completed and passed replay checks.");
+          log("These results do NOT prove one difficulty is stronger.");
+          log("Live UI, touch controls and videos remain untested.");
+
+          setStatus(
+            "AI COMPARISON FINISHED\n" +
+            "4 matches completed and replay-checked.\n" +
+            "Tap COPY REPORT and send the results back.",
+            "pass"
+          );
+
+        } catch (error) {
+          showFailure("AI COMPARISON STOPPED", error);
+
+          log(
+            "The combat rule tests passed earlier. " +
+            "The AI comparison did not complete successfully."
+          );
+
+          log(
+            "If a worker failed, check js/ai_worker.js and the AI files " +
+            "listed above. They must all be from the replacement set."
+          );
+
+        } finally {
+          clearInterval(clock);
+
+          elapsedBox.textContent =
+            "Elapsed: " +
+            Math.floor((Date.now() - startedAt) / 1000) +
+            " seconds.";
+
+          aiRunning = false;
+          aiButton.disabled = !rulesPassed;
+          riderSelect.disabled = !rulesPassed;
+        }
+      }
+
+      document.getElementById("reload-button")
+        .addEventListener("click", function () {
+          const url = new URL(location.href);
+
+          url.searchParams.set("testReload", Date.now().toString());
+
+          location.replace(url.href);
+        });
+
+      document.getElementById("copy-button")
+        .addEventListener("click", async function () {
+          const text = reportLines.join("\n");
+
+          try {
+            if (
+              !navigator.clipboard ||
+              typeof navigator.clipboard.writeText !== "function"
+            ) {
+              throw new Error("Clipboard API unavailable.");
+            }
+
+            await navigator.clipboard.writeText(text);
+
+            copyText.hidden = true;
+            copyNote.textContent =
+              "Report copied. Paste it into our chat.";
+
+          } catch (_) {
+            copyText.value = text;
+            copyText.hidden = false;
+
+            copyText.focus();
+            copyText.select();
+            copyText.setSelectionRange(0, text.length);
+
+            copyNote.textContent =
+              "Automatic copying was unavailable. " +
+              "Copy the text from the box above, or send a screenshot.";
+          }
+        });
+
+      aiButton.addEventListener("click", function () {
+        void runAIComparison();
+      });
+
+      void start();
     })();
   </script>
-
-  <!-- Shared data/rules, then pure combat and planning modules. -->
-  <script src="js/common.js"></script>
-  <script src="js/combat_core.js"></script>
-  <script src="js/rider_brains.js"></script>
-  <script src="js/foresee_engine.js"></script>
-  <script src="js/ai.js"></script>
-
-  <!-- Existing presentation files. -->
-  <script src="js/media.js"></script>
-  <script src="js/ui.js"></script>
-
-  <!-- Runtime adapters. -->
-  <script src="js/cpu_controller.js"></script>
-  <script src="js/combat_engine.js"></script>
-  <script src="js/match_manager.js"></script>
-  <script src="js/simulator.js"></script>
-
-  <!-- Existing selection screen; new initialization. -->
-  <script src="js/vs_select.js"></script>
-  <script src="js/game.js"></script>
-
-  <!-- Manual regression/benchmark commands. -->
-  <script src="js/combat_tests.js"></script>
 </body>
 </html>
