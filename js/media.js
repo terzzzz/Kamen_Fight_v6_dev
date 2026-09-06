@@ -64,24 +64,25 @@
     const currentSrc = videoEl.currentSrc || videoEl.src || '';
     const currentCleanName = getCleanFileName(currentSrc);
 
-    // Prevent redundant DOM reload if video is already playing the target clip
+    // Prevent redundant DOM reload if video is already playing or loading the target clip
     const isMatchingClip = (
       currentCleanName === cleanFile ||
       currentCleanName === `${riderId}_${cleanFile}` ||
       currentCleanName.endsWith(`_${cleanFile}`)
     );
 
-    if (isMatchingClip && !videoEl.paused && videoEl.currentTime > 0) {
+    if (isMatchingClip && (!videoEl.paused || videoEl.readyState >= 1)) {
       videoEl.hidden = false;
       videoEl.style.display = 'block';
       if (spriteEl) spriteEl.hidden = true;
       videoEl.style.transform = getTransformFlip(player, playerKey);
 
-      try {
-        videoEl.currentTime = 0;
-        const p = videoEl.play();
-        if (p !== undefined) p.catch((err) => console.warn("Video replay warning:", err));
-      } catch (e) {}
+      if (videoEl.paused) {
+        try {
+          const p = videoEl.play();
+          if (p !== undefined) p.catch(() => {});
+        } catch (e) {}
+      }
       return;
     }
 
@@ -127,6 +128,11 @@
       }
 
       const src = videoCandidates[candidateIdx++];
+
+      // Render element immediately so it reveals as soon as the video buffer starts
+      videoEl.hidden = false;
+      videoEl.style.display = 'block';
+      if (spriteEl) spriteEl.hidden = true;
 
       videoEl.onerror = () => tryNextVideo();
       videoEl.onplaying = () => {
