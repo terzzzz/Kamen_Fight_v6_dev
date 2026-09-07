@@ -1409,3 +1409,16 @@ img.mirror-flip {
   0% { box-shadow: 0 0 4px rgba(255, 204, 0, 0.4); }
   100% { box-shadow: 0 0 14px rgba(255, 204, 0, 0.9); }
 }
+
+/* Keep human controls on their player's side,
+   including when the other player's controls are hidden. */
+
+#human-control-panel > #p1-controls {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+#human-control-panel > #p2-controls {
+  margin-left: auto;
+  margin-right: 0;
+}
