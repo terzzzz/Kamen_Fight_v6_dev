@@ -1,12 +1,15 @@
-//game.js
+// game.js
+// Kamen Fight — Screen Navigation, UI View Controller & Game Lifecycle Engine
+
 (function (g) {
   "use strict";
 
   const C = g.CombatCore;
   const K = g.KF;
 
-  let sessionCounter = 0;
+  let sessionCounter = 0; // Guard ID against async race conditions across screen transitions
 
+  /** Toggles DOM element visibility using hidden attribute and CSS display. */
   function show(id, visible) {
     const element = document.getElementById(id);
     if (!element) return;
@@ -15,6 +18,7 @@
     element.style.display = visible ? "" : "none";
   }
 
+  /** Paints live HUD state, stun overlays, CPU control panels, and turn counters. */
   function paint() {
     const gs = g.gameState;
     if (!gs || !gs.p1 || !gs.p2) return;
@@ -41,6 +45,7 @@
     }
   }
 
+  /** Handles match conclusion, announces winner banner, and updates end-game character media. */
   function finish(winner) {
     const gs = g.gameState;
     if (!gs) return;
@@ -63,6 +68,7 @@
       );
     }
 
+    // Brief delay buffer before allowing user to tap back to selection screen
     setTimeout(() => {
       if (g.gameState === gs && gs.roundPhase === "GAME_OVER") {
         gs.canContinueFromGameOver = true;
@@ -70,6 +76,7 @@
     }, 800);
   }
 
+  /** Global error boundary handler for runtime exceptions during matches. */
   function fail(error) {
     console.error(error);
 
@@ -86,6 +93,7 @@
     );
   }
 
+  /** Transitions view back to character selection screen from Game Over state. */
   function returnToSelection() {
     const gs = g.gameState;
 
@@ -116,6 +124,12 @@
     if (g.updateSelectionUI) g.updateSelectionUI();
   }
 
+  /**
+   * Initializes a new battle session from selected VS screen configuration.
+   * Builds match state, seeds deterministic PRNG, preloads media, and starts MatchManager loop.
+   *
+   * @param {Object} config - Match setup configuration from character selection.
+   */
   async function startBattle(config) {
     try {
       g.MatchManager.stop();
@@ -123,6 +137,7 @@
       const session = ++sessionCounter;
       const data = await K.loadData();
 
+      // Guard against race conditions if user starts another session mid-load
       if (session !== sessionCounter) return;
 
       const rider1 = data.riders.find(
@@ -148,6 +163,7 @@
       const seed = Number(config.seed ?? Date.now()) >>> 0;
       const core = C.createMatch(rider1, rider2, data.moves);
 
+      // Initialize global game state instance
       const gs = g.gameState = {
         session,
         seed,
@@ -169,6 +185,7 @@
         canContinueFromGameOver: false
       };
 
+      // Clean up previous match DOM artifacts
       document.querySelectorAll(".damage-popup").forEach(
         element => element.remove()
       );
@@ -177,6 +194,7 @@
         element => element.classList.remove("blanked")
       );
 
+      // Show match transition splash screen
       show("vs-select-screen", false);
       show("battle-screen", false);
       show("match-transition-screen", true);
@@ -188,6 +206,7 @@
 
       if (g.gameState !== gs) return;
 
+      // Reveal battle screen and paint initial HUD
       show("match-transition-screen", false);
       show("battle-screen", true);
 
@@ -197,12 +216,14 @@
         g.updateCharacterMedia(slot, "IDLE");
       }
 
+      // Begin live round input loop
       await g.MatchManager.begin();
     } catch (error) {
       fail(error);
     }
   }
 
+  /** Application bootstrapper. Preloads data and waits for user tap to open character select. */
   async function boot() {
     show("loading-screen", true);
     show("vs-select-screen", false);
@@ -256,6 +277,7 @@
     }
   }
 
+  // Global View interface export
   g.GameView = {
     paint,
     finish,
@@ -265,13 +287,14 @@
 
   g.startBattle = startBattle;
 
+  // Global event listeners for post-game return navigation
   document.addEventListener("pointerdown", returnToSelection);
   document.addEventListener("keydown", returnToSelection);
 
+  // Auto-boot application on DOM ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else {
     void boot();
   }
 })(window);
-
