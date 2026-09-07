@@ -1,21 +1,30 @@
-//combat_test.js
-
+// combat_tests.js
+// Kamen Fight — Automated Combat Rule Test Suite & AI Difficulty Benchmark Harness
 
 (function (g) {
   "use strict";
 
+  /**
+   * Executes a comprehensive suite of pure deterministic combat engine unit tests.
+   * Tests core game mechanics: state immutability, PRNG determinism, probability sum integrity,
+   * Chi costs, interrupts, guard mechanics, status effects, faint loops, and symmetry.
+   *
+   * @returns {Promise<{passed: number}>} Number of passed assertions.
+   */
   async function runCombatTests() {
     const data = await g.KF.loadData();
     const C = g.CombatCore;
 
     let passed = 0;
 
+    /** Helper assertion runner; throws on failure to break test execution. */
     function assert(condition, message) {
       if (!condition) throw new Error(`FAILED: ${message}`);
       passed++;
       console.log(`PASS: ${message}`);
     }
 
+    /** Helper function: instantiates a fresh match state between two riders. */
     function match(id1 = "ichigo", id2 = "ichigo") {
       const rider1 = data.riders.find(rider => rider.id === id1);
       const rider2 = data.riders.find(rider => rider.id === id2);
@@ -26,6 +35,7 @@
     const idle = { key: "DO_NOTHING", charge: 0 };
     const action = (key, charge = 100) => ({ key, charge });
 
+    // Test 1: State Immutability Guard
     {
       const state = match();
       const original = JSON.stringify(state);
@@ -38,6 +48,7 @@
       );
     }
 
+    // Test 2: Seeded PRNG Determinism
     {
       const state = match();
 
@@ -55,6 +66,7 @@
       );
     }
 
+    // Test 3: Expectimax Distribution Probability Integrity ($\sum P = 1.0$)
     {
       const state = match();
 
@@ -75,6 +87,7 @@
       );
     }
 
+    // Test 4: Non-Offensive Utility Moves
     {
       const state = match();
 
@@ -92,6 +105,7 @@
       );
     }
 
+    // Test 5: Legal Move Validation & Chi Affordability
     {
       const state = match();
       state.p1.chi = 0;
@@ -114,6 +128,7 @@
       );
     }
 
+    // Test 6: Action Priority & Clean Hit Interruption
     {
       const state = match();
 
@@ -135,6 +150,7 @@
       );
     }
 
+    // Test 7: Omni-Guard Resolution & Chi Reward Logic
     {
       const state = match();
 
@@ -156,6 +172,7 @@
       );
     }
 
+    // Test 8: Non-Omni Directional Guard Matching
     {
       const state = match("v3", "ichigo");
 
@@ -172,6 +189,7 @@
       );
     }
 
+    // Test 9: Dual Guard Interaction Stability
     {
       const state = match();
 
@@ -190,6 +208,7 @@
       );
     }
 
+    // Test 10: Damaging Utility & Rider-Specific Status Debuffs (Riderman Rope Bind)
     {
       const state = match("riderman", "ichigo");
 
@@ -211,6 +230,7 @@
       );
     }
 
+    // Test 11: Blocked Status Effect Prevention
     {
       const state = match("riderman", "ichigo");
 
@@ -227,6 +247,7 @@
       );
     }
 
+    // Test 12: Recovery Caps & Health Regeneration (Kamen Rider X Heal)
     {
       const state = match("x", "ichigo");
       state.p1.lp -= 100;
@@ -244,6 +265,7 @@
       );
     }
 
+    // Test 13: Stun / Faint Transition Cycle
     {
       const state = match();
       state.p2.faintMeter = 90;
@@ -276,6 +298,7 @@
       );
     }
 
+    // Test 14: Status Buff Duration & Expiry Lifecycle
     {
       let state = match();
 
@@ -300,6 +323,7 @@
       );
     }
 
+    // Test 15: Spatial Side-Swapping Symmetry
     {
       const state = match();
 
@@ -333,6 +357,13 @@
     return { passed };
   }
 
+  /**
+   * Benchmarks higher AI difficulty models against balanced CPU settings.
+   * Runs head-to-head simulations with side-swapping to eliminate positional bias.
+   *
+   * @param {number} [matchesPerSide=10] - Number of matches per side orientation.
+   * @returns {Promise<Array<Object>>} Benchmark statistics per rider and difficulty.
+   */
   async function benchmarkDifficulties(matchesPerSide = 10) {
     const data = await g.KF.loadData();
     const results = [];
@@ -377,6 +408,7 @@
     return results;
   }
 
+  // Global namespace export
   g.runCombatTests = runCombatTests;
   g.benchmarkDifficulties = benchmarkDifficulties;
 })(window);
