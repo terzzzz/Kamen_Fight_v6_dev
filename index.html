@@ -2,20 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Kamen Fight</title>
 
   <link rel="stylesheet" href="css/style.css">
 
   <style>
-    [hidden] {
-      display: none !important;
-    }
+    [hidden] { display: none !important; }
 
-    .battle-banner {
-      white-space: pre-line;
-    }
+    .battle-banner { white-space: pre-line; }
 
     .pad-btn {
       touch-action: none;
@@ -39,19 +34,19 @@
       transition: width 0.2s;
     }
 
-    #start-prompt {
-      cursor: pointer;
-    }
+    #start-prompt { cursor: pointer; }
   </style>
 </head>
 
 <body>
+  <!-- Device Orientation Guard Overlay -->
   <div id="portrait-orientation-overlay">
     <div class="rotate-icon">📱</div>
     <h2>PLEASE ROTATE DEVICE</h2>
     <p>Use portrait orientation.</p>
   </div>
 
+  <!-- Screen 1: Game Loading Screen -->
   <main id="loading-screen" class="screen-container">
     <div class="loading-content">
       <h1 class="game-launch-title">KAMEN FIGHT</h1>
@@ -67,6 +62,7 @@
     </div>
   </main>
 
+  <!-- Screen 2: Character VS Selection Screen -->
   <section id="vs-select-screen" class="screen-container" hidden>
     <div class="bgm-volume-control">
       <label for="bgm-slider">BGM</label>
@@ -80,10 +76,9 @@
     </div>
 
     <div class="vs-select-stage">
-      <h1 id="select-step-title" class="vs-header-title">
-        SELECT PLAYER 1
-      </h1>
+      <h1 id="select-step-title" class="vs-header-title">SELECT PLAYER 1</h1>
 
+      <!-- Dynamic Rider Selection Card Layout Container -->
       <div id="selection-layout" class="selection-layout"></div>
 
       <div id="vs-error-banner" class="error-banner" hidden>
@@ -92,26 +87,19 @@
     </div>
 
     <div class="selection-actions">
-      <button id="back-btn"
-              class="nav-btn"
-              onclick="handleBackStep()"
-              disabled>
+      <button id="back-btn" class="nav-btn" onclick="handleBackStep()" disabled>
         BACK
       </button>
 
-      <button id="confirm-btn"
-              class="action-btn"
-              onclick="handleConfirmStep()">
+      <button id="confirm-btn" class="action-btn" onclick="handleConfirmStep()">
         CONFIRM P1
       </button>
 
-      <button id="start-game-btn"
-              class="action-btn start-glow"
-              onclick="validateAndStartMatch()"
-              hidden>
+      <button id="start-game-btn" class="action-btn start-glow" onclick="validateAndStartMatch()" hidden>
         START GAME
       </button>
 
+      <!-- Monte Carlo Simulation Trigger Controls -->
       <div class="sim-controls">
         <select id="sim-count-select">
           <option value="10" selected>10 Matches</option>
@@ -119,15 +107,14 @@
           <option value="50">50 Matches</option>
         </select>
 
-        <button id="btn-simulate-matches"
-                class="action-btn sim-btn"
-                disabled>
+        <button id="btn-simulate-matches" class="action-btn sim-btn" disabled>
           SIMULATE
         </button>
       </div>
     </div>
   </section>
 
+  <!-- Screen 3: Match Transition Splash Screen -->
   <section id="match-transition-screen" class="splash-screen" hidden>
     <div class="splash-content">
       <h1 id="splash-round-text">GET READY!</h1>
@@ -135,17 +122,23 @@
     </div>
   </section>
 
+  <!-- Screen 4: Live Battle Viewport & Dual Control Screen -->
   <section id="battle-screen" class="screen-container" hidden>
+    <!-- Top HUD Bar: Names, LP, Chi, Faint, Round Timer -->
     <div id="battle-hud" class="hud-bar"></div>
 
+    <!-- Center Battle Announcement Banners -->
     <div id="battle-message" class="battle-banner" hidden></div>
     <div id="center-action-label" class="action-sub-banner" hidden></div>
 
+    <!-- Center Viewport: Video/Sprite Display & Action Cutscene Container -->
     <div id="battle-viewport" class="battle-viewport"></div>
 
+    <!-- Bottom Controls: Dual Virtual D-Pads for P1 and P2 -->
     <div id="human-control-panel" class="dual-controls-panel"></div>
   </section>
 
+  <!-- Monte Carlo Simulation Results Modal Dialog -->
   <div id="sim-modal" class="sim-modal" hidden>
     <div class="sim-modal-content">
       <h2 style="color:#00ffcc;text-align:center">SIMULATION RESULTS</h2>
@@ -159,48 +152,34 @@
 
   <noscript>This game requires JavaScript.</noscript>
 
+  <!-- Inline Dynamic DOM Template Builder -->
   <script>
     (function () {
       const slots = ["p1", "p2"];
 
+      /** Generates VS Screen Rider selection card template. */
       function card(slot, index) {
         return `
-          <div id="${slot}-card"
-               class="rider-card ${index === 0 ? "active-slot" : "locked-slot"}">
+          <div id="${slot}-card" class="rider-card ${index === 0 ? "active-slot" : "locked-slot"}">
             <h2>PLAYER ${index + 1}</h2>
 
             <div class="portrait-box">
-              <img id="${slot}-img"
-                   src="assets/images/icons/ichigo.png"
-                   alt="Player ${index + 1} rider">
+              <img id="${slot}-img" src="assets/images/icons/ichigo.png" alt="Player ${index + 1} rider">
             </div>
 
             <h3 id="${slot}-name-display">Kamen Rider Ichigo</h3>
 
             <div class="card-controls">
-              <button id="${slot}-left-btn"
-                      onclick="cycleRider('${slot}', -1)">
-                &lt;
-              </button>
-
-              <span id="${slot}-type-display"
-                    class="type-badge"
-                    onclick="toggleControlType('${slot}')">
+              <button id="${slot}-left-btn" onclick="cycleRider('${slot}', -1)">&lt;</button>
+              <span id="${slot}-type-display" class="type-badge" onclick="toggleControlType('${slot}')">
                 ${index === 0 ? "HUMAN" : "CPU"}
               </span>
-
-              <button id="${slot}-right-btn"
-                      onclick="cycleRider('${slot}', 1)">
-                &gt;
-              </button>
+              <button id="${slot}-right-btn" onclick="cycleRider('${slot}', 1)">&gt;</button>
             </div>
 
             <div class="difficulty-control-group">
               <span class="diff-label">DIFFICULTY:</span>
-
-              <span id="${slot}-diff-display"
-                    class="diff-badge"
-                    onclick="toggleDifficulty('${slot}')">
+              <span id="${slot}-diff-display" class="diff-badge" onclick="toggleDifficulty('${slot}')">
                 ${index === 0 ? "N/A" : "BALANCED"}
               </span>
             </div>
@@ -208,6 +187,7 @@
         `;
       }
 
+      /** Generates top battle HUD template. */
       function hud(slot) {
         return `
           <div class="player-hud ${slot}-hud">
@@ -238,31 +218,26 @@
         `;
       }
 
+      /** Generates center battle video/sprite viewport template. */
       function viewport(slot) {
         return `
           <div class="player-box" id="${slot}-box">
-            <div id="${slot}-stun-overlay" class="stun-overlay" hidden>
-              FAINTED!
-            </div>
+            <div id="${slot}-stun-overlay" class="stun-overlay" hidden>FAINTED!</div>
 
             <video id="${slot}-video" autoplay muted playsinline loop></video>
             <img id="${slot}-sprite" alt="Rider portrait" hidden>
 
             <div class="player-charge-container">
               <div class="player-charge-track">
-                <div id="${slot}-charge-fill"
-                     class="player-charge-fill"
-                     style="width:0%"></div>
-
-                <span id="${slot}-charge-text" class="player-charge-text">
-                  READY
-                </span>
+                <div id="${slot}-charge-fill" class="player-charge-fill" style="width:0%"></div>
+                <span id="${slot}-charge-text" class="player-charge-text">READY</span>
               </div>
             </div>
           </div>
         `;
       }
 
+      /** Generates virtual controller D-pad input layout template. */
       function controls(slot, index) {
         const keys = ["W", "A", "S", "D", "I", "J", "K", "L"];
         const p2Labels = {
@@ -276,33 +251,24 @@
 
           return `
             <button id="${id}"
-                    class="pad-btn ${slot}-${direction ? "btn" : "act"}
-                           ${direction ? "dir-btn" : "act-btn"}">
+                    class="pad-btn ${slot}-${direction ? "btn" : "act"} ${direction ? "dir-btn" : "act-btn"}">
               ${index === 0 ? key : p2Labels[key]}
             </button>
           `;
         }).join("");
 
         return `
-          <div id="${slot}-controls"
-               class="compact-pad-container ${slot}-side">
+          <div id="${slot}-controls" class="compact-pad-container ${slot}-side">
             <div class="pad-label">
-              ${index === 0
-                ? "PLAYER 1 [W-A-S-D + I-J-K-L]"
-                : "PLAYER 2 [ARROWS + 1-2-3-5]"}
+              ${index === 0 ? "PLAYER 1 [W-A-S-D + I-J-K-L]" : "PLAYER 2 [ARROWS + 1-2-3-5]"}
             </div>
 
             <div class="charge-bar-wrapper">
-              <div id="${index === 0
-                ? "charge-status-display"
-                : "p2-charge-status-display"}"
-                   class="charge-status">
+              <div id="${index === 0 ? "charge-status-display" : "p2-charge-status-display"}" class="charge-status">
                 HOLD DIRECTION TO CHARGE
               </div>
 
-              <div id="${slot}-action-flag" class="action-flag" hidden>
-                LOCKED!
-              </div>
+              <div id="${slot}-action-flag" class="action-flag" hidden>LOCKED!</div>
             </div>
 
             <div class="pad-grid-4x2">${buttons}</div>
@@ -310,28 +276,23 @@
         `;
       }
 
+      // Inject generated template layouts into structural DOM containers
       document.getElementById("selection-layout").innerHTML =
-        card("p1", 0) +
-        '<div class="vs-divider">VS</div>' +
-        card("p2", 1);
+        card("p1", 0) + '<div class="vs-divider">VS</div>' + card("p2", 1);
 
       document.getElementById("battle-hud").innerHTML =
         hud("p1") +
-        `
-          <div class="center-hud">
-            <div id="turn-display" class="round-title">ROUND 1</div>
-            <div id="turn-timer" class="timer-display">TIME: 8.0s</div>
-          </div>
-        ` +
+        `<div class="center-hud">
+           <div id="turn-display" class="round-title">ROUND 1</div>
+           <div id="turn-timer" class="timer-display">TIME: 8.0s</div>
+         </div>` +
         hud("p2");
 
       document.getElementById("battle-viewport").innerHTML =
         viewport("p1") +
-        `
-          <div class="center-action-box" id="center-box" hidden>
-            <video id="center-video" autoplay muted playsinline></video>
-          </div>
-        ` +
+        `<div class="center-action-box" id="center-box" hidden>
+           <video id="center-video" autoplay muted playsinline></video>
+         </div>` +
         viewport("p2");
 
       document.getElementById("human-control-panel").innerHTML =
@@ -339,29 +300,31 @@
     })();
   </script>
 
-  <!-- Shared data/rules, then pure combat and planning modules. -->
+  <!-- Script Load Order Cascade -->
+  <!-- 1. Shared Constants, Deterministic PRNG & Core Rules Engine -->
   <script src="js/common.js"></script>
   <script src="js/combat_core.js"></script>
+  
+  <!-- 2. AI Heuristic Brains & Expectimax Search Engine -->
   <script src="js/rider_brains.js"></script>
   <script src="js/foresee_engine.js"></script>
   <script src="js/ai.js"></script>
 
-  <!-- Existing presentation files. -->
+  <!-- 3. Media Preloader & UI Renderer Modules -->
   <script src="js/media.js"></script>
   <script src="js/ui.js"></script>
 
-  <!-- Runtime adapters. -->
+  <!-- 4. Runtime Controllers, Live Playback Adapter & Simulation Engine -->
   <script src="js/cpu_controller.js"></script>
   <script src="js/combat_engine.js"></script>
   <script src="js/match_manager.js"></script>
   <script src="js/simulator.js"></script>
 
-  <!-- Existing selection screen; new initialization. -->
+  <!-- 5. Screen Navigation & Application Bootstrapper -->
   <script src="js/vs_select.js"></script>
   <script src="js/game.js"></script>
 
-  <!-- Manual regression/benchmark commands. -->
+  <!-- 6. Automated Unit Tests & Benchmarking Suite -->
   <script src="js/combat_tests.js"></script>
 </body>
 </html>
-
