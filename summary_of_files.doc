@@ -1,22 +1,45 @@
-As at 31-8-2026:
-JavaScript Directory (/js/)
- * ai.js: AI memory manager, player profile habit tracker, archetype weights, and decision engine evaluating Low Power (<5 Chi) vulnerability and Full Power (>14 Chi) threshold bonuses.
- * combat_engine.js: Core combat resolution engine managing turn execution, the 4-tier priority hierarchy (Projectile 4 > Reach 3 > W-Skills 2 > Melee 1), damage calculations, Low/Full Power multipliers, Hard CPU scaling (+10% LP/Dmg), Faint buildup, and damage popups.
- * common.js: Shared helper utilities, math routines, and global state initialization helpers used across multiple scripts.
- * cpu_controller.js: AI decision-making controller interfacing difficulty settings (Easy, Normal, Hard) with real-time charge monitor timings.
- * foresee_engine.js: Multi-turn predictive search engine (supporting 2 to 4-turn Minimax/Expectimax with Alpha-Beta pruning) incorporating W-skill priority 2 execution and character routine (\text{套路}) continuity scoring.
- * game.js: Main game orchestrator and entry point initializing global application states, game modes, and event hooks.
- * item.js: Logic handler for managing item usage, inventory effects, and combat consumables.
- * match_manager.js: Match lifecycle manager handling real-time charge progress monitors, input bindings (W-A-S-D & Touch Pad), round timers, UI control panel visibility, and battle startup.
- * media.js: Video controller managing video preloading, iOS mobile video playback unlocking, center screen transitions, and directional sprite flipping using sourceFacing.
- * simulator.js: Headless batch simulation engine executing full game logic for CPU vs. CPU matches (10 to 100+ runs) to collect empirical win-rate, LP, and round duration analytics.
- * storage.js: Persistence manager handling localStorage reads and writes for saved AI knowledge, match stats, and user preferences.
- * ui.js: DOM UI renderer managing HUD stat updates, LP/Chi progress bar fills, faint meters, floating text popups, and control panel displays.
- * vs_select.js: Character selection screen controller managing Rider selection states, CPU/Human toggles, difficulty parameters, and simulation triggers.
-CSS Directory (/css/)
- * style.css: Master stylesheet defining layouts, HUD overlays, Chi/Faint bar tracks, video scaling containers, damage popups, control pad grids, and visual themes.
-Data Directory (/data/)
- * items.js: Data dictionary defining available items, attributes, costs, and in-game effects.
- * moves.json: Move set database defining move commands, type classifications, Chi costs, base damage, hit chances, buff/debuff parameters, and video file associations for each Kamen Rider.
- * riders.json: Character roster registry storing tuned base stats (2200–2500 LP), initial orientation (sourceFacing), video folder paths (videoFolder), archetypes, finishers, and active availability flags.
+As at 6-9-2026:
 
+JavaScript Directory (/js/)
+ai.js: AI decision runner and history manager; wraps ForeseeEngine with difficulty-based probabilistic softmax action selection and maintains a rolling 24-turn match history buffer (remember).
+
+combat_core.js: Pure deterministic combat rules and state resolution engine (CombatCore); handles move compilation, stance/Chi costs, 3-tier range priority (Projectile 3 > Reach/Rope 2 > Melee 1), damage formulas, guard matching, status buffs/debuffs, faint stun thresholds, and outcome probability distributions (distribution).
+
+combat_engine.js: Live combat playback adapter (CombatPlayback); processes resolution trace events from CombatCore to orchestrate UI animations, side media reactions, floating popups, center action video cutscenes, and HUD state updates.
+
+combat_tests.js: Automated combat rule unit test suite (runCombatTests) and AI difficulty benchmark harness (benchmarkDifficulties); verifies state immutability, PRNG determinism, interrupt logic, status effects, and spatial symmetry.
+
+common.js: Shared utility library (KF); provides math helpers (clamp), async timers (wait), FNV-1a hashing (hash), Mulberry32 deterministic PRNG (rng), difficulty parameter levels (levels), global combat rules, charge calculators, and singleton JSON data preloader (loadData).
+
+cpu_controller.js: Asynchronous CPU planning dispatcher (AIService); manages a dual Web Worker pool running ai_worker.js off the main UI thread with synchronous fallback.
+
+foresee_engine.js: Multi-turn predictive decision engine (ForeseeEngine); combines Depth-1 Expectimax evaluation matrix with RiderBrains tactical prior heuristics and Monte Carlo horizon rollouts for top finalist moves.
+
+game.js: Game lifecycle controller and screen navigation engine (GameView); manages application startup, session transition race-condition guards, HUD painting, finish states, and returning to character selection.
+
+match_manager.js: Live turn input controller; binds keyboard/touch controls (WASD/Arrows + Action buttons), updates real-time charge progress bars, enforces time limits, and triggers playback resolution.
+
+media.js: Media asset controller; manages video element preloading, mobile audio/video unlocking, center cutscene playback, and dynamic side sprite/video state changes.
+
+rider_brains.js: Character-specific tactical intelligence profiles (RiderBrains); provides static prior move weights, tactical intent classifiers, state evaluation heuristics, and situational bonuses.
+
+simulator.js: Headless batch simulation engine and replay verifier (Simulator); executes background CPU vs. CPU matches (10 to 50+ runs) to collect statistical win-rate/LP/Chi analytics and verifies deterministic match replays (verifyReplay).
+
+storage.js: Persistence manager; handles localStorage operations for saved AI learning history, user preferences, and match statistics.
+
+ui.js: Battle HUD renderer (UI); updates LP/Chi progress bars, faint meters, dynamic status tags for Low Power (<5 Chi) / Full Power (>14 Chi) thresholds, and floating damage text popups.
+
+vs_select.js: 3-step character selection screen controller; manages Rider cycling, control mode toggles (Human/CPU), mirror match palette swaps, background music (BGM), and triggers the batch simulation modal.
+
+CSS Directory (/css/)
+style.css: Master stylesheet defining layouts, battle screen HUDs, dynamic Chi/Faint bar fill tracks, center video viewport containers, damage popups, virtual controller D-pad grids, and responsive theme overrides.
+
+Data Directory (/data/)
+moves.json: Master move set database defining direction inputs, action buttons, classification types, Chi costs, base damage, hit probabilities, buff/debuff definitions, and associated video clip files per Rider.
+
+riders.json: Character roster database storing base stats (LP, orientation, facing directions), video folder paths, tactical archetypes, active availability flags, and signature move attributes.
+
+Root Directory (HTML / Views)
+index.html: Playable game application entry point featuring orientation overlay, loading screen, character selection wizard, live battle viewport, dynamic DOM template builders, and script dependency cascade.
+
+index_test.html: Automated browser testing dashboard for running regression test suites (runCombatTests) and optional 4-match AI mirror benchmarks on-screen.
