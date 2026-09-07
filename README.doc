@@ -1,43 +1,66 @@
-ver. 20260831-
+ver. 20260907-
 
-Kamen Fight - Project DocumentationKamen Fight is a Web-based, turn-based Kamen Rider fighting game built with vanilla JavaScript, HTML5 Video, and CSS3. 
-The game features simultaneous command selection, directional charge mechanics, sequential video-driven combat resolution, smart AI decision engines, batch match simulation, and full mirror-match support.
-Key FeaturesDirectional Charge System: Players hold directional keys (A, D, W, S) to build charge percentage before confirming attacks with action keys (J, K, L, I). 
-Charge percentage dynamically scales damage, accuracy, and guard success.
-Special Guard (A+I) omni-blocks attacks, while mismatched guards lead to full damage and action interruption.
-Chi & Faint Mechanics: Resource pool caps at 16 Chi with active Full Power (>14 Chi) and Low Power (<5 Chi) modifiers. Accumulating 100 Faint points stuns the target into a 1-turn forced idle state.
+Kamen Fight - Project Documentation
+====================================
 
+Kamen Fight is a Web-based, turn-based Kamen Rider fighting game built with vanilla JavaScript (ES6+), HTML5 Video, and CSS3. 
+The game features simultaneous command selection, directional charge mechanics, sequential video-driven combat resolution, deterministic PRNG-based mechanics, multi-threaded Expectimax & Monte Carlo lookahead AI engines, headless batch simulation with replay verification, and full mirror-match support.
 
-├── index.html              # Main game layout and media containers
+Key Features & Architecture
+---------------------------
+* Directional Charge System: Players hold directional keys (W, A, S, D) to build charge percentages prior to confirming attacks with action keys (I, J, K, L). Charge levels dynamically scale attack damage, accuracy, priority, and guard effectiveness.
+* Decoupled Deterministic Combat Core: Pure state-machine combat resolution engine (js/combat_core.js) supporting deterministic state resolution, seedable Mulberry32 PRNG, outcome probability enumeration, and side-swapping spatial symmetry.
+* Advanced Multi-Threaded AI: Decision search pipeline utilizing parallel Web Workers, Depth-1 Expectimax evaluation, character-specific tactical heuristics (js/rider_brains.js), opponent habit decay models, and deep multi-turn Monte Carlo horizon rollouts (js/foresee_engine.js).
+* Resource & Stun Mechanics: Chi resource pool capped at 16 with dynamic Low Power (<5 Chi) debuffs and Full Power (>14 Chi) status bonuses. Faint buildup (100-point threshold) forces targets into a 1-turn stunned idle state.
+* Headless Batch Simulator & Replay Verifier: Fast background Monte Carlo simulation engine (js/simulator.js) for CPU vs. CPU balancing (10 to 100+ runs) with strict bit-identical state replay verification (verifyReplay).
+* Automated Testing Dashboard: On-screen browser testing suite (test_dashboard.html / js/combat_tests.js) verifying combat rules, state immutability, interrupt logic, and AI difficulty performance.
+
+Project Directory Structure
+---------------------------
+├── index.html              # Playable game entry point & dynamic view mounting
+├── index_test.html     # Automated browser test dashboard & AI benchmark harness
 ├── css/
-│   └── style.css           # Styling, HUD layout, floating popups, video scaling
+│   └── style.css           # Layouts, HUD overlays, bar tracks, video containers, popups
 ├── data/
-│   ├── moves.json          # Move definitions, Chi costs, damage ratios, video mappings
-│   └── riders.json         # Roster list, maximum LP, sprite icon bindings
+│   ├── moves.json          # Master move database, Chi costs, damage ratios, video mappings
+│   └── riders.json         # Roster list, base stats (LP, orientation), video folders
 ├── js/
-│   ├── common.js           # Shared combat parameters, charge thresholds, helpers
-│   ├── combat_engine.js    # Turn resolution, guard calculations, faint buildup
-│   ├── cpu_controller.js   # CPU charge manager
-│   ├── foresee_engine.js   # Minimax / Expectimax 3-turn tree search
-│   ├── ai.js               # Memory store, habit tracking, AI profiles
-│   ├── game.js             # Core battle initialization and match state management
-│   ├── match_manager.js    # Round countdown, input handlers, action confirmation
-│   ├── media.js            # Center cutscene player and video duration handlers
-│   ├── simulator.js        # Synchronized headless batch simulation engine
-│   ├── ui.js               # HUD rendering and floating text popups
-│   └── vs_select.js        # Character select screen, BGM, simulation modal UI
+│   ├── ai.js               # AI decision runner & rolling 24-turn match memory store
+│   ├── ai_worker.js        # Background Web Worker thread for parallel AI search
+│   ├── combat_core.js      # Decoupled deterministic combat rules & state resolution
+│   ├── combat_engine.js    # Live combat playback adapter & visual event orchestrator
+│   ├── combat_tests.js     # Automated unit test suite & difficulty benchmark harness
+│   ├── common.js           # Utilities, Mulberry32 PRNG, FNV-1a hash, JSON loader
+│   ├── cpu_controller.js   # Asynchronous Web Worker pool dispatcher & CPU manager
+│   ├── foresee_engine.js   # Expectimax decision search & Monte Carlo horizon rollouts
+│   ├── game.js             # Main game lifecycle manager, screen router & HUD painter
+│   ├── match_manager.js    # Live input handlers (WASD/Touch), charge monitors, timers
+│   ├── media.js            # Video player, mobile video/audio unlocker, sprite flipper
+│   ├── rider_brains.js     # Character-specific tactical intelligence profiles & priors
+│   ├── simulator.js        # Headless batch simulation engine & replay verifier
+│   ├── storage.js          # LocalStorage persistence manager
+│   ├── ui.js               # Battle HUD renderer, LP/Chi/Faint bars, damage popups
+│   └── vs_select.js        # 3-step character select wizard, BGM manager, sim modal UI
 └── assets/
-    ├── sounds/             # BGM tracks (matchup.mp3, matchup1.mp3)
-    ├── images/icons/       # Rider thumbnails
-    └── videos/             # Rider video clips (idle.mp4, faint.mp4, etc.)
+    ├── sounds/             # BGM tracks (matchup.mp3, matchup1.mp3, etc.)
+    ├── images/icons/       # Rider thumbnail icons
+    └── videos/             # Rider video cutscenes (idle.mp4, faint.mp4, etc.)
+
+Setup & Deployment Instructions
+-------------------------------
+Local Execution:
+To run locally, execute through a local HTTP web server (e.g., Python `python -m http.server`, Node `npx serve`, or VS Code Live Server) to support Web Worker multi-threading and `fetch()` requests for local JSON data files.
+
+GitHub Pages Deployment:
+Push the repository to GitHub and enable GitHub Pages under Settings > Pages.
+
+Asset Naming Warning:
+Ensure all asset paths and video filenames inside assets/videos/<rider_id>/ are strictly lowercase (e.g., idle.mp4, guard.mp4) to prevent 404 case-sensitivity errors on Linux production hosts.
+
+Automated Testing & AI Benchmarking:
+Open `test_dashboard.html` in any browser to execute the 15-point combat rule assertion suite (`runCombatTests`) and run head-to-head AI difficulty benchmarks (`benchmarkDifficulties`).
 
 
-Setup & Deployment InstructionsLocal Execution: 
-Clone or download the repository folder and open index.html directly in any modern Web browser (Chrome, Firefox, Edge, Safari). No build steps or server dependencies required.
-
-GitHub Pages Deployment: 
-Push the repository to GitHub and enable GitHub Pages under Settings > Pages. 
-Asset Naming Warning: Ensure all asset paths and video filenames inside assets/videos/<rider_id>/ are strictly lowercase (e.g., idle.mp4, guard.mp4) to prevent 404 errors on Linux host servers.
 
 # Kamen_Fight game development timeline
 
@@ -56,6 +79,10 @@ Riders: Include all showga riders + shadow moon (portrait only)
 27/8/26: Easy, Normal and Hard level fine-tuning completed. Building more visuals for v3 rider.
 28/8/26: Enable visual play of v3 rider and working on Riderman.
 
-02/9/26: Finalise 4 riders and working on rider x.
-04/9/26: Bug fixing on each file, fixing difficulty implementation, charge up bars etc.
-05/9/26: Fix bug where Aggressive and Master are easier to beat. 
+2/9/26: Finalise 4 riders and working on rider x.
+4/9/26: Bug fixing on each file, fixing difficulty implementation, charge up bars etc.
+5/9/26: Fix bug where Aggressive and Master are easier to beat. 
+6/9/26: Revise codings, adding comments, spotting & fixing minor bugs. Verificaiton of game difficulty.
+7/9/26: Rider Amazon - design. 
+
+
