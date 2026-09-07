@@ -195,10 +195,12 @@
       const player = window.gameState ? window.gameState[playerKey] : null;
       const riderId = (player && player.id) ? player.id : (playerKey === 'p1' ? 'ichigo' : 'nigo');
 
+      // CombatPlayback owns the battle message.
+      // The video player must not repeat it in a second banner.
       if (actionLabel) {
-        const name = player ? player.name : playerKey.toUpperCase();
-        actionLabel.textContent = actionName ? `[${playerKey.toUpperCase()}] ${name} : ${actionName}!` : '';
-        actionLabel.hidden = !actionName;
+        actionLabel.textContent = "";
+        actionLabel.hidden = true;
+        actionLabel.style.display = "none";
       }
 
       centerBox.hidden = false;
