@@ -10,7 +10,7 @@
   window.battleBGM = window.battleBGM || null;
   window.currentVolume = typeof window.currentVolume === 'number' ? window.currentVolume : 0.5;
 
-  // Available background tracks for selection / matchup screen
+  // Available background audio tracks for character selection screen
   const SELECTION_BGM_TRACKS = [
     'assets/sounds/matchup.mp3',
     'assets/sounds/matchup1.mp3',
@@ -24,6 +24,7 @@
     master: 'MASTER'
   };
 
+  // Default fallback roster definitions
   window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     { id: 'ichigo', name: 'Kamen Rider Ichigo', icon: 'assets/images/icons/ichigo.png', maxLp: 3000 },
     { id: 'nigo', name: 'Kamen Rider Nigo', icon: 'assets/images/icons/nigo.png', maxLp: 3300 },
@@ -32,8 +33,9 @@
     { id: 'x', name: 'Kamen Rider X', icon: 'assets/images/icons/x.png', maxLp: 3100 }
   ];
 
+  // Global VS Selection state controller
   window.vsSelectionState = window.vsSelectionState || {
-    step: 1,
+    step: 1,           // Step 1: P1 Select, Step 2: P2 Select, Step 3: Ready
     p1Index: 0,
     p1IsCPU: false,
     p1Difficulty: 'normal',
@@ -42,6 +44,7 @@
     p2Difficulty: 'normal'
   };
 
+  /** Applies difficulty badge styling classes to UI element. */
   function setDiffBadgeClasses(el, difficulty, isCPU) {
     if (!el) return;
     el.classList.remove('easy', 'normal', 'hard', 'master');
@@ -52,6 +55,7 @@
     else el.classList.add('normal');
   }
 
+  /** Toggles active/locked highlight styles on selection cards. */
   function setCardSlotClasses(cardEl, isActive) {
     if (!cardEl) return;
     if (isActive) {
@@ -63,6 +67,7 @@
     }
   }
 
+  /** Advances selection wizard step state forward. */
   window.confirmStep = function(e) {
     if (e && e.preventDefault) e.preventDefault();
     const state = window.vsSelectionState;
@@ -76,6 +81,7 @@
     window.updateSelectionUI();
   };
 
+  /** Reverts selection wizard step state backward. */
   window.goBackStep = function(e) {
     if (e && e.preventDefault) e.preventDefault();
     const state = window.vsSelectionState;
@@ -89,6 +95,7 @@
     window.updateSelectionUI();
   };
 
+  // Step confirmation alias mappings
   window.handleConfirmStep = window.confirmStep;
   window.handleBackStep = window.goBackStep;
 
@@ -99,16 +106,17 @@
   window.confirmP1Selection = window.confirmP1;
   window.confirmP2Selection = window.confirmP2;
 
+  /** Updates audio background track volume. */
   window.changeBGMVolume = function(val) {
     window.currentVolume = parseFloat(val);
     if (window.selectionBGM) window.selectionBGM.volume = window.currentVolume;
     if (window.battleBGM) window.battleBGM.volume = window.currentVolume;
   };
 
+  /** Plays background music for character selection screen. */
   window.playSelectionBGM = function() {
     if (window.selectionBGM) return;
     try {
-      // Pick a random track from SELECTION_BGM_TRACKS
       const randomIndex = Math.floor(Math.random() * SELECTION_BGM_TRACKS.length);
       const randomTrack = SELECTION_BGM_TRACKS[randomIndex];
 
@@ -122,6 +130,7 @@
     }
   };
 
+  /** Stops selection screen background music. */
   window.stopSelectionBGM = function() {
     if (window.selectionBGM) {
       try {
@@ -132,6 +141,7 @@
     }
   };
 
+  /** Plays background music for live battle screen. */
   window.playBattleBGM = function() {
     if (window.battleBGM) return;
     try {
@@ -145,6 +155,7 @@
     }
   };
 
+  /** Stops battle background music. */
   window.stopBattleBGM = function() {
     if (window.battleBGM) {
       try {
@@ -155,6 +166,7 @@
     }
   };
 
+  /** Cycles active rider selection index for P1 or P2. */
   window.cycleRider = function(playerKey, direction) {
     const riders = window.AVAILABLE_RIDERS;
     const state = window.vsSelectionState;
@@ -169,6 +181,7 @@
     window.updateSelectionUI();
   };
 
+  /** Toggles player control type between Human and CPU. */
   window.toggleControlType = function(playerKey) {
     const errorBanner = document.getElementById('vs-error-banner');
     const state = window.vsSelectionState;
@@ -184,6 +197,7 @@
     window.updateSelectionUI();
   };
 
+  /** Cycles CPU difficulty setting (easy -> normal -> hard -> master). */
   window.toggleDifficulty = function(playerKey) {
     const nextDiff = { easy: 'normal', normal: 'hard', hard: 'master', master: 'easy' };
     const state = window.vsSelectionState;
@@ -197,6 +211,7 @@
     window.updateSelectionUI();
   };
 
+  /** Synchronizes selection screen UI elements, controls, and card highlights with selection state. */
   window.updateSelectionUI = function() {
     const riders = window.AVAILABLE_RIDERS;
     const state = window.vsSelectionState;
@@ -210,6 +225,7 @@
     const p1 = riders[state.p1Index] || riders[0];
     const p2 = riders[state.p2Index] || riders[0];
 
+    // P1 Display updates
     const p1ImgEl = document.getElementById('p1-img');
     if (p1ImgEl) p1ImgEl.src = p1.icon;
 
@@ -229,10 +245,11 @@
       setDiffBadgeClasses(p1DiffDisplay, state.p1Difficulty, state.p1IsCPU);
     }
 
+    // P2 Display updates
     const p2ImgEl = document.getElementById('p2-img');
     if (p2ImgEl) {
       p2ImgEl.src = p2.icon;
-      p2ImgEl.classList.toggle('p2-mirror-palette', p1.id === p2.id);
+      p2ImgEl.classList.toggle('p2-mirror-palette', p1.id === p2.id); // Apply palette swap for mirror match
     }
 
     const p2NameEl = document.getElementById('p2-name-display');
@@ -269,6 +286,7 @@
       if (simBtn) simBtn.disabled = false;
     });
 
+    // Handle button states per step
     if (currentStep === 1) {
       if (headerText) headerText.textContent = 'STEP 1: SELECT PLAYER 1 RIDER';
       setCardSlotClasses(p1Card, true);
@@ -339,6 +357,10 @@
     }
   };
 
+  /**
+   * Opens the Monte Carlo simulation modal, executes batch simulation via runBatchSimulation(),
+   * and renders match statistics summary table.
+   */
   window.handleSimulateMatches = function(e) {
     if (e && e.preventDefault) e.preventDefault();
 
@@ -347,6 +369,7 @@
       return;
     }
 
+    // Build modal element dynamically if not present in DOM
     let modal = document.getElementById('sim-modal');
     if (!modal) {
       modal = document.createElement('div');
@@ -399,6 +422,7 @@
       </p>
     `;
 
+    // Asynchronously run Monte Carlo simulation batch
     setTimeout(async () => {
       try {
         const res = await window.runBatchSimulation(
@@ -417,6 +441,7 @@
 
         const overallWinner = res.p1Wins > res.p2Wins ? res.p1Name : (res.p2Wins > res.p1Wins ? res.p2Name : 'TIE MATCH');
 
+        // Render HTML results summary table
         resultsBody.innerHTML = `
           <div class="sim-summary-header" style="text-align: center; margin-bottom: 15px; font-family: monospace;">
             <p class="sim-matchup-title" style="font-size: 1.1rem; color: #fff;">
@@ -468,8 +493,9 @@
     }, 50);
   };
 
+  /** Validates selection state and transitions to live battle mode via startBattle(). */
   window.validateAndStartMatch = function() {
-    // Prime video elements with user gesture token for smooth CPU vs CPU playback
+    // Unlock HTML5 video play tokens for mobile browser autoplay policies
     if (typeof window.unlockMobileVideos === 'function') {
       window.unlockMobileVideos();
     }
@@ -500,6 +526,7 @@
     }
   };
 
+  // Step confirm button click listener
   document.addEventListener('click', (e) => {
     const p1Btn = e.target.closest('#confirm-p1-btn, #btn-confirm-p1');
     if (p1Btn) {
@@ -516,6 +543,7 @@
     }
   });
 
+  // DOM initialization and roster fetching
   document.addEventListener('DOMContentLoaded', async () => {
     const selectScreen = document.getElementById('vs-select-screen');
     const battleScreen = document.getElementById('battle-screen');
@@ -537,6 +565,7 @@
 
     window.updateSelectionUI();
 
+    // Attach simulation modal event handlers
     ['btn-simulate-matches', 'btn-simulate', 'simulate-btn'].forEach(id => {
       const simBtn = document.getElementById(id);
       if (simBtn) {
@@ -555,6 +584,7 @@
       });
     }
 
+    // Audio context unlock on initial user gesture
     const unlockAudio = () => {
       window.playSelectionBGM();
       window.removeEventListener('click', unlockAudio);
