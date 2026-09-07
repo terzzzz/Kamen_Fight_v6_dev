@@ -1,10 +1,10 @@
 /*
- * Kamen Fight — live combat playback adapter
+ * Kamen Fight — Live Combat Playback Adapter
  * File: js/combat_engine.js
  * Version: live-ui-2
  *
- * CombatCore remains the only combat-rules implementation.
- * This file displays its events and advances the live match.
+ * Receives events from CombatCore resolution and orchestrates UI animations,
+ * center video cutscenes, damage popups, and HUD rendering.
  */
 
 (function (g) {
@@ -15,6 +15,7 @@
   const C = g.CombatCore;
   const K = g.KF;
 
+  /** Enforces module dependencies before starting live match playback. */
   function assertReady() {
     if (!C || typeof C.resolve !== "function") {
       throw new Error("Load combat_core.js before combat_engine.js.");
@@ -61,6 +62,7 @@
     }
   }
 
+  /** Execution guard: verifies if async playback belongs to the active turn token. */
   function isCurrent(gs, token) {
     return (
       g.gameState === gs &&
@@ -69,6 +71,7 @@
     );
   }
 
+  /** Synchronizes HUD display from a state snapshot without re-calculating stats. */
   function paintSnapshot(gs, snapshot) {
     for (const slot of SLOTS) {
       gs[slot] = C.copyFighter(snapshot[slot]);
@@ -77,21 +80,23 @@
     g.GameView.paint();
   }
 
+  /** Triggers side character media video state changes safely. */
   function showSideMedia(slot, state) {
     if (typeof g.updateCharacterMedia !== "function") return;
 
     try {
       g.updateCharacterMedia(slot, state);
     } catch (error) {
-      // A presentation error must not recalculate combat.
       console.warn("Side media warning:", error);
     }
   }
 
+  /** Displays floating damage popup text over player box. */
   function popup(slot, text, type = "scratch") {
     g.UI.showDamagePopup(`${slot}-box`, text, type);
   }
 
+  /** Plays center action cutscene video with a safety timeout guard. */
   async function playMoveVideo(gs, token, slot, move) {
     if (!isCurrent(gs, token) || !move.video) return;
 
@@ -101,7 +106,6 @@
     );
 
     try {
-      // Existing media.js handles missing clips and a bounded timeout.
       await g.playCenterVideo(
         slot,
         move.video,
@@ -121,6 +125,7 @@
     }
   }
 
+  /** Formats attack outcome label for battle banner and popup rendering. */
   function attackLabel(event) {
     const damage = Math.max(0, Number(event.damage) || 0);
 
@@ -145,12 +150,16 @@
     }
   }
 
+  /**
+   * Sequentially presents a single combat event emitted by CombatCore.resolve().
+   */
   async function presentEvent(gs, token, event) {
     if (!isCurrent(gs, token) || event.type === "end") return;
 
     const slot = event.slot;
     const move = gs.core.moves[slot]?.[event.key] || C.IDLE;
 
+    // Handle move interruption sequence
     if (event.type === "interrupted") {
       paintSnapshot(gs, event);
 
@@ -178,11 +187,12 @@
       `[${slot.toUpperCase()}] ${actorName}: ${move.name || event.key}`
     );
 
+    // Play action cutscene video
     await playMoveVideo(gs, token, slot, move);
 
     if (!isCurrent(gs, token)) return;
 
-    // These snapshots come from CombatCore; no damage is recalculated.
+    // Update state snapshot from CombatCore event data
     paintSnapshot(gs, event);
 
     if (event.type === "guardReady") {
@@ -205,6 +215,7 @@
       return;
     }
 
+    // Handle attack hit/miss/block outcomes and target visual reactions
     const target = event.target;
     const label = attackLabel(event);
 
@@ -234,12 +245,16 @@
     await K.wait(650);
   }
 
+  /**
+   * Main turn playback handler. Resolves the turn via CombatCore once,
+   * streams playback events to the UI, updates history, and advances match state.
+   */
   async function playTurn(gs, token) {
     assertReady();
 
     if (!isCurrent(gs, token)) return false;
 
-    // Prevent two callers from resolving the same turn twice.
+    // Concurrency guard: prevent duplicate playback execution
     if (gs.playbackToken === token) return false;
 
     if (!gs.actions?.p1 || !gs.actions?.p2) {
@@ -254,7 +269,7 @@
 
     const before = C.copyState(gs.core);
 
-    // Resolve exactly once, with tracing enabled for presentation.
+    // Single deterministic resolution call with tracing enabled for playback
     const result = C.resolve(
       before,
       gs.actions.p1,
@@ -272,6 +287,7 @@
     const timer = document.getElementById("turn-timer");
     if (timer) timer.textContent = "RESOLVING…";
 
+    // Play back event animations sequentially
     for (const event of result.events) {
       if (!isCurrent(gs, token)) return false;
 
@@ -280,7 +296,7 @@
 
     if (!isCurrent(gs, token)) return false;
 
-    // Keep a live replay in the existing simulator's replay format.
+    // Capture turn state for match replay system
     if (!gs.liveReplay) {
       gs.liveReplay = {
         seed: gs.seed,
@@ -297,7 +313,7 @@
 
     gs.liveReplay.final = C.copyState(result.state);
 
-    // Commit the already-resolved final state once.
+    // Commit resolved state to global game state
     gs.core = result.state;
     gs.actions = result.actions;
     gs.history = nextHistory;
@@ -319,10 +335,12 @@
 
     if (!isCurrent(gs, token)) return false;
 
+    // Trigger next round planning phase
     await g.MatchManager.begin();
     return true;
   }
 
+  // Global namespace export
   g.CombatPlayback = {
     VERSION,
     assertReady,
