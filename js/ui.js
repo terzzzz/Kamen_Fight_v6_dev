@@ -6,14 +6,21 @@
 (function (window) {
   'use strict';
 
-window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
-  { id: 'ichigo', name: 'Kamen Rider Ichigo', icon: 'assets/images/icons/ichigo.png', maxLp: 3000 },
-  { id: 'nigo', name: 'Kamen Rider Nigo', icon: 'assets/images/icons/nigo.png', maxLp: 3300 },
-  { id: 'v3', name: 'Kamen Rider V3', icon: 'assets/images/icons/v3.png', maxLp: 3150 },
-  { id: 'riderman', name: 'Riderman', icon: 'assets/images/icons/riderman.png', maxLp: 2800 },
-  { id: 'x', name: 'Kamen Rider X', icon: 'assets/images/icons/x.png', maxLp: 3100 }
-];
+  // Fallback rider definitions if JSON data hasn't loaded yet
+  window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
+    { id: 'ichigo', name: 'Kamen Rider Ichigo', icon: 'assets/images/icons/ichigo.png', maxLp: 3000 },
+    { id: 'nigo', name: 'Kamen Rider Nigo', icon: 'assets/images/icons/nigo.png', maxLp: 3300 },
+    { id: 'v3', name: 'Kamen Rider V3', icon: 'assets/images/icons/v3.png', maxLp: 3150 },
+    { id: 'riderman', name: 'Riderman', icon: 'assets/images/icons/riderman.png', maxLp: 2800 },
+    { id: 'x', name: 'Kamen Rider X', icon: 'assets/images/icons/x.png', maxLp: 3100 }
+  ];
 
+  /**
+   * Updates player HUD elements (LP bar, Chi meter, Faint meter, Active status buff tags).
+   *
+   * @param {string} slotKey - Player slot ('p1' or 'p2').
+   * @param {Object} playerObj - Fighter runtime state object.
+   */
   function updatePlayerHUD(slotKey, playerObj) {
     if (!playerObj) return;
 
@@ -24,7 +31,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     const chiEl = document.getElementById(isP1 ? 'p1-chi' : 'p2-chi');
     const chiBarFillEl = document.getElementById(isP1 ? 'p1-chi-bar-fill' : 'p2-chi-bar-fill');
     
-    // LP Bar Fills
+    // Render LP Bar Fills
     const maxLp = playerObj.maxLp || 2300;
     const currentLp = Math.max(0, playerObj.lp || 0);
     const lpPct = Math.min(100, Math.max(0, (currentLp / maxLp) * 100));
@@ -32,7 +39,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     const lpFills = document.querySelectorAll(`#${slotKey}-lp-fill, .${slotKey}-lp-fill`);
     lpFills.forEach(el => { el.style.width = `${lpPct}%`; });
 
-    // Faint meter DOM elements
+    // Render Faint Meter Elements
     const faintTextEl = document.getElementById(isP1 ? 'p1-faint-text' : 'p2-faint-text') || 
                         document.getElementById(isP1 ? 'p1-faint' : 'p2-faint');
     const faintFillEls = document.querySelectorAll(`#${slotKey}-faint-fill, .${slotKey}-faint-fill, #${slotKey}-faint-bar-fill`);
@@ -54,6 +61,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
       fillEl.style.height = `${faintPct}%`;
     });
 
+    // Render Chi Meter & Dynamic Color Thresholds
     const chi = typeof playerObj.chi === 'number' ? playerObj.chi : 0;
     const maxChi = playerObj.maxChi || 16;
     if (chiEl) chiEl.textContent = `CHI: ${chi} / ${maxChi}`;
@@ -63,6 +71,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
       chiBarFillEl.style.width = `${chiPct}%`;
     }
 
+    // Apply Low Power (<5 Chi) and Full Power (>14 Chi) text styles
     if (chiEl) {
       chiEl.classList.toggle('chi-text-low', chi < 5);
       chiEl.classList.toggle('chi-text-full', chi > 14);
@@ -75,11 +84,13 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
       chiBarFillEl.style.background = chi < 5 ? '#ff3333' : (chi > 14 ? '#ffcc00' : '#00ffcc');
     }
 
+    // Populate Status Buff & Threshold Debuff Tray Tags
     let activeTags = [];
     if (playerObj.activeBuffs && Array.isArray(playerObj.activeBuffs)) {
       activeTags = [...playerObj.activeBuffs];
     }
 
+    // Inject threshold warning tags based on active Chi levels
     if (chi < 5) {
       activeTags.push({
         id: 'low_power_tag',
@@ -101,6 +112,13 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     }
   }
 
+  /**
+   * Spawns an animated floating damage or status text popup over a target player box.
+   *
+   * @param {string} boxId - DOM ID of the container element.
+   * @param {string} text - Popup display text.
+   * @param {string} [type='damage'] - CSS styling type ('damage', 'scratch', 'block').
+   */
   function showDamagePopup(boxId, text, type = 'damage') {
     const box = document.getElementById(boxId);
     if (!box) return;
@@ -111,6 +129,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
 
     box.appendChild(popup);
 
+    // Auto-purge popup element after animation completes
     setTimeout(() => {
       if (popup && popup.parentNode) {
         popup.parentNode.removeChild(popup);
@@ -118,6 +137,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     }, 2500);
   }
 
+  /** Updates main battle banner text message. */
   function showBattleBanner(message) {
     const banner = document.getElementById('battle-message');
     if (!banner) return;
@@ -125,6 +145,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     banner.hidden = !message;
   }
 
+  /** Updates action cutscene sub-banner text label. */
   function showActionBanner(message) {
     const subBanner = document.getElementById('center-action-label');
     if (!subBanner) return;
@@ -132,7 +153,7 @@ window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
     subBanner.hidden = !message;
   }
 
-  // Namespace & global export mapping
+  // Global exports and backwards-compatibility mappings
   window.UI = window.UI || {};
   window.UI.updatePlayerHUD = updatePlayerHUD;
   window.UI.showDamagePopup = showDamagePopup;
