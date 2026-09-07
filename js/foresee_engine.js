@@ -1,4 +1,5 @@
-//foresee_engine.js 
+// foresee_engine.js
+// Kamen Fight — Expectimax & Monte Carlo Horizon Lookahead Search Engine
 
 (function (g) {
   "use strict";
@@ -7,10 +8,15 @@
   const C = g.CombatCore;
   const B = g.RiderBrains;
 
+  /** Generates unique key string for move+charge pair. */
   function actionId(action) {
     return `${action.key}@${action.charge}`;
   }
 
+  /**
+   * Deterministic sorting for move evaluation rows.
+   * Breaks score ties using action identifier strings to prevent non-deterministic sorting jitter.
+   */
   function stableSort(a, b) {
     if (b.score !== a.score) return b.score - a.score;
 
@@ -20,6 +26,13 @@
     return x < y ? -1 : x > y ? 1 : 0;
   }
 
+  /**
+   * Samples an action from a weighted probability distribution.
+   *
+   * @param {Array<{action: Object, probability: number}>} entries - Weighted distribution.
+   * @param {function(): number} rng - Deterministic PRNG function.
+   * @returns {Object} Sampled action.
+   */
   function sample(entries, rng) {
     let remaining = rng();
 
@@ -31,6 +44,10 @@
     return entries[entries.length - 1].action;
   }
 
+  /**
+   * Analyzes recent match history to model opponent usage patterns and charge habits.
+   * Uses exponential decay weighting ($0.90^t$) to favor recent turn trends over older ones.
+   */
   function observations(history, slot) {
     const counts = {};
     const charges = [];
@@ -54,12 +71,16 @@
     return { counts, charges };
   }
 
+  /**
+   * Constructs an action probability distribution (policy model) for a player slot.
+   * Combines RiderBrains tactical prior heuristics, historical opponent tendencies, and state constraints.
+   */
   function policy(state, slot, history, difficulty, rolloutSelf = false) {
     const observed = observations(history || [], slot);
 
     const chargeChoices = [...K.levels.master.charges];
 
-    // Include recent observed charge values and an undercut candidate.
+    // Adaptively append observed opponent charge levels into search tree options
     for (const item of observed.charges.slice(-3)) {
       chargeChoices.push(item.charge);
       chargeChoices.push(Math.max(0, item.charge - 1));
@@ -97,6 +118,7 @@
             Math.exp(-Math.abs(action.charge - item.charge) / 12);
         }
 
+        // Maximizes punishment charge level when opponent is fainted/stunned
         if (state[C.other(slot)].isFainted) {
           weight *= action.charge === 100 ? 5 : 0.2;
         }
@@ -128,12 +150,17 @@
     }));
   }
 
+  /** Maps player actions to P1/P2 slot positions for evaluation. */
   function orderedActions(slot, ownAction, opponentAction) {
     return slot === "p1"
       ? [ownAction, opponentAction]
       : [opponentAction, ownAction];
   }
 
+  /**
+   * Computes expected utility value of a single move exchange by enumerating all
+   * stochastic outcomes via CombatCore.distribution().
+   */
   function pairValue(state, slot, ownAction, opponentAction) {
     const [a1, a2] = orderedActions(slot, ownAction, opponentAction);
 
@@ -144,6 +171,14 @@
     );
   }
 
+  /**
+   * Main AI Search Entry Point.
+   * Performs Expectimax tree evaluation at depth 1, then executes multi-turn Monte Carlo
+   * horizon rollouts for top finalist moves on higher difficulties.
+   *
+   * @param {Object} context - Match state, acting slot, difficulty, history, and seed.
+   * @returns {Object} Evaluated candidate move rows sorted by score, plus debug metadata.
+   */
   function search(context) {
     const {
       state,
@@ -174,6 +209,7 @@
       [...new Set(chargeChoices)]
     );
 
+    // Predict opponent behavior using a Master difficulty policy model
     const opponentPolicy = policy(
       state,
       opponentSlot,
@@ -183,6 +219,7 @@
 
     const rows = [];
 
+    // Step 1: Depth 1 Expectimax matrix evaluation across all root action choices
     for (const action of ownActions) {
       let expected = 0;
       let worst = Infinity;
@@ -203,6 +240,7 @@
         action,
         expected,
         worst,
+        // Combined scoring: Expected outcome + Risk-aversion penalty + Tactical intent bonus
         score:
           (1 - settings.risk) * expected +
           settings.risk * worst +
@@ -215,6 +253,7 @@
     let finalists = rows;
     let completedHorizon = 1;
 
+    // Step 2: Multi-turn Monte Carlo Horizon Rollouts (Hard & Master difficulties)
     if (
       settings.horizon > 1 &&
       rows.length > 1 &&
@@ -224,13 +263,7 @@
         .slice(0, settings.finalists)
         .map(row => ({ ...row }));
 
-      /*
-       * Every finalist receives the same number of complete rollouts.
-       * No wall-clock cutoff and no partially evaluated score.
-       *
-       * The same sample seed is reused across root candidates to reduce
-       * noise in comparisons. This RNG is NOT the live combat RNG.
-       */
+      // Execute fixed rollout iterations per finalist using shared deterministic seeds
       for (const row of finalists) {
         let continuationDelta = 0;
 
@@ -260,6 +293,7 @@
 
           const firstValue = B.evaluate(future, slot);
 
+          // Deep horizon simulation passes
           for (let depth = 1;
             depth < settings.horizon && !future.winner;
             depth++
@@ -297,6 +331,7 @@
             B.evaluate(future, slot) - firstValue;
         }
 
+        // Blend horizon simulation gains into root candidate score
         row.score += continuationDelta / settings.rollouts;
       }
 
@@ -322,6 +357,7 @@
     };
   }
 
+  // Global namespace export
   g.ForeseeEngine = {
     search,
     policy,
