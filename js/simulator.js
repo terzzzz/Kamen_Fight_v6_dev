@@ -1,4 +1,5 @@
-//simulator.js
+// simulator.js
+// Kamen Fight — Headless Monte Carlo Simulation Engine & Replay Verifier
 
 (function (g) {
   "use strict";
@@ -6,6 +7,18 @@
   const K = g.KF;
   const C = g.CombatCore;
 
+  /**
+   * Headlessly simulates a complete match between two riders without DOM or presentation overhead.
+   *
+   * @param {Object} rider1 - P1 Rider definition object.
+   * @param {Object} rider2 - P2 Rider definition object.
+   * @param {Object} moves - Compiled move lookup table.
+   * @param {string} difficulty1 - P1 CPU difficulty level.
+   * @param {string} difficulty2 - P2 CPU difficulty level.
+   * @param {number} seed - Deterministic PRNG seed for combat rolls and decisions.
+   * @param {boolean} [capture=false] - Whether to capture full turn input streams for replay verification.
+   * @returns {Promise<{state: Object, rounds: number, replay: Object|null}>} Resulting match state and replay data.
+   */
   async function playMatch(
     rider1,
     rider2,
@@ -24,9 +37,11 @@
 
     let rounds = 0;
 
+    // Main headless match evaluation loop
     while (!state.winner) {
       const snapshot = C.copyState(state);
 
+      // Query AI decision planning asynchronously for both slots in parallel
       const [decision1, decision2] = await Promise.all([
         g.AIService.plan({
           state: snapshot,
@@ -45,12 +60,13 @@
         })
       ]);
 
+      // Resolve turn combat rules deterministically
       const result = C.resolve(
         state,
         decision1.action,
         decision2.action,
         rng,
-        false
+        false // Trace disabled for headless simulation performance
       );
 
       history = g.KF_AI.remember(history, state, result.actions);
@@ -69,6 +85,7 @@
         throw new Error("Simulation exceeded the round limit.");
       }
 
+      // Micro-task yield to prevent blocking UI thread during long batch simulations
       await K.wait(0);
     }
 
@@ -79,6 +96,19 @@
     };
   }
 
+  /**
+   * Runs a batch Monte Carlo simulation series across N matches to gather statistical win rate,
+   * average LP remaining, average Chi remaining, and round duration metrics.
+   *
+   * @param {Object} selectedRider1 - Selected P1 rider definition.
+   * @param {Object} selectedRider2 - Selected P2 rider definition.
+   * @param {number} [matchCount=20] - Number of matches to simulate in batch.
+   * @param {string} [difficulty1="normal"] - P1 difficulty level.
+   * @param {string} [difficulty2="normal"] - P2 difficulty level.
+   * @param {function(number, number): void|null} [onProgress=null] - Progress callback (completed, total).
+   * @param {Object} [options={}] - Additional options (e.g., custom seed).
+   * @returns {Promise<Object>} Summary statistics object for UI modal display.
+   */
   async function runBatchSimulation(
     selectedRider1,
     selectedRider2,
@@ -118,6 +148,7 @@
     let chi2 = 0;
     let roundTotal = 0;
 
+    // Execute match iterations sequentially
     for (let index = 0; index < count; index++) {
       if (onProgress) onProgress(index + 1, count);
 
@@ -142,6 +173,7 @@
       roundTotal += result.rounds;
     }
 
+    // Compile statistical summary
     const summary = {
       seed,
       completed: count,
@@ -163,6 +195,13 @@
     return summary;
   }
 
+  /**
+   * Verifies deterministic integrity by re-executing captured replay action turns against
+   * initial state and checking for bit-identical match outcomes.
+   *
+   * @param {Object} replay - Captured replay structure {seed, initial, turns, final}.
+   * @returns {boolean} True if replay strictly matches final captured state.
+   */
   function verifyReplay(replay) {
     let state = C.copyState(replay.initial);
     const rng = K.rng(K.hash(replay.seed, "combat"));
@@ -180,6 +219,7 @@
     return true;
   }
 
+  // Global namespace export
   g.Simulator = {
     playMatch,
     verifyReplay,
