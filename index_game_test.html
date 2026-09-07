@@ -2,24 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, viewport-fit=cover">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Kamen Fight — Test Dashboard</title>
 
   <style>
     :root {
       color-scheme: dark;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont,
-                   "Segoe UI", sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #0b1020;
       color: #edf2ff;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -32,23 +26,10 @@
       margin: 0 auto;
     }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.65rem;
-    }
-
-    h2 {
-      margin-top: 0;
-      font-size: 1.2rem;
-    }
-
-    p {
-      line-height: 1.55;
-    }
-
-    .muted {
-      color: #b7c2db;
-    }
+    h1 { margin: 0 0 8px; font-size: 1.65rem; }
+    h2 { margin-top: 0; font-size: 1.2rem; }
+    p { line-height: 1.55; }
+    .muted { color: #b7c2db; }
 
     .panel {
       padding: 18px;
@@ -89,8 +70,7 @@
       margin-top: 14px;
     }
 
-    button,
-    select {
+    button, select {
       min-height: 48px;
       padding: 12px 15px;
       border: 1px solid #61769e;
@@ -106,19 +86,14 @@
       font-weight: 700;
     }
 
-    button.secondary {
-      background: #273249;
-    }
+    button.secondary { background: #273249; }
 
-    button:disabled,
-    select:disabled {
+    button:disabled, select:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
 
-    button:focus-visible,
-    select:focus-visible,
-    textarea:focus-visible {
+    button:focus-visible, select:focus-visible, textarea:focus-visible {
       outline: 3px solid #ffdc88;
       outline-offset: 3px;
     }
@@ -154,14 +129,8 @@
       font: inherit;
     }
 
-    #elapsed,
-    #copy-note {
-      min-height: 1.4em;
-    }
-
-    [hidden] {
-      display: none !important;
-    }
+    #elapsed, #copy-note { min-height: 1.4em; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 
@@ -170,86 +139,57 @@
     <h1>Kamen Fight — Test Dashboard</h1>
 
     <p class="muted">
-      No console needed. The combat tests start automatically.
-      Results appear below.
+      No console needed. The combat tests start automatically. Results appear below.
     </p>
 
-    <div id="status" role="status" aria-live="polite">
-      Starting…
-    </div>
+    <!-- Test execution status display -->
+    <div id="status" role="status" aria-live="polite">Starting…</div>
 
     <div class="buttons">
-      <button id="reload-button" class="secondary" type="button">
-        RELOAD / STOP
-      </button>
-
-      <button id="copy-button" type="button">
-        COPY REPORT
-      </button>
+      <button id="reload-button" class="secondary" type="button">RELOAD / STOP</button>
+      <button id="copy-button" type="button">COPY REPORT</button>
     </div>
 
     <p id="copy-note" class="muted" aria-live="polite"></p>
 
-    <textarea id="copy-text"
-              aria-label="Report for manual copying"
-              readonly
-              hidden></textarea>
+    <textarea id="copy-text" aria-label="Report for manual copying" readonly hidden></textarea>
 
+    <!-- Optional AI head-to-head comparison panel -->
     <section class="panel">
       <h2>Optional: Small AI comparison</h2>
-
       <p class="muted">
-        Available after the combat tests pass.
-        Runs four mirror matches for the selected rider:
-        Aggressive versus Balanced, then Master versus Balanced,
-        with each difficulty playing both sides.
+        Available after the combat tests pass. Runs four mirror matches for the selected rider:
+        Aggressive versus Balanced, then Master versus Balanced, with each difficulty playing both sides.
       </p>
 
       <label for="rider-select">Choose a rider</label>
-
       <select id="rider-select" disabled>
         <option>Waiting for combat tests…</option>
       </select>
 
       <div class="buttons">
-        <button id="ai-button" type="button" disabled>
-          RUN 4 AI MATCHES
-        </button>
+        <button id="ai-button" type="button" disabled>RUN 4 AI MATCHES</button>
       </div>
 
       <p id="elapsed" class="muted" aria-live="polite"></p>
-
-      <p class="muted">
-        This is a small functionality check, not a reliable difficulty
-        ranking. Keep this page open while it runs. To stop, tap
-        RELOAD / STOP; that clears this report and restarts the page.
-      </p>
     </section>
 
+    <!-- Live test output log -->
     <section class="panel">
       <h2>Test report</h2>
-
       <pre id="report" aria-label="Test report"></pre>
     </section>
 
     <section class="panel">
       <h2>What this page does not test</h2>
-
       <p class="muted">
-        Touch controls, keyboard controls, video playback, the game
-        selection screen, and live match presentation still require
-        testing in the playable game.
-      </p>
-
-      <p class="muted">
-        This page loads the JavaScript and data saved beside it.
-        It does not contain or install a replacement combat engine.
+        Touch controls, keyboard controls, video playback, character selection screen,
+        and live match presentation still require testing in the playable game.
       </p>
     </section>
 
     <noscript>
-      JavaScript is disabled. Enable JavaScript in your browser to run
-      these tests.
+      JavaScript is disabled. Enable JavaScript in your browser to run these tests.
     </noscript>
   </main>
 
@@ -270,7 +210,6 @@
 
       const reportLines = [];
       const loadedScripts = new Set();
-
       const requestStamp = Date.now().toString();
 
       let data = null;
@@ -278,91 +217,64 @@
       let aiRunning = false;
       let currentFile = "";
 
+      /** Formats values or error objects into string lines for output logging. */
       function describe(value) {
-        if (value instanceof Error) {
-          return value.stack || value.message;
-        }
-
-        if (typeof value === "string") {
-          return value;
-        }
-
-        try {
-          return JSON.stringify(value);
-        } catch (_) {
-          return String(value);
-        }
+        if (value instanceof Error) return value.stack || value.message;
+        if (typeof value === "string") return value;
+        try { return JSON.stringify(value); } catch (_) { return String(value); }
       }
 
+      /** Appends message to output log panel. */
       function log(message) {
         reportLines.push(String(message));
         reportBox.textContent = reportLines.join("\n");
       }
 
+      /** Updates status box text and CSS dataset state ('working' | 'pass' | 'fail'). */
       function setStatus(message, state) {
         statusBox.textContent = message;
         statusBox.dataset.state = state || "working";
       }
 
+      /** Short async pause helper to allow layout repaints. */
       function pause() {
-        return new Promise(function (resolve) {
-          setTimeout(resolve, 30);
-        });
+        return new Promise(resolve => setTimeout(resolve, 30));
       }
 
+      /** Displays test failure panel and halts execution. */
       function showFailure(title, error) {
         setStatus(title + "\nCopy the report below and send it back.", "fail");
-
         log("");
         log("ERROR: " + describe(error));
-
-        if (currentFile) {
-          log("File being checked: " + currentFile);
-        }
-
-        log(
-          "After correcting files, wait for publishing to finish, " +
-          "then tap RELOAD / STOP."
-        );
+        if (currentFile) log("File being checked: " + currentFile);
       }
 
-      /*
-       * Load scripts one at a time and check that each provides the
-       * interface expected by the replacement engine.
-       *
-       * No game.js, UI, media, selection, or live match controller
-       * is started by this dashboard.
+      /**
+       * Dynamically loads a script file, appends cache-busting timestamp,
+       * and verifies module initialization via provided check callback.
        */
       async function loadScript(path, verify) {
-        if (loadedScripts.has(path)) {
-          return;
-        }
+        if (loadedScripts.has(path)) return;
 
         currentFile = path;
         log("LOAD: " + path);
 
-        await new Promise(function (resolve, reject) {
+        await new Promise((resolve, reject) => {
           const script = document.createElement("script");
           const url = new URL(path, document.baseURI);
-
           url.searchParams.set("tester", requestStamp);
 
           script.src = url.href;
           script.async = false;
 
           let settled = false;
-
-          const timeout = setTimeout(function () {
-            finish(new Error(
-              "Loading timed out: " + path +
-              ". Check your connection and published files."
-            ));
+          const timeout = setTimeout(() => {
+            finish(new Error(`Loading timed out: ${path}. Check network.`));
           }, 25000);
 
           function finish(error) {
             if (settled) return;
             settled = true;
-
             clearTimeout(timeout);
             script.onload = null;
             script.onerror = null;
@@ -375,27 +287,13 @@
             }
           }
 
-          script.onload = function () {
-            finish();
-          };
-
-          script.onerror = function () {
-            finish(new Error(
-              "Cannot load " + path +
-              ". The file may be missing, blocked, or not yet published. " +
-              "Check its exact filename and folder."
-            ));
-          };
-
+          script.onload = () => finish();
+          script.onerror = () => finish(new Error(`Cannot load ${path}. File missing or blocked.`));
           document.head.appendChild(script);
         });
 
         if (!verify()) {
-          throw new Error(
-            path + " loaded, but it is not the expected replacement " +
-            "version, or it contains an error. " +
-            "Use the complete file from the previous replacement set."
-          );
+          throw new Error(`${path} loaded, but does not match expected interface.`);
         }
 
         loadedScripts.add(path);
@@ -403,48 +301,25 @@
         currentFile = "";
       }
 
-      /*
-       * Display unexpected browser errors in the report too.
-       */
-      window.addEventListener("error", function (event) {
-        const details = event.message ||
-          "A script or page resource failed to load.";
-
-        log("BROWSER ERROR: " + details);
-
-        if (event.filename) {
-          log(
-            "Location: " + event.filename +
-            ":" + (event.lineno || "?")
-          );
-        }
-
-        setStatus(
-          "A browser error occurred. Check the report below.",
-          "fail"
-        );
+      // Unhandled global error listeners
+      window.addEventListener("error", event => {
+        log("BROWSER ERROR: " + (event.message || "Script load error"));
+        if (event.filename) log(`Location: ${event.filename}:${event.lineno || '?'}`);
+        setStatus("A browser error occurred. Check report.", "fail");
       });
 
-      window.addEventListener("unhandledrejection", function (event) {
+      window.addEventListener("unhandledrejection", event => {
         log("UNHANDLED ERROR: " + describe(event.reason));
-
-        setStatus(
-          "An unexpected error occurred. Copy the report below.",
-          "fail"
-        );
+        setStatus("An unexpected error occurred.", "fail");
       });
 
-      /*
-       * The supplied combat_tests.js writes individual assertions to
-       * console.log. Capture those messages for this on-screen report.
-       * Restore console.log after the test completes or throws.
+      /**
+       * Intercepts console.log calls during runCombatTests() to mirror output in the dashboard log panel.
        */
       async function runVisibleCombatTests() {
         const originalLog = console.log;
 
-        console.log = function () {
-          const args = Array.from(arguments);
-
+        console.log = function (...args) {
           log(args.map(describe).join(" "));
           originalLog.apply(console, args);
         };
@@ -456,193 +331,110 @@
         }
       }
 
+      /** Dashboard bootstrapping & primary rule test trigger. */
       async function start() {
         log("KAMEN FIGHT TEST REPORT");
         log("Dashboard: " + PAGE_VERSION);
         log("Expected engine: " + EXPECTED_VERSION);
         log("Started: " + new Date().toISOString());
-        log("Page: " + location.origin + location.pathname);
         log("Browser: " + navigator.userAgent);
         log("");
 
         try {
-          if (
-            location.protocol !== "https:" &&
-            location.protocol !== "http:"
-          ) {
-            throw new Error(
-              "Open the published website in your browser. " +
-              "Do not run this as a downloaded local HTML file."
-            );
+          if (location.protocol !== "https:" && location.protocol !== "http:") {
+            throw new Error("Open published website in browser; do not run from local HTML file.");
           }
 
           setStatus("Checking replacement files…", "working");
 
-          await loadScript("js/common.js", function () {
-            return !!window.KF &&
-              window.KF.VERSION === EXPECTED_VERSION &&
-              typeof window.KF.loadData === "function";
-          });
-
-          await loadScript("js/combat_core.js", function () {
-            return !!window.CombatCore &&
-              typeof window.CombatCore.resolve === "function" &&
-              typeof window.CombatCore.distribution === "function";
-          });
-
-          await loadScript("js/combat_tests.js", function () {
-            return typeof window.runCombatTests === "function";
-          });
+          await loadScript("js/common.js", () => !!window.KF && window.KF.VERSION === EXPECTED_VERSION);
+          await loadScript("js/combat_core.js", () => !!window.CombatCore && typeof window.CombatCore.resolve === "function");
+          await loadScript("js/combat_tests.js", () => typeof window.runCombatTests === "function");
 
           setStatus("Loading rider and move data…", "working");
-
           log("");
           log("LOAD: data/riders.json and data/moves.json");
 
           data = await window.KF.loadData();
+          if (!data.riders || !data.riders.length) throw new Error("No active riders loaded.");
 
-          if (!data.riders || !data.riders.length) {
-            throw new Error("No active riders were loaded.");
-          }
-
-          log(
-            "OK: Active riders: " +
-            data.riders.map(function (rider) {
-              return rider.id;
-            }).join(", ")
-          );
+          log("OK: Active riders: " + data.riders.map(r => r.id).join(", "));
 
           riderSelect.textContent = "";
-
           for (const rider of data.riders) {
             const option = document.createElement("option");
-
             option.value = rider.id;
             option.textContent = rider.name || rider.id;
-
             riderSelect.appendChild(option);
           }
 
           log("");
           log("=== COMBAT RULE TESTS ===");
-
           setStatus("Running combat rule tests…", "working");
-
           await pause();
 
           const result = await runVisibleCombatTests();
-
-          if (
-            !result ||
-            !Number.isInteger(result.passed) ||
-            result.passed < 1
-          ) {
-            throw new Error(
-              "The test function did not return a valid assertion count."
-            );
+          if (!result || !Number.isInteger(result.passed) || result.passed < 1) {
+            throw new Error("Invalid assertion count returned.");
           }
 
           rulesPassed = true;
-
           log("");
           log("COMBAT RULE TESTS PASSED: " + result.passed + " assertions.");
-          log("Live controls and video playback have NOT been tested.");
-          log("AI comparison has NOT been run.");
 
           setStatus(
-            "COMBAT TESTS PASSED\n" +
-            result.passed + " assertions passed.\n" +
+            "COMBAT TESTS PASSED\n" + result.passed + " assertions passed.\n" +
             "You can copy the report or run the optional AI comparison.",
             "pass"
           );
 
           riderSelect.disabled = false;
           aiButton.disabled = false;
-
         } catch (error) {
           rulesPassed = false;
           riderSelect.disabled = true;
           aiButton.disabled = true;
-
           showFailure("COMBAT TESTS STOPPED", error);
         }
       }
 
+      /** Loads remaining AI dependencies for Monte Carlo simulation benchmarks. */
       async function loadAIFiles() {
-        await loadScript("js/rider_brains.js", function () {
-          return !!window.RiderBrains &&
-            typeof window.RiderBrains.evaluate === "function";
-        });
-
-        await loadScript("js/foresee_engine.js", function () {
-          return !!window.ForeseeEngine &&
-            typeof window.ForeseeEngine.search === "function";
-        });
-
-        await loadScript("js/ai.js", function () {
-          return !!window.KF_AI &&
-            typeof window.KF_AI.choose === "function";
-        });
-
-        await loadScript("js/cpu_controller.js", function () {
-          return !!window.AIService &&
-            typeof window.AIService.plan === "function";
-        });
-
-        await loadScript("js/simulator.js", function () {
-          return !!window.Simulator &&
-            typeof window.Simulator.playMatch === "function" &&
-            typeof window.Simulator.verifyReplay === "function";
-        });
+        await loadScript("js/rider_brains.js", () => !!window.RiderBrains);
+        await loadScript("js/foresee_engine.js", () => !!window.ForeseeEngine);
+        await loadScript("js/ai.js", () => !!window.KF_AI);
+        await loadScript("js/cpu_controller.js", () => !!window.AIService);
+        await loadScript("js/simulator.js", () => !!window.Simulator);
       }
 
+      /** Runs 4 sample mirror AI matches between selected rider across Hard/Master vs Balanced. */
       async function runAIComparison() {
-        if (!rulesPassed || aiRunning) {
-          return;
-        }
+        if (!rulesPassed || aiRunning) return;
 
         aiRunning = true;
         aiButton.disabled = true;
         riderSelect.disabled = true;
 
         const startedAt = Date.now();
-
-        const clock = setInterval(function () {
-          elapsedBox.textContent =
-            "Elapsed: " +
-            Math.floor((Date.now() - startedAt) / 1000) +
-            " seconds. Keep this page open.";
+        const clock = setInterval(() => {
+          elapsedBox.textContent = "Elapsed: " + Math.floor((Date.now() - startedAt) / 1000) + " seconds.";
         }, 1000);
 
         try {
           setStatus("Loading AI test files…", "working");
-
           log("");
           log("=== OPTIONAL AI COMPARISON ===");
 
           if (typeof window.Worker !== "function") {
-            throw new Error(
-              "This browser does not provide Web Workers. " +
-              "The AI comparison was not started. " +
-              "The earlier combat test results still apply."
-            );
+            throw new Error("Web Workers unsupported in this browser.");
           }
 
           await loadAIFiles();
 
-          const rider = data.riders.find(function (entry) {
-            return entry.id === riderSelect.value;
-          });
-
-          if (!rider) {
-            throw new Error("The selected rider could not be found.");
-          }
+          const rider = data.riders.find(entry => entry.id === riderSelect.value);
+          if (!rider) throw new Error("Selected rider not found.");
 
           log("Rider: " + rider.name + " (" + rider.id + ")");
-          log("Four mirror matches; both side assignments are tested.");
-          log("Each completed match will also be replay-checked.");
-          log("This sample is too small to establish a difficulty ranking.");
-
           const summaries = [];
           let completed = 0;
 
@@ -652,105 +444,37 @@
           ];
 
           for (const level of levels) {
-            const summary = {
-              label: level.label,
-              testedWins: 0,
-              balancedWins: 0,
-              draws: 0
-            };
-
-            const seed = window.KF.hash(
-              PAGE_VERSION,
-              rider.id,
-              level.id
-            );
+            const summary = { label: level.label, testedWins: 0, balancedWins: 0, draws: 0 };
+            const seed = window.KF.hash(PAGE_VERSION, rider.id, level.id);
 
             for (const testedSlot of ["p1", "p2"]) {
-              const p1Difficulty = testedSlot === "p1"
-                ? level.id
-                : "normal";
-
-              const p2Difficulty = testedSlot === "p2"
-                ? level.id
-                : "normal";
-
-              const p1Label = testedSlot === "p1"
-                ? level.label
-                : "Balanced";
-
-              const p2Label = testedSlot === "p2"
-                ? level.label
-                : "Balanced";
+              const p1Difficulty = testedSlot === "p1" ? level.id : "normal";
+              const p2Difficulty = testedSlot === "p2" ? level.id : "normal";
 
               const matchNumber = completed + 1;
-
-              setStatus(
-                "RUNNING AI MATCH " + matchNumber + " / 4\n" +
-                rider.name + "\n" +
-                "P1 " + p1Label + " vs P2 " + p2Label + "\n" +
-                "Keep this page open. No videos are played.",
-                "working"
-              );
-
+              setStatus(`RUNNING AI MATCH ${matchNumber} / 4\n${rider.name}`, "working");
               log("");
-              log(
-                "Match " + matchNumber + "/4: " +
-                "P1 " + p1Label + " vs P2 " + p2Label
-              );
-              log("Seed: " + seed);
+              log(`Match ${matchNumber}/4: P1 ${p1Difficulty} vs P2 ${p2Difficulty}`);
 
               await pause();
 
               const result = await window.Simulator.playMatch(
-                rider,
-                rider,
-                data.moves,
-                p1Difficulty,
-                p2Difficulty,
-                seed,
-                true
+                rider, rider, data.moves, p1Difficulty, p2Difficulty, seed, true
               );
 
-              if (
-                !result ||
-                !result.state ||
-                !["p1", "p2", "draw"].includes(result.state.winner)
-              ) {
-                throw new Error(
-                  "The simulator did not return a completed match."
-                );
+              if (!result || !result.state || !["p1", "p2", "draw"].includes(result.state.winner)) {
+                throw new Error("Simulator returned an incomplete match.");
               }
 
-              const replayOK =
-                window.Simulator.verifyReplay(result.replay);
-
-              if (replayOK !== true) {
-                throw new Error("Replay verification did not pass.");
-              }
+              const replayOK = window.Simulator.verifyReplay(result.replay);
+              if (replayOK !== true) throw new Error("Replay verification failed.");
 
               const winner = result.state.winner;
+              if (winner === "draw") summary.draws++;
+              else if (winner === testedSlot) summary.testedWins++;
+              else summary.balancedWins++;
 
-              if (winner === "draw") {
-                summary.draws++;
-              } else if (winner === testedSlot) {
-                summary.testedWins++;
-              } else {
-                summary.balancedWins++;
-              }
-
-              log(
-                "RESULT: " +
-                (
-                  winner === "draw"
-                    ? "DRAW"
-                    : winner.toUpperCase() + " " +
-                      (winner === "p1" ? p1Label : p2Label) + " WINS"
-                )
-              );
-
-              log("Rounds: " + result.rounds);
-              log("PASS: Replaying the saved actions reproduced the final state.");
-
+              log(`RESULT: ${winner.toUpperCase()} WINS (${result.rounds} Rounds)`);
               completed++;
             }
 
@@ -759,99 +483,41 @@
 
           log("");
           log("=== AI COMPARISON SUMMARY ===");
-
           for (const summary of summaries) {
-            log(
-              summary.label + " wins: " + summary.testedWins +
-              " | Balanced wins: " + summary.balancedWins +
-              " | Draws: " + summary.draws +
-              " | Matches: 2"
-            );
+            log(`${summary.label} wins: ${summary.testedWins} | Balanced wins: ${summary.balancedWins} | Draws: ${summary.draws}`);
           }
 
-          log("");
-          log("All four simulations completed and passed replay checks.");
-          log("These results do NOT prove one difficulty is stronger.");
-          log("Live UI, touch controls and videos remain untested.");
-
-          setStatus(
-            "AI COMPARISON FINISHED\n" +
-            "4 matches completed and replay-checked.\n" +
-            "Tap COPY REPORT and send the results back.",
-            "pass"
-          );
-
+          setStatus("AI COMPARISON FINISHED\n4 matches completed & verified.", "pass");
         } catch (error) {
           showFailure("AI COMPARISON STOPPED", error);
-
-          log(
-            "The combat rule tests passed earlier. " +
-            "The AI comparison did not complete successfully."
-          );
-
-          log(
-            "If a worker failed, check js/ai_worker.js and the AI files " +
-            "listed above. They must all be from the replacement set."
-          );
-
         } finally {
           clearInterval(clock);
-
-          elapsedBox.textContent =
-            "Elapsed: " +
-            Math.floor((Date.now() - startedAt) / 1000) +
-            " seconds.";
-
           aiRunning = false;
           aiButton.disabled = !rulesPassed;
           riderSelect.disabled = !rulesPassed;
         }
       }
 
-      document.getElementById("reload-button")
-        .addEventListener("click", function () {
-          const url = new URL(location.href);
-
-          url.searchParams.set("testReload", Date.now().toString());
-
-          location.replace(url.href);
-        });
-
-      document.getElementById("copy-button")
-        .addEventListener("click", async function () {
-          const text = reportLines.join("\n");
-
-          try {
-            if (
-              !navigator.clipboard ||
-              typeof navigator.clipboard.writeText !== "function"
-            ) {
-              throw new Error("Clipboard API unavailable.");
-            }
-
-            await navigator.clipboard.writeText(text);
-
-            copyText.hidden = true;
-            copyNote.textContent =
-              "Report copied. Paste it into our chat.";
-
-          } catch (_) {
-            copyText.value = text;
-            copyText.hidden = false;
-
-            copyText.focus();
-            copyText.select();
-            copyText.setSelectionRange(0, text.length);
-
-            copyNote.textContent =
-              "Automatic copying was unavailable. " +
-              "Copy the text from the box above, or send a screenshot.";
-          }
-        });
-
-      aiButton.addEventListener("click", function () {
-        void runAIComparison();
+      // Event listener bindings
+      document.getElementById("reload-button").addEventListener("click", () => {
+        const url = new URL(location.href);
+        url.searchParams.set("testReload", Date.now().toString());
+        location.replace(url.href);
       });
+
+      document.getElementById("copy-button").addEventListener("click", async () => {
+        const text = reportLines.join("\n");
+        try {
+          await navigator.clipboard.writeText(text);
+          copyNote.textContent = "Report copied to clipboard.";
+        } catch (_) {
+          copyText.value = text;
+          copyText.hidden = false;
+          copyNote.textContent = "Automatic copying unavailable. Select and copy above.";
+        }
+      });
+
+      aiButton.addEventListener("click", () => void runAIComparison());
 
       void start();
     })();
