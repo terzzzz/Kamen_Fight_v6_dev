@@ -416,5 +416,144 @@
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+L": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" }
+  },
+  "amazon": {
+    "W+I": {
+      "name": "Wild Leap",
+      "type": "UTILITY",
+      "chiCost": 2,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "jump.mp4",
+      "grantsAirborne": 2,
+      "buff": {
+        "id": "airborne_boost",
+        "label": "AIR (+15% ATK / +20% EVS)",
+        "type": "speed",
+        "duration": 2
+      }
+    },
+    "W+J": {
+      "name": "Inca Blessing",
+      "type": "UTILITY",
+      "chiCost": 3,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "inca_blessing.mp4",
+      "buff": {
+        "id": "inca_blessing",
+        "label": "INCA BLESSING (+100 LP/RND)",
+        "type": "heal",
+        "duration": 5,
+        "lpRegen": 100,
+        "cancelOnLpDamage": true
+      }
+    },
+    "W+K": {
+      "name": "Gigi Focus",
+      "type": "UTILITY",
+      "chiCost": 2,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "gigi_focus.mp4",
+      "buff": {
+        "id": "gigi_focus",
+        "label": "GIGI FOCUS (+20% EVS)",
+        "type": "speed",
+        "duration": 3
+      }
+    },
+    "W+L": {
+      "name": "Wild Instinct",
+      "type": "UTILITY",
+      "chiCost": 2,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "wild_instinct.mp4",
+      "faintRecovery": 20
+    },
+    "D+J": {
+      "name": "Mystic Kick",
+      "type": "PHYSICAL",
+      "chiCost": 0,
+      "baseDamage": 72,
+      "hitChance": 80,
+      "video": "kick2.mp4",
+      "chiRefundOnHit": 2,
+      "sourceFacing": "right"
+    },
+    "D+K": {
+      "name": "Claw Attack",
+      "type": "PHYSICAL",
+      "chiCost": 1,
+      "baseDamage": 130,
+      "hitChance": 80,
+      "video": "claw.mp4",
+      "chiRefundOnHit": 3
+    },
+    "D+L": {
+      "name": "Claw Combo",
+      "type": "PHYSICAL",
+      "chiCost": 1,
+      "baseDamage": 142,
+      "hitChance": 78,
+      "video": "combo_claw.mp4",
+      "chiRefundOnHit": 3
+    },
+    "D+I": {
+      "name": "Standard Kick",
+      "type": "PHYSICAL",
+      "chiCost": 0,
+      "baseDamage": 84,
+      "hitChance": 80,
+      "video": "kick.mp4",
+      "chiRefundOnHit": 2,
+      "sourceFacing": "right"
+    },
+    "S+J": {
+      "name": "Amazon Kick",
+      "type": "SPECIAL",
+      "chiCost": 4,
+      "baseDamage": 420,
+      "hitChance": 80,
+      "video": "amazon_kick.mp4"
+    },
+    "S+K": {
+      "name": "Jaguar Shock",
+      "type": "SPECIAL",
+      "chiCost": 5,
+      "baseDamage": 540,
+      "hitChance": 75,
+      "video": "jaguar_shock.mp4",
+      "debuff": {
+        "id": "bleeding",
+        "label": "BLEEDING (-150 LP/RND)",
+        "type": "dot",
+        "duration": 3,
+        "lpBleed": 150,
+        "refreshable": true
+      }
+    },
+    "S+L": {
+      "name": "Wild Tackle",
+      "type": "SPECIAL",
+      "chiCost": 7,
+      "baseDamage": 850,
+      "hitChance": 82,
+      "video": "wild_tackle.mp4"
+    },
+    "S+I": {
+      "name": "Daisetsudan",
+      "type": "SPECIAL",
+      "chiCost": 10,
+      "baseDamage": 1120,
+      "hitChance": 75,
+      "video": "daisetsudan.mp4",
+      "sourceFacing": "right"
+    },
+    "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
+    "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
+    "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
+    "A+L": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" }
   }
 }
