@@ -53,5 +53,16 @@
     "videoFolder": "assets/videos/x/",
     "finisher": "Vacuum Hell Wheel",
     "active": true
+  },
+  {
+    "id": "amazon",
+    "name": "Kamen Rider Amazon",
+    "sourceFacing": "right",
+    "maxLp": 2300,
+    "archetype": "Rushdown / Glass Cannon",
+    "icon": "assets/images/icons/amazon.png",
+    "videoFolder": "assets/videos/amazon/",
+    "finisher": "Daisetsudan / Amazon Kick",
+    "active": true
   }
 ]
