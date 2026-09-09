@@ -1,5 +1,5 @@
 // ai.js
-// Kamen Fight — AI Decision Engine & History Tracking
+// Kamen Fight — AI Decision Engine & History Tracking (With AgentIchigo Integration)
 
 (function (g) {
   "use strict";
@@ -9,16 +9,22 @@
 
   /**
    * Selects an action for the specified player slot using the ForeseeEngine search tree
-   * and applies difficulty-based probabilistic weighting (softmax selection).
+   * or delegates to specialized learning agents (e.g., AgentIchigo).
    *
    * @param {Object} context - Execution context containing match state, slot, difficulty, history, and PRNG seed.
    * @returns {Object} Selected action and associated debug evaluation metadata.
    */
   function choose(context) {
     const difficulty = K.difficulty(context.difficulty);
+    const state = context.state;
+    const slot = context.slot;
+    const oppSlot = slot === "p1" ? "p2" : "p1";
+
+    const cpuFighter = state[slot];
+    const oppFighter = state[oppSlot];
 
     // Forced state check: fainted fighters cannot perform any action other than idling/recovering.
-    if (context.state[context.slot].isFainted) {
+    if (cpuFighter.isFainted) {
       return {
         action: { key: "DO_NOTHING", charge: 0 },
         debug: {
@@ -27,6 +33,30 @@
           completedHorizon: 0
         }
       };
+    }
+
+    // --- AgentIchigo Evolutionary Policy Hook ---
+    if (cpuFighter && cpuFighter.id === "ichigo" && oppFighter && g.AgentIchigo) {
+      const isAdaptiveDiff = /adaptive|master|expert|hard|nightmare/.test(String(context.difficulty || "").toLowerCase());
+      const weights = g.AgentIchigo.getPolicyForOpponent(oppFighter.id);
+
+      if (isAdaptiveDiff && weights) {
+        const moves = state.moves[slot];
+        const moveKey = g.AgentIchigo.chooseBestMove(cpuFighter, oppFighter, moves, weights);
+
+        // Optimal charge evaluation for selected move direction
+        const move = moves[moveKey];
+        const maxChargePct = move ? C.maxCharge(cpuFighter, move.direction) : 100;
+
+        return {
+          action: { key: moveKey, charge: maxChargePct },
+          debug: {
+            difficulty,
+            strategy: `AgentIchigo Evolutionary Policy vs ${oppFighter.id}`,
+            weights
+          }
+        };
+      }
     }
 
     // Run lookahead search tree analysis via ForeseeEngine
@@ -77,11 +107,6 @@
 
   /**
    * Appends the most recent turn's actions and faint statuses to the rolling match history buffer.
-   *
-   * @param {Array} history - Array of previous turn records.
-   * @param {Object} before - Match state snapshot prior to turn resolution.
-   * @param {Object} selected - Object containing the locked actions for P1 and P2.
-   * @returns {Array} Updated history array capped at the last 24 turns.
    */
   function remember(history, before, selected) {
     return [
