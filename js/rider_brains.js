@@ -10,7 +10,8 @@
     nigo: { chi: 20, faint: 1.8, buff: 20 },
     v3: { chi: 24, faint: 2.5, buff: 22 },
     riderman: { chi: 19, faint: 2.5, buff: 20 },
-    x: { chi: 23, faint: 2.0, buff: 22 }
+    x: { chi: 23, faint: 2.0, buff: 22 },
+    amazon: { chi: 22, faint: 2.2, buff: 18 }
   };
 
   function has(player, id) {
@@ -184,6 +185,60 @@
           ["S+L", "S+K", "D+I", "S+I"]
         );
 
+      case "amazon": {
+        // Defensive/fallback checks handled earlier (isFainted / opponent.isFainted)
+        // Helper local checks
+        const selfHpRatio = (self.lp || 0) / (self.maxLp || 2300);
+        const lowHp = selfHpRatio <= 0.35;
+        const lowChi = (self.chi || 0) < 5;
+        const canBigSpecial = (self.chi || 0) >= 7;    // can use Wild Tackle (S+L)
+        const canFinisher = (self.chi || 0) >= 10;     // Daisetsudan (S+I)
+        const oppLikelyToAttack = !opponent.isFainted && ((opponent.chi || 0) >= 4);
+
+        // If chi is very low, rebuild with cheap/chi-refund normals
+        if (lowChi) {
+          return result("Rebuild chi with low-cost pressure", [
+            "D+K", "D+I", "D+J"
+          ]);
+        }
+
+        // If critically low HP: prefer regen only when opponent unlikely to immediately interrupt
+        if (lowHp) {
+          if (!oppLikelyToAttack) {
+            // Use Inca Blessing (W+J) to survive; follow with light pressure or guard
+            return result("Prioritize regen when safe", ["W+J", "A+J", "D+J"]);
+          } else {
+            // If danger, defend or poke to regain chi
+            return result("Defend and build chi under pressure", ["A+I", "D+J", "D+K"]);
+          }
+        }
+
+        // If we have a buff window (self has gigi_focus) or high chi, go aggressive with specials
+        if (has(self, "gigi_focus") || canFinisher) {
+          // Prefer finishers if they are available and opponent health is moderate/low
+          if (canFinisher && (opponent.lp || 0) <= Math.max(900, (opponent.maxLp || 2300) * 0.35)) {
+            return result("Commit to finisher", ["S+I", "S+L", "S+K"]);
+          }
+          return result("Exploit buff / high chi with specials", ["S+L", "S+K", "S+J"]);
+        }
+
+        // Opportunistic bleeding application: S+K (Jaguar Shock) when you want sustained damage
+        if ((opponent.lp || 0) > 1000 && (self.chi || 0) >= 5) {
+          // bleeding is useful vs tanky opponents to whittle
+          return result("Apply bleeding or heavy special", ["S+K", "S+L", "D+L"]);
+        }
+
+        // Default aggressive pressure: use claw/chi-refund normals then heavy special when chi allows
+        if ((self.chi || 0) >= 7) {
+          return result("Aggressive pressure — build then strike", [
+            "D+L", "D+K", "S+L"
+          ]);
+        }
+
+        // Fallback: maintain pressure and chi generation
+        return result("Standard rushdown pressure", ["D+K", "D+I", "D+J"]);
+      }
+        
       case "x":
         if (
           master &&
