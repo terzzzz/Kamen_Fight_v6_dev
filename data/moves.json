@@ -478,7 +478,7 @@
       "chiCost": 0,
       "baseDamage": 72,
       "hitChance": 80,
-      "video": "kick2.mp4",
+      "video": "kick_myst.mp4",
       "chiRefundOnHit": 2,
       "sourceFacing": "right"
     },
@@ -506,7 +506,7 @@
       "chiCost": 0,
       "baseDamage": 84,
       "hitChance": 80,
-      "video": "kick.mp4",
+      "video": "kick2.mp4",
       "chiRefundOnHit": 2,
       "sourceFacing": "right"
     },
@@ -548,7 +548,7 @@
       "chiCost": 10,
       "baseDamage": 1120,
       "hitChance": 75,
-      "video": "daisetsudan.mp4",
+      "video": "dai_slash.mp4",
       "sourceFacing": "right"
     },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
