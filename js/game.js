@@ -45,7 +45,7 @@
     }
   }
 
-  /** Handles match conclusion, announces winner banner, and updates end-game character media. */
+  /** Handles match conclusion, announces winner banner, updates media, and feeds RL agent. */
   function finish(winner) {
     const gs = g.gameState;
     if (!gs) return;
@@ -54,6 +54,30 @@
 
     gs.roundPhase = "GAME_OVER";
     gs.canContinueFromGameOver = false;
+
+    // --- AgentIchigo Online Learning Hook ---
+    if (g.AgentIchigo && typeof g.AgentIchigo.recordMatchResult === "function") {
+      try {
+        const p1IsIchigo = gs.p1 && gs.p1.id === "ichigo";
+        const p2IsIchigo = gs.p2 && gs.p2.id === "ichigo";
+
+        if (p1IsIchigo || p2IsIchigo) {
+          const ichigoSlot = p1IsIchigo ? "p1" : "p2";
+          const oppSlot = p1IsIchigo ? "p2" : "p1";
+          const oppId = gs[oppSlot].id;
+          const ichigoWon = winner === ichigoSlot;
+
+          // Extract move history used during the match
+          const keyMoves = (gs.history || [])
+            .map(turn => turn[ichigoSlot] ? gs[`${ichigoSlot}Moves`][turn[ichigoSlot].key] : null)
+            .filter(Boolean);
+
+          g.AgentIchigo.recordMatchResult(oppId, ichigoWon, keyMoves);
+        }
+      } catch (err) {
+        console.warn("[AgentIchigo] Could not record live match result:", err);
+      }
+    }
 
     const message = winner === "draw"
       ? "DRAW MATCH"
