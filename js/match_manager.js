@@ -767,4 +767,4 @@
     confirm,
     bindInputs
   };
-})(window);
+})(window);  
