@@ -35,16 +35,15 @@
       };
     }
 
-    // --- AgentIchigo Evolutionary Policy Hook ---
+    // --- AgentIchigo Evolutionary Policy Hook (Active on SOUL / Adaptive difficulty) ---
     if (cpuFighter && cpuFighter.id === "ichigo" && oppFighter && g.AgentIchigo) {
-      const isAdaptiveDiff = /adaptive|master|expert|hard|nightmare/.test(String(context.difficulty || "").toLowerCase());
+      const isSoulLevel = /soul|adaptive|expert/.test(String(context.difficulty || "").toLowerCase());
       const weights = g.AgentIchigo.getPolicyForOpponent(oppFighter.id);
 
-      if (isAdaptiveDiff && weights) {
+      if (isSoulLevel && weights) {
         const moves = state.moves[slot];
         const moveKey = g.AgentIchigo.chooseBestMove(cpuFighter, oppFighter, moves, weights);
 
-        // Optimal charge evaluation for selected move direction
         const move = moves[moveKey];
         const maxChargePct = move ? C.maxCharge(cpuFighter, move.direction) : 100;
 
@@ -52,7 +51,7 @@
           action: { key: moveKey, charge: maxChargePct },
           debug: {
             difficulty,
-            strategy: `AgentIchigo Evolutionary Policy vs ${oppFighter.id}`,
+            strategy: `AgentIchigo Evolutionary Policy (SOUL) vs ${oppFighter.id}`,
             weights
           }
         };
