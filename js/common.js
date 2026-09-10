@@ -31,20 +31,19 @@
    * Maps difficulty aliases and user inputs to standardized internal difficulty keys.
    *
    * @param {string} value - Difficulty string input.
-   * @returns {"easy"|"normal"|"hard"|"master"} Standardized difficulty key.
+   * @returns {"easy"|"balanced"|"master"|"soul"} Standardized difficulty key.
    */
   KF.difficulty = function (value) {
-    const key = String(value || "normal").toLowerCase();
+    const key = String(value || "balanced").toLowerCase();
 
     return {
       novice: "easy",
       easy: "easy",
-      balanced: "normal",
-      normal: "normal",
-      aggressive: "hard",
-      hard: "hard",
-      master: "master"
-    }[key] || "normal";
+      balanced: "balanced",
+      normal: "balanced",
+      master: "master",
+      soul: "soul"
+    }[key] || "balanced";
   };
 
   /**
@@ -104,21 +103,13 @@
       risk: 0,
       nearBest: 160
     },
-    normal: {
+    balanced: {
       charges: [60, 90, 100],
       horizon: 1,
       finalists: 0,
       rollouts: 0,
       risk: 0,
       nearBest: 16
-    },
-    hard: {
-      charges: [0, 60, 90, 100],
-      horizon: 2,
-      finalists: 4,
-      rollouts: 24,
-      risk: 0.08,
-      nearBest: 8
     },
     master: {
       charges: [0, 35, 60, 90, 100],
@@ -127,6 +118,14 @@
       rollouts: 48,
       risk: 0.15,
       nearBest: 4
+    },
+    soul: {
+      charges: [0, 35, 60, 90, 100],
+      horizon: 3,
+      finalists: 8,
+      rollouts: 64,
+      risk: 0.15,
+      nearBest: 1
     }
   });
 
@@ -151,11 +150,10 @@
     CPU_REACTION_MS: 250,
     VIDEO_TIMEOUT_MS: 8000,
 
-    // Equal stat multipliers maintain fair decision-quality benchmarks
-    HARD_CPU_HP_MULTIPLIER: 1,
-    HARD_CPU_DMG_MULTIPLIER: 1,
     MASTER_CPU_HP_MULTIPLIER: 1,
-    MASTER_CPU_DMG_MULTIPLIER: 1
+    MASTER_CPU_DMG_MULTIPLIER: 1,
+    SOUL_CPU_HP_MULTIPLIER: 1,
+    SOUL_CPU_DMG_MULTIPLIER: 1
   });
 
   /** Base charge durations (in ms) per directional input. */
