@@ -10,7 +10,6 @@
   window.battleBGM = window.battleBGM || null;
   window.currentVolume = typeof window.currentVolume === 'number' ? window.currentVolume : 0.5;
 
-  // Available background audio tracks for character selection screen
   const SELECTION_BGM_TRACKS = [
     'assets/sounds/matchup.mp3',
     'assets/sounds/matchup1.mp3',
@@ -19,9 +18,9 @@
 
   const DIFF_LABELS = {
     easy: 'NOVICE',
-    normal: 'BALANCED',
-    hard: 'AGGRESSIVE',
-    master: 'MASTER'
+    balanced: 'BALANCED',
+    master: 'MASTER',
+    soul: 'SOUL'
   };
 
   // Default fallback roster definitions
@@ -38,21 +37,21 @@
     step: 1,           // Step 1: P1 Select, Step 2: P2 Select, Step 3: Ready
     p1Index: 0,
     p1IsCPU: false,
-    p1Difficulty: 'normal',
+    p1Difficulty: 'balanced',
     p2Index: 1,
     p2IsCPU: true,
-    p2Difficulty: 'normal'
+    p2Difficulty: 'balanced'
   };
 
   /** Applies difficulty badge styling classes to UI element. */
   function setDiffBadgeClasses(el, difficulty, isCPU) {
     if (!el) return;
-    el.classList.remove('easy', 'normal', 'hard', 'master');
+    el.classList.remove('easy', 'normal', 'balanced', 'hard', 'master', 'soul');
     if (!isCPU) return;
     if (difficulty === 'easy') el.classList.add('easy');
-    else if (difficulty === 'hard') el.classList.add('hard');
     else if (difficulty === 'master') el.classList.add('master');
-    else el.classList.add('normal');
+    else if (difficulty === 'soul') el.classList.add('soul');
+    else el.classList.add('balanced');
   }
 
   /** Toggles active/locked highlight styles on selection cards. */
@@ -197,16 +196,16 @@
     window.updateSelectionUI();
   };
 
-  /** Cycles CPU difficulty setting (easy -> normal -> hard -> master). */
+  /** Cycles CPU difficulty setting (easy -> balanced -> master -> soul). */
   window.toggleDifficulty = function(playerKey) {
-    const nextDiff = { easy: 'normal', normal: 'hard', hard: 'master', master: 'easy' };
+    const nextDiff = { easy: 'balanced', balanced: 'master', master: 'soul', soul: 'easy' };
     const state = window.vsSelectionState;
     const currentStep = parseInt(state.step, 10) || 1;
 
     if (playerKey === 'p1' && state.p1IsCPU && currentStep === 1) {
-      state.p1Difficulty = nextDiff[state.p1Difficulty] || 'normal';
+      state.p1Difficulty = nextDiff[state.p1Difficulty] || 'balanced';
     } else if (playerKey === 'p2' && state.p2IsCPU && currentStep === 2) {
-      state.p2Difficulty = nextDiff[state.p2Difficulty] || 'normal';
+      state.p2Difficulty = nextDiff[state.p2Difficulty] || 'balanced';
     }
     window.updateSelectionUI();
   };
@@ -249,7 +248,7 @@
     const p2ImgEl = document.getElementById('p2-img');
     if (p2ImgEl) {
       p2ImgEl.src = p2.icon;
-      p2ImgEl.classList.toggle('p2-mirror-palette', p1.id === p2.id); // Apply palette swap for mirror match
+      p2ImgEl.classList.toggle('p2-mirror-palette', p1.id === p2.id);
     }
 
     const p2NameEl = document.getElementById('p2-name-display');
@@ -286,7 +285,6 @@
       if (simBtn) simBtn.disabled = false;
     });
 
-    // Handle button states per step
     if (currentStep === 1) {
       if (headerText) headerText.textContent = 'STEP 1: SELECT PLAYER 1 RIDER';
       setCardSlotClasses(p1Card, true);
@@ -369,7 +367,6 @@
       return;
     }
 
-    // Build modal element dynamically if not present in DOM
     let modal = document.getElementById('sim-modal');
     if (!modal) {
       modal = document.createElement('div');
@@ -406,14 +403,14 @@
     modal.style.display = 'flex';
 
     const riders = window.AVAILABLE_RIDERS || [];
-    const state = window.vsSelectionState || { p1Index: 0, p2Index: 1, p1Difficulty: 'normal', p2Difficulty: 'normal' };
+    const state = window.vsSelectionState || { p1Index: 0, p2Index: 1, p1Difficulty: 'balanced', p2Difficulty: 'balanced' };
     const p1Rider = riders[state.p1Index] || riders[0] || { id: 'ichigo', name: 'Ichigo' };
     const p2Rider = riders[state.p2Index] || riders[0] || { id: 'nigo', name: 'Nigo' };
 
     const countSelect = document.getElementById('sim-count-select');
     const matchCount = countSelect ? parseInt(countSelect.value, 10) : 20;
-    const p1Diff = state.p1Difficulty || 'normal';
-    const p2Diff = state.p2Difficulty || 'normal';
+    const p1Diff = state.p1Difficulty || 'balanced';
+    const p2Diff = state.p2Difficulty || 'balanced';
 
     resultsBody.innerHTML = `
       <p class="sim-loading" style="color: #00ffcc; text-align: center; font-family: monospace; padding: 20px; font-size: 1.1rem;">
@@ -422,7 +419,6 @@
       </p>
     `;
 
-    // Asynchronously run Monte Carlo simulation batch
     setTimeout(async () => {
       try {
         const res = await window.runBatchSimulation(
@@ -441,7 +437,6 @@
 
         const overallWinner = res.p1Wins > res.p2Wins ? res.p1Name : (res.p2Wins > res.p1Wins ? res.p2Name : 'TIE MATCH');
 
-        // Render HTML results summary table
         resultsBody.innerHTML = `
           <div class="sim-summary-header" style="text-align: center; margin-bottom: 15px; font-family: monospace;">
             <p class="sim-matchup-title" style="font-size: 1.1rem; color: #fff;">
@@ -495,7 +490,6 @@
 
   /** Validates selection state and transitions to live battle mode via startBattle(). */
   window.validateAndStartMatch = function() {
-    // Unlock HTML5 video play tokens for mobile browser autoplay policies
     if (typeof window.unlockMobileVideos === 'function') {
       window.unlockMobileVideos();
     }
@@ -515,10 +509,10 @@
     const matchConfig = {
       p1Rider: riders[state.p1Index] || riders[0],
       p1IsCPU: state.p1IsCPU,
-      p1Difficulty: state.p1IsCPU ? state.p1Difficulty : 'normal',
+      p1Difficulty: state.p1IsCPU ? state.p1Difficulty : 'balanced',
       p2Rider: riders[state.p2Index] || riders[0],
       p2IsCPU: state.p2IsCPU,
-      p2Difficulty: state.p2IsCPU ? state.p2Difficulty : 'normal'
+      p2Difficulty: state.p2IsCPU ? state.p2Difficulty : 'balanced'
     };
 
     if (typeof window.startBattle === 'function') {
@@ -565,7 +559,6 @@
 
     window.updateSelectionUI();
 
-    // Attach simulation modal event handlers
     ['btn-simulate-matches', 'btn-simulate', 'simulate-btn'].forEach(id => {
       const simBtn = document.getElementById(id);
       if (simBtn) {
@@ -584,7 +577,6 @@
       });
     }
 
-    // Audio context unlock on initial user gesture
     const unlockAudio = () => {
       window.playSelectionBGM();
       window.removeEventListener('click', unlockAudio);
