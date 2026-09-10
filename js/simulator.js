@@ -103,8 +103,8 @@
    * @param {Object} selectedRider1 - Selected P1 rider definition.
    * @param {Object} selectedRider2 - Selected P2 rider definition.
    * @param {number} [matchCount=20] - Number of matches to simulate in batch.
-   * @param {string} [difficulty1="normal"] - P1 difficulty level.
-   * @param {string} [difficulty2="normal"] - P2 difficulty level.
+   * @param {string} [difficulty1="balanced"] - P1 difficulty level.
+   * @param {string} [difficulty2="balanced"] - P2 difficulty level.
    * @param {function(number, number): void|null} [onProgress=null] - Progress callback (completed, total).
    * @param {Object} [options={}] - Additional options (e.g., custom seed).
    * @returns {Promise<Object>} Summary statistics object for UI modal display.
@@ -113,8 +113,8 @@
     selectedRider1,
     selectedRider2,
     matchCount = 20,
-    difficulty1 = "normal",
-    difficulty2 = "normal",
+    difficulty1 = "balanced",
+    difficulty2 = "balanced",
     onProgress = null,
     options = {}
   ) {
