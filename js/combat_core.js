@@ -41,7 +41,9 @@
     rope_bind: { speed: 0.70 },
     mercury_atk: { dAttack: 1.15, sAttack: 1.15 },
     mercury_def: { armor: 0.80 },
-    airborne_evasion: { evasion: 0.20 }
+    airborne_evasion: { evasion: 0.20 },
+    inca_blessing: { attack: 1.20, armor: 0.85 },
+    gigi_focus: { dAttack: 1.25, sAttack: 1.25 }
   };
 
   /**
@@ -68,9 +70,8 @@
     }
 
     if (!EFFECTS[buff.id]) {
-      throw new Error(
-        `Unknown effect "${buff.id}". Add an explicit effects definition.`
-      );
+      console.warn(`[CombatCore] Missing effect definition for "${buff.id}". Defaulting to empty modifier.`);
+      return {};
     }
 
     return { ...EFFECTS[buff.id] };
