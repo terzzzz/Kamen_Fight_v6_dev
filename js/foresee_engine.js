@@ -118,7 +118,6 @@
             Math.exp(-Math.abs(action.charge - item.charge) / 12);
         }
 
-        // Maximizes punishment charge level when opponent is fainted/stunned
         if (state[C.other(slot)].isFainted) {
           weight *= action.charge === 100 ? 5 : 0.2;
         }
@@ -193,7 +192,7 @@
 
     const chargeChoices = [...settings.charges];
 
-    if (difficulty === "hard" || difficulty === "master") {
+    if (difficulty === "master" || difficulty === "soul") {
       for (const turn of history.slice(-3)) {
         const observed = turn[opponentSlot];
 
@@ -240,7 +239,6 @@
         action,
         expected,
         worst,
-        // Combined scoring: Expected outcome + Risk-aversion penalty + Tactical intent bonus
         score:
           (1 - settings.risk) * expected +
           settings.risk * worst +
@@ -253,7 +251,7 @@
     let finalists = rows;
     let completedHorizon = 1;
 
-    // Step 2: Multi-turn Monte Carlo Horizon Rollouts (Hard & Master difficulties)
+    // Step 2: Multi-turn Monte Carlo Horizon Rollouts (Master & Soul difficulties)
     if (
       settings.horizon > 1 &&
       rows.length > 1 &&
@@ -263,7 +261,6 @@
         .slice(0, settings.finalists)
         .map(row => ({ ...row }));
 
-      // Execute fixed rollout iterations per finalist using shared deterministic seeds
       for (const row of finalists) {
         let continuationDelta = 0;
 
@@ -293,7 +290,6 @@
 
           const firstValue = B.evaluate(future, slot);
 
-          // Deep horizon simulation passes
           for (let depth = 1;
             depth < settings.horizon && !future.winner;
             depth++
@@ -331,7 +327,6 @@
             B.evaluate(future, slot) - firstValue;
         }
 
-        // Blend horizon simulation gains into root candidate score
         row.score += continuationDelta / settings.rollouts;
       }
 
