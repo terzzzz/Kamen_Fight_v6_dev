@@ -17,7 +17,7 @@
   // -----------------------------
   // Configuration and constants
   // -----------------------------
-  const STORAGE_KEY = "ichigo_policy_v1";         // localStorage key
+  const STORAGE_KEY = "ichigo_policy_v1";          // localStorage key
   const ACTIVE_POLICY_FILE = "data/wt_ichigo.json"; // seed file in repo
   const MATCH_LOG_KEY = STORAGE_KEY + "_matches_v1";
   const DEFAULT_EXPORT_FILENAME = "wt_ichigo.json";
@@ -36,7 +36,8 @@
     "hasRegenBuff",
     "moveAppliesDebuff",
     "expectedDmg",
-    "chiCostPenalty"
+    "chiCostPenalty",
+    "rangePriority"
   ];
 
   // In-memory store (loaded from localStorage or seed file)
@@ -63,6 +64,14 @@
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   }
 
+  /* FILE: js/agent_ichigo.js :: function getRangePriority */
+  function getRangePriority(move) {
+    const range = String(move?.rangeType || "MELEE").toUpperCase();
+    if (range === "PROJECTILE") return 3;
+    if (["REACH", "ROPE", "MID_RANGE"].includes(range)) return 2;
+    return 1;
+  }
+
   // -----------------------------
   // Feature extraction & scoring
   // -----------------------------
@@ -74,8 +83,8 @@
     const chargeFactor = ((self.activeChargePercent || 100) / 100) || 1;
     const buffAttack = (self.activeBuffs || []).some(b => {
       const id = String(b.id || "").toLowerCase();
-      return b.type === "attack" || /focus|typhoon|red_lamp|power_focus/.test(id);
-    }) ? 1.12 : 1.0;
+      return b.type === "attack" || /focus|typhoon|red_lamp|power_focus|inca_blessing|gigi_focus/.test(id);
+    }) ? 1.15 : 1.0;
     return base * hit * chargeFactor * buffAttack;
   }
 
@@ -98,12 +107,14 @@
     const oppHp = clamp01((opp.lp || 0) / (opp.maxLp || 2300));
     const selfChi = clamp01((self.chi || 0) / (self.maxChi || 16));
     const oppChi = clamp01((opp.chi || 0) / (opp.maxChi || 16));
-    const selfFaint = clamp01((self.faintMeter || 0) / ((window.COMBAT_RULES && window.COMBAT_RULES.FAINT_THRESHOLD) || 100));
-    const oppFaint = clamp01((opp.faintMeter || 0) / ((window.COMBAT_RULES && window.COMBAT_RULES.FAINT_THRESHOLD) || 100));
+    const faintLimit = (window.COMBAT_RULES && window.COMBAT_RULES.FAINT_THRESHOLD) || 100;
+    const selfFaint = clamp01((self.faintMeter || 0) / faintLimit);
+    const oppFaint = clamp01((opp.faintMeter || 0) / faintLimit);
     const regen = hasRegen(self) ? 1 : 0;
     const debuffWill = moveAppliesDebuff(move) ? 1 : 0;
     const expDmg = (estimateExpectedDamage(move, self, opp) / 1200); // scaled
     const chiCostPenalty = -((move.chiCost || 0) / 16);
+    const rangePrio = (getRangePriority(move) - 1) / 2;
 
     return {
       selfHp,
@@ -115,7 +126,8 @@
       hasRegenBuff: regen,
       moveAppliesDebuff: debuffWill,
       expectedDmg: expDmg,
-      chiCostPenalty
+      chiCostPenalty,
+      rangePriority: rangePrio
     };
   }
 
@@ -130,6 +142,7 @@
       w[fn] = (Math.random() * 2 - 1) * 0.6; // [-0.6,0.6]
     });
     w.expectedDmg = Math.abs(w.expectedDmg || 0) + 0.6; // bias
+    w.rangePriority = Math.abs(w.rangePriority || 0) + 0.4;
     return w;
   }
 
@@ -154,6 +167,24 @@
     return score;
   }
 
+  /* FILE: js/agent_ichigo.js :: function chooseBestMove */
+  function chooseBestMove(cpu, opp, moves, weights) {
+    const validKeys = Object.keys(moves || {}).filter(k => (moves[k].chiCost || 0) <= (cpu.chi || 0));
+    if (!validKeys.length) return "DO_NOTHING";
+
+    let best = validKeys[0];
+    let bestScore = -Infinity;
+    validKeys.forEach(k => {
+      const mv = moves[k];
+      const s = scoreMoveWithWeights(mv, cpu, opp, weights);
+      if (s > bestScore) {
+        bestScore = s;
+        best = k;
+      }
+    });
+    return best;
+  }
+
   /* FILE: js/agent_ichigo.js :: function makePolicyFn */
   function makePolicyFn(weights, subjectId) {
     return function (cpu, opp, moves, difficulty) {
@@ -169,20 +200,7 @@
         return keys[Math.floor(Math.random() * keys.length)];
       }
 
-      const validKeys = Object.keys(moves || {}).filter(k => (moves[k].chiCost || 0) <= (cpu.chi || 0));
-      if (!validKeys.length) return "DO_NOTHING";
-
-      let best = validKeys[0];
-      let bestScore = -Infinity;
-      validKeys.forEach(k => {
-        const mv = moves[k];
-        const s = scoreMoveWithWeights(mv, cpu, opp, weights);
-        if (s > bestScore) {
-          bestScore = s;
-          best = k;
-        }
-      });
-      return best;
+      return chooseBestMove(cpu, opp, moves, weights);
     };
   }
 
@@ -358,14 +376,13 @@
 
   /* FILE: js/agent_ichigo.js :: function exportWeights (export to wt_ichigo.json) */
   function exportWeights(filename = DEFAULT_EXPORT_FILENAME) {
-    const payloadStore = activePolicyStore || (function () {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : { ichigo: {} };
-      } catch (e) {
-        return activePolicyStore || { ichigo: {} };
-      }
-    })();
+    let payloadStore;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      payloadStore = raw ? JSON.parse(raw) : activePolicyStore || { ichigo: {} };
+    } catch (e) {
+      payloadStore = activePolicyStore || { ichigo: {} };
+    }
 
     const exportPayload = {
       version: "1.0",
@@ -539,6 +556,8 @@
   AgentIchigo.randomWeights = randomWeights;
   AgentIchigo.mutateWeights = mutateWeights;
   AgentIchigo.extractFeatures = extractFeatures;
+  AgentIchigo.scoreMoveWithWeights = scoreMoveWithWeights;
+  AgentIchigo.chooseBestMove = chooseBestMove;
   AgentIchigo.evaluateCandidate = evaluateCandidate;
   AgentIchigo.evolveForOpponent = evolveForOpponent;
   AgentIchigo.loadActivePolicyStore = loadActivePolicyStore;
