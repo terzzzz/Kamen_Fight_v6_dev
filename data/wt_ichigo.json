@@ -1,1 +1,27 @@
-{ "version": "1.0", "createdAt": "2026-09-11T00:00:00Z", "trainer": "none", "featureNames": [ "selfHp", "oppHp", "selfChi", "oppChi", "selfFaint", "oppFaint", "hasRegenBuff", "moveAppliesDebuff", "expectedDmg", "chiCostPenalty" ], "policies": { "ichigo": { "nigo": {}, "v3": {}, "riderman": {}, "x": {}, "amazon": {} } } }
+{
+  "version": "1.0",
+  "createdAt": "2026-09-11T00:00:00Z",
+  "trainer": "none",
+  "featureNames": [
+    "selfHp",
+    "oppHp",
+    "selfChi",
+    "oppChi",
+    "selfFaint",
+    "oppFaint",
+    "hasRegenBuff",
+    "moveAppliesDebuff",
+    "expectedDmg",
+    "chiCostPenalty",
+    "rangePriority"
+  ],
+  "policies": {
+    "ichigo": {
+      "nigo": {},
+      "v3": {},
+      "riderman": {},
+      "x": {},
+      "amazon": {}
+    }
+  }
+}
