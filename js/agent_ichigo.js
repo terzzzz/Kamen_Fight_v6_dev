@@ -92,7 +92,7 @@
   function hasRegen(player) {
     return !!((player.activeBuffs || []).some(b => {
       const id = String(b.id || "").toLowerCase();
-      return b.type === "heal" || /regen|inca_blessing|lprecover|lpRecovery/.test(id);
+      return b.type === "heal" || /regen|inca_blessing|lprecover|lprecovery/.test(id);
     }));
   }
 
@@ -250,7 +250,7 @@ async function evaluateCandidate(weights, opponentId, opts = {}) {
 }
 
   // -----------------------------
-  // Evolutionary optimizer
+  // Evolutionary optimizer (robust)
   // -----------------------------
 
   /* FILE: js/agent_ichigo.js :: async function evolveForOpponent */
@@ -263,6 +263,8 @@ async function evaluateCandidate(weights, opponentId, opts = {}) {
       sigma: 0.25,
       restarts: 1
     }, options || {});
+
+    console.log(`[AgentIchigo] evolveForOpponent START: opp=${opponentId} opts=`, options);
 
     // Ensure active store loaded
     if (!activePolicyStore) await loadActivePolicyStore();
@@ -283,21 +285,31 @@ async function evaluateCandidate(weights, opponentId, opts = {}) {
         // evaluate missing scores
         for (let i = 0; i < population.length; i++) {
           if (population[i].score === null) {
-            const ev = await evaluateCandidate(population[i].weights, opponentId, { matches: options.matchesPerEval });
-            population[i].score = ev.winRate + ev.avgLp / 1000;
+            try {
+              const ev = await evaluateCandidate(population[i].weights, opponentId, { matches: options.matchesPerEval });
+              population[i].score = ev.winRate + ev.avgLp / 1000;
+              console.log(`[AgentIchigo] eval opp=${opponentId} gen=${gen} idx=${i} win=${ev.winRate} avgLp=${ev.avgLp}`);
+            } catch (err) {
+              population[i].score = -9999;
+              console.warn(`[AgentIchigo] evaluateCandidate failed opp=${opponentId} gen=${gen} idx=${i}`, err);
+            }
             // small yield to UI thread
-            await new Promise(r => setTimeout(r, 16));
+            await new Promise(r => setTimeout(r, 10));
           }
         }
 
-        population.sort((a, b) => (b.score || 0) - (a.score || 0));
-        const elites = population.slice(0, options.elites);
-        if (!bestGlobal || (population[0].score > bestGlobal.score)) {
-          bestGlobal = { weights: population[0].weights, score: population[0].score, eval: population[0] };
-          console.log(`[AgentIchigo] New best (opp=${opponentId}) gen=${gen} score=${bestGlobal.score.toFixed(2)}`);
+        // sort by score descending
+        population.sort((a, b) => (b.score || -Infinity) - (a.score || -Infinity));
+
+        // record best of this generation
+        const genBest = population[0];
+        if (genBest && ( !bestGlobal || (genBest.score > bestGlobal.score) )) {
+          bestGlobal = { weights: genBest.weights, score: genBest.score };
+          console.log(`[AgentIchigo] New generation-best (opp=${opponentId}) gen=${gen} score=${bestGlobal.score.toFixed(3)}`);
         }
 
-        // produce next generation
+        // prepare next generation
+        const elites = population.slice(0, Math.max(1, options.elites));
         const newPop = elites.map(e => ({ weights: e.weights, score: e.score }));
         while (newPop.length < options.popSize) {
           const parent = elites[Math.floor(Math.random() * elites.length)];
@@ -307,11 +319,25 @@ async function evaluateCandidate(weights, opponentId, opts = {}) {
       } // gen
     } // restarts
 
-    if (bestGlobal) {
+    // Decide what to persist. Prefer bestGlobal; if absent but we have population, persist top entry.
+    let winnerWeights = null;
+    if (bestGlobal && bestGlobal.weights) {
+      winnerWeights = bestGlobal.weights;
+    } else {
+      // try to seed from current stored policy or a random vector
+      const stored = getPolicyForOpponent(opponentId);
+      winnerWeights = stored || randomWeights();
+      console.warn(`[AgentIchigo] No bestGlobal found for ${opponentId} — persisting existing/random weights`);
+    }
+
+    // persist deterministically
+    try {
       activePolicyStore.ichigo = activePolicyStore.ichigo || {};
-      activePolicyStore.ichigo[opponentId] = bestGlobal.weights;
+      activePolicyStore.ichigo[opponentId] = winnerWeights;
       persistPoliciesToStorage(activePolicyStore);
-      console.log(`[AgentIchigo] Saved best policy for ichigo vs ${opponentId} (score=${bestGlobal.score.toFixed(2)})`);
+      console.log(`[AgentIchigo] Saved policy for ichigo vs ${opponentId} (score=${(bestGlobal && bestGlobal.score) ? bestGlobal.score.toFixed(3) : 'n/a'})`);
+    } catch (err) {
+      console.error('[AgentIchigo] Failed to persist policy to storage', err);
     }
 
     return bestGlobal;
@@ -396,6 +422,10 @@ async function evaluateCandidate(weights, opponentId, opts = {}) {
       featureNames: AgentIchigo.FEATURE_NAMES.slice(),
       policies: { ichigo: payloadStore.ichigo || {} }
     };
+
+    // Debugging: log keys being exported
+    const keys = Object.keys(exportPayload.policies.ichigo || {});
+    console.log(`[AgentIchigo] exportWeights preparing ${keys.length} opponent entries:`, keys);
 
     try {
       const jsonStr = JSON.stringify(exportPayload, null, 2);
