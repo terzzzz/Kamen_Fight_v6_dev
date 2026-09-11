@@ -43,7 +43,10 @@
     mercury_def: { armor: 0.80 },
     airborne_evasion: { evasion: 0.20 },
     inca_blessing: { attack: 1.20, armor: 0.85 },
-    gigi_focus: { dAttack: 1.25, sAttack: 1.25 }
+    gigi_focus: { dAttack: 1.25, sAttack: 1.25 },
+    bleeding: { lpBleed: 150, refreshable: true },
+    lprecover: { lpRegen: 100 },
+    lpRecovery: { lpRegen: 100 }
   };
 
   /**
@@ -342,7 +345,7 @@
 
   /** Evaluates move range tier priority (Projectile = 3, Reach/Rope = 2, Melee = 1). */
   function rangePriority(move) {
-    const range = String(move.rangeType || "MELEE").toUpperCase();
+    const range = String(move?.rangeType || "MELEE").toUpperCase();
 
     if (range === "PROJECTILE") return 3;
 
