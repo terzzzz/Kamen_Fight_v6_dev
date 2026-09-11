@@ -49,7 +49,7 @@
         const activeWeights = window.__ichigo_eval_weights__ || 
                              (window.AgentIchigo ? window.AgentIchigo.getPolicyForOpponent(opponent.id) : null);
 
-        if (activeWeights && window.AgentIchigo) {
+        if (activeWeights && window.AgentIchigo && typeof window.AgentIchigo.chooseBestMove === 'function') {
           const chosenKey = window.AgentIchigo.chooseBestMove(player, opponent, moveList, activeWeights);
           return { action: { key: chosenKey, charge: 100 } };
         }
