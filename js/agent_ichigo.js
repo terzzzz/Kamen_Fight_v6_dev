@@ -207,41 +207,47 @@
   // -----------------------------
   // Evaluation / Simulation wrapper
   // -----------------------------
+/* FILE: js/agent_ichigo.js :: async function evaluateCandidate (REPLACE existing) */
+async function evaluateCandidate(weights, opponentId, opts = {}) {
+  opts = opts || {};
+  const matches = opts.matches || 40;
 
-  /* FILE: js/agent_ichigo.js :: async function evaluateCandidate */
-  async function evaluateCandidate(weights, opponentId, opts = {}) {
-    opts = opts || {};
-    const matches = opts.matches || 40;
+  // Save original CPU selector/worker force flag
+  if (!window.__original_selectCPUMove__) window.__original_selectCPUMove__ = window.selectCPUMove || null;
+  const prevForce = window.__AGENT_FORCE_MAIN_THREAD__;
+  // Force main-thread planning so our temporary selectCPUMove is honored
+  window.__AGENT_FORCE_MAIN_THREAD__ = true;
 
-    // Save original if not already saved
-    if (!window.__original_selectCPUMove__) window.__original_selectCPUMove__ = window.selectCPUMove || null;
+  // Temporarily install policy selector for Ichigo
+  const policyFn = makePolicyFn(weights, "ichigo");
+  window.selectCPUMove = policyFn;
 
-    // Temporarily install policy selector for Ichigo
-    const policyFn = makePolicyFn(weights, "ichigo");
-    window.selectCPUMove = policyFn;
+  try {
+    const data = window.KF && typeof window.KF.loadData === "function"
+      ? await window.KF.loadData()
+      : await (await fetch("data/riders.json")).json();
 
-    try {
-      const data = window.KF && typeof window.KF.loadData === "function" ? await window.KF.loadData() : await (await fetch("data/riders.json")).json();
-      const ichigo = (data.riders || data).find(r => r.id === "ichigo");
-      const opp = (data.riders || data).find(r => r.id === opponentId);
-      if (!ichigo || !opp) throw new Error("rider data missing for eval");
+    const ichigo = (data.riders || data).find(r => r.id === "ichigo");
+    const opp = (data.riders || data).find(r => r.id === opponentId);
+    if (!ichigo || !opp) throw new Error("rider data missing for eval");
 
-      const summary = await window.runBatchSimulation(
-        { id: ichigo.id, name: ichigo.name, maxLp: ichigo.maxLp },
-        { id: opp.id, name: opp.name, maxLp: opp.maxLp },
-        matches,
-        opts.subjectDifficulty || "normal",
-        opts.opponentDifficulty || "normal"
-      );
+    const summary = await window.runBatchSimulation(
+      { id: ichigo.id, name: ichigo.name, maxLp: ichigo.maxLp },
+      { id: opp.id, name: opp.name, maxLp: opp.maxLp },
+      matches,
+      opts.subjectDifficulty || "normal",
+      opts.opponentDifficulty || "normal"
+    );
 
-      const winRate = Number(summary.p1WinRate) || ((summary.p1Wins || 0) / (summary.completed || matches) * 100);
-      const avgLp = Number(summary.p1AvgLpLeft) || 0;
-      return { res: summary, winRate, avgLp };
-    } finally {
-      // restore original selector
-      window.selectCPUMove = window.__original_selectCPUMove__;
-    }
+    const winRate = Number(summary.p1WinRate) || ((summary.p1Wins || 0) / (summary.completed || matches) * 100);
+    const avgLp = Number(summary.p1AvgLpLeft) || 0;
+    return { res: summary, winRate, avgLp };
+  } finally {
+    // restore original selector and worker forcing flag
+    try { window.selectCPUMove = window.__original_selectCPUMove__; } catch (_) {}
+    window.__AGENT_FORCE_MAIN_THREAD__ = prevForce;
   }
+}
 
   // -----------------------------
   // Evolutionary optimizer
