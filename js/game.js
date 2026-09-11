@@ -132,6 +132,11 @@
     g.MatchManager.stop();
     gs.roundPhase = "IDLE";
 
+    // Restore standard CPU move selector if AgentIchigo policy was active
+    if (g.AgentIchigo && typeof g.AgentIchigo.restoreOriginalSelector === "function") {
+      g.AgentIchigo.restoreOriginalSelector();
+    }
+
     if (g.hideCenterScreen) g.hideCenterScreen();
 
     document.querySelectorAll("video").forEach(video => video.pause());
@@ -150,7 +155,6 @@
 
   /**
    * Initializes a new battle session from selected VS screen configuration.
-   * Builds match state, seeds deterministic PRNG, preloads media, and starts MatchManager loop.
    *
    * @param {Object} config - Match setup configuration from character selection.
    */
@@ -161,342 +165,22 @@
       const session = ++sessionCounter;
       const data = await K.loadData();
 
-      // Guard against race conditions if user starts another session mid-load
       if (session !== sessionCounter) return;
 
-      const rider1 = data.riders.find(
-        rider => rider.id === config.p1Rider.id
-      );
-
-      const rider2 = data.riders.find(
-        rider => rider.id === config.p2Rider.id
-      );
+      const rider1 = data.riders.find(rider => rider.id === config.p1Rider.id);
+      const rider2 = data.riders.find(rider => rider.id === config.p2Rider.id);
 
       if (!rider1 || !rider2) {
         throw new Error("Selected rider is not available.");
       }
 
-      const matchConfig = {
-        ...config,
-        p1Rider: rider1,
-        p2Rider: rider2,
-        p1Difficulty: K.difficulty(config.p1Difficulty),
-        p2Difficulty: K.difficulty(config.p2Difficulty)
-      };
-
-      const seed = Number(config.seed ?? Date.now()) >>> 0;
-      const core = C.createMatch(rider1, rider2, data.moves);
-
-      // Initialize global game state instance
-      const gs = g.gameState = {
-        session,
-        seed,
-        core,
-        p1: C.copyFighter(core.p1),
-        p2: C.copyFighter(core.p2),
-        p1Moves: core.moves.p1,
-        p2Moves: core.moves.p2,
-        roundCounter: 1,
-        roundToken: 0,
-        roundPhase: "SETUP",
-        matchConfig,
-        history: [],
-        actions: { p1: null, p2: null },
-        input: {},
-        p2Input: {},
-        videoCache: {},
-        combatRng: K.rng(K.hash(seed, "combat")),
-        canContinueFromGameOver: false
-      };
-
-      // Clean up previous match DOM artifacts
-      document.querySelectorAll(".damage-popup").forEach(
-        element => element.remove()
-      );
-
-      document.querySelectorAll(".player-box").forEach(
-        element => element.classList.remove("blanked")
-      );
-
-      // Show match transition splash screen
-      show("vs-select-screen", false);
-      show("battle-screen", false);
-      show("match-transition-screen", true);
-
-      const names = document.getElementById("splash-names-text");
-      if (names) names.textContent = `${rider1.name} VS ${rider2.name}`;
-
-      await K.wait(700);
-
-      if (g.gameState !== gs) return;
-
-      // Reveal battle screen and paint initial HUD
-      show("match-transition-screen", false);
-      show("battle-screen", true);
-
-      paint();
-
-      for (const slot of ["p1", "p2"]) {
-        g.updateCharacterMedia(slot, "IDLE");
-      }
-
-      // Begin live round input loop
-      await g.MatchManager.begin();
-    } catch (error) {
-      fail(error);
-    }
-  }
-
-  /** Application bootstrapper. Preloads data and waits for user tap to open character select. */
-  async function boot() {
-    show("loading-screen", true);
-    show("vs-select-screen", false);
-    show("battle-screen", false);
-
-    const status = document.getElementById("loading-status");
-    const prompt = document.getElementById("start-prompt");
-    const fill = document.getElementById("loading-bar-fill");
-
-    if (status) status.textContent = "LOADING GAME DATA…";
-    if (prompt) prompt.hidden = true;
-
-    g.MatchManager.bindInputs();
-
-    try {
-      const data = await K.loadData();
-
-      g.AVAILABLE_RIDERS = data.riders;
-
-      if (g.updateSelectionUI) g.updateSelectionUI();
-
-      if (fill) fill.style.width = "100%";
-      if (status) status.textContent = "READY";
-      if (prompt) prompt.hidden = false;
-
-      let started = false;
-
-      function launch(event) {
-        if (started) return;
-        started = true;
-
-        if (event) event.preventDefault();
-
-        show("loading-screen", false);
-        show("vs-select-screen", true);
-
-        if (g.playSelectionBGM) g.playSelectionBGM();
-
-        document.removeEventListener("keydown", launch);
-      }
-
-      if (prompt) prompt.addEventListener("click", launch);
-      document.addEventListener("keydown", launch);
-    } catch (error) {
-      console.error(error);
-
-      if (status) {
-        status.textContent =
-          `LOAD FAILED: ${error.message}. Run the project through an HTTP server.`;
-      }
-    }
-  }
-
-  // Global View interface export
-  g.GameView = {
-    paint,
-    finish,
-    fail,
-    returnToSelection
-  };
-
-  g.startBattle = startBattle;
-
-  // Global event listeners for post-game return navigation
-  document.addEventListener("pointerdown", returnToSelection);
-  document.addEventListener("keydown", returnToSelection);
-
-  // Auto-boot application on DOM ready
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    void boot();
-  }
-})(window);// game.js
-// Kamen Fight — Screen Navigation, UI View Controller & Game Lifecycle Engine
-
-(function (g) {
-  "use strict";
-
-  const C = g.CombatCore;
-  const K = g.KF;
-
-  let sessionCounter = 0; // Guard ID against async race conditions across screen transitions
-
-  /** Toggles DOM element visibility using hidden attribute and CSS display. */
-  function show(id, visible) {
-    const element = document.getElementById(id);
-    if (!element) return;
-
-    element.hidden = !visible;
-    element.style.display = visible ? "" : "none";
-  }
-
-  /** Paints live HUD state, stun overlays, CPU control panels, and turn counters. */
-  function paint() {
-    const gs = g.gameState;
-    if (!gs || !gs.p1 || !gs.p2) return;
-
-    for (const slot of ["p1", "p2"]) {
-      g.UI.updatePlayerHUD(slot, gs[slot]);
-
-      const overlay = document.getElementById(`${slot}-stun-overlay`);
-      if (overlay) overlay.hidden = !gs[slot].isFainted;
-
-      const panel = document.getElementById(`${slot}-controls`);
-
-      if (panel) {
-        panel.hidden = !!gs.matchConfig[`${slot}IsCPU`];
-        panel.style.display = panel.hidden ? "none" : "";
-      }
-    }
-
-    const heading = document.getElementById("turn-display");
-
-    if (heading) {
-      heading.textContent =
-        `ROUND ${gs.core.round} / ${g.COMBAT_RULES.MAX_ROUNDS}`;
-    }
-  }
-
-  /** Handles match conclusion, announces winner banner, updates media, and feeds RL agent. */
-  function finish(winner) {
-    const gs = g.gameState;
-    if (!gs) return;
-
-    g.MatchManager.stop();
-
-    gs.roundPhase = "GAME_OVER";
-    gs.canContinueFromGameOver = false;
-
-    // --- AgentIchigo Online Learning Hook ---
-    if (g.AgentIchigo && typeof g.AgentIchigo.recordMatchResult === "function") {
-      try {
-        const p1IsIchigo = gs.p1 && gs.p1.id === "ichigo";
-        const p2IsIchigo = gs.p2 && gs.p2.id === "ichigo";
-
-        if (p1IsIchigo || p2IsIchigo) {
-          const ichigoSlot = p1IsIchigo ? "p1" : "p2";
-          const oppSlot = p1IsIchigo ? "p2" : "p1";
-          const oppId = gs[oppSlot].id;
-          const ichigoWon = winner === ichigoSlot;
-
-          // Extract move history used during the match
-          const keyMoves = (gs.history || [])
-            .map(turn => turn[ichigoSlot] ? gs[`${ichigoSlot}Moves`][turn[ichigoSlot].key] : null)
-            .filter(Boolean);
-
-          g.AgentIchigo.recordMatchResult(oppId, ichigoWon, keyMoves);
+      // Check for SOUL difficulty on Ichigo and apply active trained policy
+      if (g.AgentIchigo && typeof g.AgentIchigo.applyPolicyRuntime === "function") {
+        if (config.p1IsCPU && rider1.id === "ichigo" && config.p1Difficulty === "soul") {
+          g.AgentIchigo.applyPolicyRuntime(rider2.id);
+        } else if (config.p2IsCPU && rider2.id === "ichigo" && config.p2Difficulty === "soul") {
+          g.AgentIchigo.applyPolicyRuntime(rider1.id);
         }
-      } catch (err) {
-        console.warn("[AgentIchigo] Could not record live match result:", err);
-      }
-    }
-
-    const message = winner === "draw"
-      ? "DRAW MATCH"
-      : `${winner.toUpperCase()} ${gs[winner].name.toUpperCase()} WINS`;
-
-    g.UI.showBattleBanner(`${message}\nTap or press a key to return.`);
-
-    for (const slot of ["p1", "p2"]) {
-      g.updateCharacterMedia(
-        slot,
-        winner === "draw" || winner === slot ? "VICTORY" : "KO"
-      );
-    }
-
-    // Brief delay buffer before allowing user to tap back to selection screen
-    setTimeout(() => {
-      if (g.gameState === gs && gs.roundPhase === "GAME_OVER") {
-        gs.canContinueFromGameOver = true;
-      }
-    }, 800);
-  }
-
-  /** Global error boundary handler for runtime exceptions during matches. */
-  function fail(error) {
-    console.error(error);
-
-    const gs = g.gameState;
-
-    if (gs) {
-      g.MatchManager.stop();
-      gs.roundPhase = "GAME_OVER";
-      gs.canContinueFromGameOver = true;
-    }
-
-    g.UI.showBattleBanner(
-      `ERROR: ${error.message || error}\nTap or press a key to return.`
-    );
-  }
-
-  /** Transitions view back to character selection screen from Game Over state. */
-  function returnToSelection() {
-    const gs = g.gameState;
-
-    if (
-      !gs ||
-      gs.roundPhase !== "GAME_OVER" ||
-      !gs.canContinueFromGameOver
-    ) {
-      return;
-    }
-
-    g.MatchManager.stop();
-    gs.roundPhase = "IDLE";
-
-    if (g.hideCenterScreen) g.hideCenterScreen();
-
-    document.querySelectorAll("video").forEach(video => video.pause());
-
-    show("battle-screen", false);
-    show("match-transition-screen", false);
-    show("vs-select-screen", true);
-
-    g.UI.showBattleBanner("");
-    g.UI.showActionBanner("");
-
-    if (g.stopBattleBGM) g.stopBattleBGM();
-    if (g.playSelectionBGM) g.playSelectionBGM();
-    if (g.updateSelectionUI) g.updateSelectionUI();
-  }
-
-  /**
-   * Initializes a new battle session from selected VS screen configuration.
-   * Builds match state, seeds deterministic PRNG, preloads media, and starts MatchManager loop.
-   *
-   * @param {Object} config - Match setup configuration from character selection.
-   */
-  async function startBattle(config) {
-    try {
-      g.MatchManager.stop();
-
-      const session = ++sessionCounter;
-      const data = await K.loadData();
-
-      // Guard against race conditions if user starts another session mid-load
-      if (session !== sessionCounter) return;
-
-      const rider1 = data.riders.find(
-        rider => rider.id === config.p1Rider.id
-      );
-
-      const rider2 = data.riders.find(
-        rider => rider.id === config.p2Rider.id
-      );
-
-      if (!rider1 || !rider2) {
-        throw new Error("Selected rider is not available.");
       }
 
       const matchConfig = {
@@ -510,7 +194,6 @@
       const seed = Number(config.seed ?? Date.now()) >>> 0;
       const core = C.createMatch(rider1, rider2, data.moves);
 
-      // Initialize global game state instance
       const gs = g.gameState = {
         session,
         seed,
@@ -532,16 +215,9 @@
         canContinueFromGameOver: false
       };
 
-      // Clean up previous match DOM artifacts
-      document.querySelectorAll(".damage-popup").forEach(
-        element => element.remove()
-      );
+      document.querySelectorAll(".damage-popup").forEach(element => element.remove());
+      document.querySelectorAll(".player-box").forEach(element => element.classList.remove("blanked"));
 
-      document.querySelectorAll(".player-box").forEach(
-        element => element.classList.remove("blanked")
-      );
-
-      // Show match transition splash screen
       show("vs-select-screen", false);
       show("battle-screen", false);
       show("match-transition-screen", true);
@@ -553,7 +229,6 @@
 
       if (g.gameState !== gs) return;
 
-      // Reveal battle screen and paint initial HUD
       show("match-transition-screen", false);
       show("battle-screen", true);
 
@@ -563,7 +238,6 @@
         g.updateCharacterMedia(slot, "IDLE");
       }
 
-      // Begin live round input loop
       await g.MatchManager.begin();
     } catch (error) {
       fail(error);
@@ -624,7 +298,6 @@
     }
   }
 
-  // Global View interface export
   g.GameView = {
     paint,
     finish,
@@ -634,11 +307,9 @@
 
   g.startBattle = startBattle;
 
-  // Global event listeners for post-game return navigation
   document.addEventListener("pointerdown", returnToSelection);
   document.addEventListener("keydown", returnToSelection);
 
-  // Auto-boot application on DOM ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else {
