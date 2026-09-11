@@ -37,27 +37,41 @@
 
     let rounds = 0;
 
+    // Helper to resolve action decisions (routes to AgentIchigo when applicable)
+    const getSlotAction = async (slot, difficulty) => {
+      const snapshot = C.copyState(state);
+      const player = state[slot];
+      const opponent = state[C.other(slot)];
+      const moveList = state.moves[slot];
+
+      // Route through AgentIchigo linear policy if slot is Ichigo and adaptive/eval weights are active
+      if (player.id === 'ichigo' && (difficulty === 'adaptive' || window.__ichigo_eval_weights__)) {
+        const activeWeights = window.__ichigo_eval_weights__ || 
+                             (window.AgentIchigo ? window.AgentIchigo.getPolicyForOpponent(opponent.id) : null);
+
+        if (activeWeights && window.AgentIchigo) {
+          const chosenKey = window.AgentIchigo.chooseBestMove(player, opponent, moveList, activeWeights);
+          return { action: { key: chosenKey, charge: 100 } };
+        }
+      }
+
+      // Default AIService Expectimax decision tree planner fallback
+      return await g.AIService.plan({
+        state: snapshot,
+        slot: slot,
+        difficulty: difficulty,
+        history,
+        seed: K.hash(seed, "decision", state.round, slot)
+      });
+    };
+
     // Main headless match evaluation loop
     while (!state.winner) {
-      const snapshot = C.copyState(state);
 
       // Query AI decision planning asynchronously for both slots in parallel
       const [decision1, decision2] = await Promise.all([
-        g.AIService.plan({
-          state: snapshot,
-          slot: "p1",
-          difficulty: difficulty1,
-          history,
-          seed: K.hash(seed, "decision", state.round, "p1")
-        }),
-
-        g.AIService.plan({
-          state: snapshot,
-          slot: "p2",
-          difficulty: difficulty2,
-          history,
-          seed: K.hash(seed, "decision", state.round, "p2")
-        })
+        getSlotAction("p1", difficulty1),
+        getSlotAction("p2", difficulty2)
       ]);
 
       // Resolve turn combat rules deterministically
