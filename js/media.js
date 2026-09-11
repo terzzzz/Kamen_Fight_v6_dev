@@ -129,7 +129,6 @@
 
       const src = videoCandidates[candidateIdx++];
 
-      // Render element immediately so it reveals as soon as the video buffer starts
       videoEl.hidden = false;
       videoEl.style.display = 'block';
       if (spriteEl) spriteEl.hidden = true;
@@ -195,8 +194,10 @@
       const player = window.gameState ? window.gameState[playerKey] : null;
       const riderId = (player && player.id) ? player.id : (playerKey === 'p1' ? 'ichigo' : 'nigo');
 
-      // CombatPlayback owns the battle message.
-      // The video player must not repeat it in a second banner.
+      // 1. Darken both side viewports while cutscene plays in center
+      document.getElementById('p1-box')?.classList.add('blanked');
+      document.getElementById('p2-box')?.classList.add('blanked');
+
       if (actionLabel) {
         actionLabel.textContent = "";
         actionLabel.hidden = true;
@@ -234,6 +235,10 @@
         centerBox.style.display = 'none';
         if (actionLabel) actionLabel.hidden = true;
 
+        // 2. Restore side viewports back to full brightness
+        document.getElementById('p1-box')?.classList.remove('blanked');
+        document.getElementById('p2-box')?.classList.remove('blanked');
+
         // Resume player side idle videos when cutscene ends
         updateCharacterMedia('p1', 'IDLE');
         updateCharacterMedia('p2', 'IDLE');
@@ -243,7 +248,6 @@
 
       const cleanFileName = getCleanFileName(videoFile) || 'idle';
 
-      // Smart fallback chain for reaction clips
       let fallback1 = 'idle';
       let fallback2 = 'idle';
 
@@ -311,6 +315,11 @@
       centerBox.hidden = true;
       centerBox.style.display = 'none';
     }
+
+    // Un-blank side viewports
+    document.getElementById('p1-box')?.classList.remove('blanked');
+    document.getElementById('p2-box')?.classList.remove('blanked');
+
     updateCharacterMedia('p1', 'IDLE');
     updateCharacterMedia('p2', 'IDLE');
   }
