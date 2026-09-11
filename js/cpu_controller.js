@@ -10,9 +10,15 @@
   let nextId = 1;
   let nextWorker = 0;
 
-  function getWorker(index) {
-    if (!g.Worker) return null;
-    if (workers[index]) return workers[index];
+function getWorker(index) {
+  // If a caller has explicitly requested main-thread AI planning (for policy evaluation),
+  // do not create/return web workers — force plan() to run on main thread.
+  if (window.__AGENT_FORCE_MAIN_THREAD__) {
+    return null;
+  }
+
+  if (!g.Worker) return null;
+  if (workers[index]) return workers[index];
 
     let worker;
 
