@@ -144,7 +144,10 @@
       <h2 style="color:#00ffcc;text-align:center">SIMULATION RESULTS</h2>
       <div id="sim-results-body"></div>
 
-      <div style="text-align:center;margin-top:15px">
+      <div style="display:flex; justify-content:center; gap:10px; margin-top:15px;">
+        <button id="btn-export-ichigo" class="nav-btn" style="background:#0088cc; color:#fff; border:1px solid #00aaff;">
+          📥 EXPORT ICHIGO WEIGHTS
+        </button>
         <button id="btn-close-sim-modal" class="nav-btn">CLOSE</button>
       </div>
     </div>
@@ -300,79 +303,78 @@
     })();
   </script>
 
+  <!-- 1. Shared Constants, Deterministic PRNG & Core Rules Engine -->
+  <script src="js/common.js"></script>
+  <script src="js/combat_core.js"></script>
 
- 
-<!-- ----------------------
-     Script Load Order (recommended)
-     Replace your existing script block with this
-     ---------------------- -->
+  <!-- 2. AI Heuristic Brains & Expectimax Search Engine -->
+  <script src="js/rider_brains.js"></script>
+  <script src="js/foresee_engine.js"></script>
+  <script src="js/ai.js"></script>
 
-<!-- 1. Shared Constants, Deterministic PRNG & Core Rules Engine -->
-<script src="js/common.js"></script>
-<script src="js/combat_core.js"></script>
+  <!-- 3. Media Preloader & UI Renderer Modules -->
+  <script src="js/media.js"></script>
+  <script src="js/ui.js"></script>
 
-<!-- 2. AI Heuristic Brains & Expectimax Search Engine -->
-<script src="js/rider_brains.js"></script>
-<script src="js/foresee_engine.js"></script>
-<script src="js/ai.js"></script>
+  <!-- 4. Runtime Controllers, Live Playback Adapter & Simulation Engine -->
+  <script src="js/cpu_controller.js"></script>
+  <script src="js/combat_engine.js"></script>
+  <script src="js/match_manager.js"></script>
+  <script src="js/simulator.js"></script>
 
-<!-- 3. Media Preloader & UI Renderer Modules -->
-<script src="js/media.js"></script>
-<script src="js/ui.js"></script>
+  <!-- 5. AI Agent (load AFTER simulator so it can attach logger safely) -->
+  <script src="js/agent_ichigo.js"></script>
 
-<!-- 4. Runtime Controllers, Live Playback Adapter & Simulation Engine -->
-<script src="js/cpu_controller.js"></script>
-<script src="js/combat_engine.js"></script>
-<script src="js/match_manager.js"></script>
-<script src="js/simulator.js"></script>
+  <!-- 6. Screen Navigation & Application Bootstrapper -->
+  <script src="js/vs_select.js"></script>
+  <script src="js/game.js"></script>
 
-<!-- 5. AI Agent (load AFTER simulator so it can attach logger safely) -->
-<script src="js/agent_ichigo.js"></script>
-
-<!-- 6. Screen Navigation & Application Bootstrapper -->
-<script src="js/vs_select.js"></script>
-<script src="js/game.js"></script>
-
-<!-- 7. Deferred Agent initialization guard
-     Ensures AgentIchigo attaches its simulator logger only after simulator is available.
-     Safe to leave even if AgentIchigo already auto-attached. -->
-<script>
-  (function () {
-    // Defer a tiny bit to ensure parsed definitions are present
-    function tryAttachAgentLogger() {
-      try {
-        if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
-          // attachSimulatorLogger is idempotent / safe if already attached
-          window.AgentIchigo.attachSimulatorLogger();
-          console.log('[AgentIchigo] attachSimulatorLogger invoked (deferred).');
-        } else {
-          // If AgentIchigo not ready yet, try again shortly (max a few attempts)
-          let tries = 0;
-          const maxTries = 10;
-          const iv = setInterval(() => {
-            tries++;
-            if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
-              window.AgentIchigo.attachSimulatorLogger();
-              console.log('[AgentIchigo] attachSimulatorLogger invoked (delayed).');
-              clearInterval(iv);
-            } else if (tries >= maxTries) {
-              clearInterval(iv);
-              console.warn('[AgentIchigo] attachSimulatorLogger could not be invoked (Agent not loaded).');
+  <!-- 7. Deferred Agent initialization guard & Export button listener -->
+  <script>
+    (function () {
+      document.addEventListener('DOMContentLoaded', function () {
+        const btn = document.getElementById('btn-export-ichigo');
+        if (btn) {
+          btn.addEventListener('click', function () {
+            if (window.AgentIchigo && typeof window.AgentIchigo.exportWeights === 'function') {
+              window.AgentIchigo.exportWeights();
+            } else {
+              alert('AgentIchigo not ready or no weights available yet.');
             }
-          }, 200);
+          });
         }
-      } catch (err) {
-        console.warn('[AgentIchigo] deferred attach error', err);
+      });
+
+      function tryAttachAgentLogger() {
+        try {
+          if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
+            window.AgentIchigo.attachSimulatorLogger();
+            console.log('[AgentIchigo] attachSimulatorLogger invoked (deferred).');
+          } else {
+            let tries = 0;
+            const maxTries = 10;
+            const iv = setInterval(() => {
+              tries++;
+              if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
+                window.AgentIchigo.attachSimulatorLogger();
+                console.log('[AgentIchigo] attachSimulatorLogger invoked (delayed).');
+                clearInterval(iv);
+              } else if (tries >= maxTries) {
+                clearInterval(iv);
+                console.warn('[AgentIchigo] attachSimulatorLogger could not be invoked (Agent not loaded).');
+              }
+            }, 200);
+          }
+        } catch (err) {
+          console.warn('[AgentIchigo] deferred attach error', err);
+        }
       }
-    }
 
-    // Run after microtask so all scripts have been executed
-    setTimeout(tryAttachAgentLogger, 50);
-  })();
-</script>
-  
+      setTimeout(tryAttachAgentLogger, 50);
+    })();
+  </script>
 
-  <!-- 6. Automated Unit Tests & Benchmarking Suite -->
+  <!-- 8. Automated Unit Tests & Benchmarking Suite -->
   <script src="js/combat_tests.js"></script>
 </body>
 </html>
