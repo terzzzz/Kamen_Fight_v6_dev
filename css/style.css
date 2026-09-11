@@ -445,6 +445,16 @@ body {
   font-weight: 900;
 }
 
+/* Difficulty Badge Styling for SOUL level */
+.diff-badge.soul {
+  color: #d870ff !important;
+  border-color: #a100ff !important;
+  background: rgba(161, 0, 255, 0.15) !important;
+  text-shadow: 0 0 8px rgba(216, 112, 255, 0.8) !important;
+  box-shadow: 0 0 10px rgba(161, 0, 255, 0.4) !important;
+}
+
+
 .vs-divider {
   font-family: 'Impact', 'Arial Black', sans-serif;
   font-size: clamp(1.6rem, 4.5vw, 3rem);
