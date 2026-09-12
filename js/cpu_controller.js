@@ -1,132 +1,230 @@
-// FILE: js/cpu_controller.js
-// Kamen Fight — Asynchronous Worker & CPU Planning Service Manager
-// Replaces previous cpu_controller.js and includes support for forcing main-thread planning
-// (used during AgentIchigo candidate evaluation where window.selectCPUMove must be honored).
+// js/cpu_controller.js
+// Main-thread learned policies plus worker-backed standard search.
 
 (function (g) {
   "use strict";
 
-  // Worker pool (two workers)
+  const VERSION = "unified-agent-path-1";
   const workers = [null, null];
+  const disabledWorkers = [false, false];
   const pending = new Map();
 
   let nextId = 1;
   let nextWorker = 0;
 
-  /**
-   * getWorker(index)
-   * - Returns an existing Worker from the pool or instantiates a new one.
-   * - If window.__AGENT_FORCE_MAIN_THREAD__ is truthy, return null to force main-thread planning.
-   */
-  function getWorker(index) {
-    // If evaluation code requested main-thread planning, do not create or return workers.
-    // This ensures temporary main-thread overrides like window.selectCPUMove are used.
-    if (window.__AGENT_FORCE_MAIN_THREAD__) {
-      return null;
-    }
+  function failWorker(index, error) {
+    const worker = workers[index];
 
-    if (!g.Worker) return null;
-    if (workers[index]) return workers[index];
+    disabledWorkers[index] = true;
+    workers[index] = null;
 
-    let worker;
+    if (!worker) return;
 
-    try {
-      worker = new Worker(new URL("js/ai_worker.js", document.baseURI));
-    } catch (error) {
-      console.warn("Worker unavailable; using the same AI on the main thread.");
-      return null;
-    }
+    worker.terminate();
 
-    worker.onmessage = function (event) {
-      const { id, result, error } = event.data;
-      const job = pending.get(id);
+    for (const [id, job] of pending) {
+      if (job.worker !== worker) continue;
 
-      if (!job) return;
-
+      clearTimeout(job.timeout);
       pending.delete(id);
-
-      if (error) {
-        job.reject(new Error(error));
-      } else {
-        job.resolve(result);
-      }
-    };
-
-    worker.onerror = function (event) {
-      for (const [id, job] of pending) {
-        if (job.worker === worker) {
-          pending.delete(id);
-          job.reject(new Error(event.message || "AI worker failed."));
-        }
-      }
-
-      worker.terminate();
-      workers[index] = null;
-    };
-
-    workers[index] = worker;
-    return worker;
+      job.reject(error);
+    }
   }
 
-  /**
-   * plan(context)
-   * - Dispatches an AI planning request for the provided context.
-   * - If acting player is Ichigo on SOUL difficulty (or a testing override exists),
-   *   uses AgentIchigo.chooseBestMove on the main thread (deterministic fast path).
-   * - Otherwise it tries to send the job to a worker; if none available, falls back to main-thread KF_AI.choose.
-   *
-   * Context: { state, slot, difficulty, history, seed }
-   */
-  async function plan(context) {
-    const { state, slot, difficulty } = context;
-    const player = state[slot];
-    const opponent = state[g.CombatCore.other(slot)];
+  function getWorker(index) {
+    if (
+      !g.Worker ||
+      disabledWorkers[index] ||
+      g.__AGENT_FORCE_MAIN_THREAD__
+    ) {
+      return null;
+    }
 
-    // --- Special-case: Ichigo on SOUL (or override) ---
-    // This path returns a synchronous decision immediately (no worker).
-    if (player && player.id === "ichigo") {
-      const isSoulLevel = /soul|adaptive|expert/.test(String(difficulty || "").toLowerCase());
-      const overrideWeights = window.__ichigo_eval_weights__ || null;
-      const weights = overrideWeights || (g.AgentIchigo ? g.AgentIchigo.getPolicyForOpponent(opponent.id) : null);
+    if (workers[index]) return workers[index];
 
-      if ((isSoulLevel || overrideWeights) && weights && g.AgentIchigo && typeof g.AgentIchigo.chooseBestMove === "function") {
-        try {
-          const chosenKey = g.AgentIchigo.chooseBestMove(player, opponent, state.moves[slot], weights);
-          // Choose maximum charge by default (Agent policies may assume full charge)
-          return { action: { key: chosenKey, charge: 100 }, debug: { strategy: "AgentIchigo (SOUL/main-thread)" } };
-        } catch (err) {
-          console.warn("[cpu_controller] AgentIchigo chooseBestMove failed, falling back to search", err);
-          // Fall through to worker/main-thread fallback
-        }
+    try {
+      const url = new URL("js/ai_worker.js", document.baseURI);
+      url.searchParams.set("v", VERSION);
+
+      const worker = new Worker(url);
+
+      workers[index] = worker;
+
+      worker.onmessage = event => {
+        const { id, result, error } = event.data;
+        const job = pending.get(id);
+
+        if (!job || job.worker !== worker) return;
+
+        clearTimeout(job.timeout);
+        pending.delete(id);
+
+        if (error) job.reject(new Error(error));
+        else job.resolve(result);
+      };
+
+      worker.onerror = event => {
+        failWorker(
+          index,
+          new Error(event.message || "AI worker failed.")
+        );
+      };
+
+      worker.onmessageerror = () => {
+        failWorker(
+          index,
+          new Error("Could not decode an AI worker response.")
+        );
+      };
+
+      return worker;
+    } catch (error) {
+      disabledWorkers[index] = true;
+      console.warn("[AIService] Worker unavailable:", error);
+      return null;
+    }
+  }
+
+  function verifyDecision(context, result) {
+    const C = g.CombatCore;
+
+    if (!result || !C.isLegal(
+      context.state,
+      context.slot,
+      result.action
+    )) {
+      throw new Error("CPU planner returned an illegal action.");
+    }
+
+    const action = C.normalizeAction(
+      context.state,
+      context.slot,
+      result.action
+    );
+
+    if (action.key !== "DO_NOTHING") {
+      const move = context.state.moves[context.slot][action.key];
+      const limit = C.maxCharge(
+        context.state[context.slot],
+        move.direction
+      );
+
+      if (action.charge > limit) {
+        throw new Error(
+          "CPU planner returned an unreachable charge level."
+        );
       }
     }
 
-    // --- Default: try to dispatch to a worker ---
+    return {
+      ...result,
+      action
+    };
+  }
+
+  async function mainThread(context) {
+    await g.KF.wait(0);
+
+    return verifyDecision(
+      context,
+      g.KF_AI.choose(context)
+    );
+  }
+
+  async function plan(context) {
+    if (!context?.state?.[context.slot]) {
+      throw new Error("Invalid AIService planning context.");
+    }
+
+    if (g.KF_AI?.VERSION !== VERSION) {
+      throw new Error(
+        "Mixed AI file versions. Replace ai.js and " +
+        "cpu_controller.js together, then reload."
+      );
+    }
+
+    const player = context.state[context.slot];
+    const soul = g.KF.difficulty(context.difficulty) === "soul";
+
+    const useAgent =
+      player.id === "ichigo" &&
+      context.disableAgent !== true &&
+      (soul || context.policyWeights != null);
+
+    if (
+      useAgent &&
+      !player.isFainted &&
+      !context.state.winner
+    ) {
+      if (
+        !g.AgentIchigo ||
+        typeof g.AgentIchigo.loadActivePolicyStore !== "function"
+      ) {
+        throw new Error(
+          "AgentIchigo is missing. Soul learning is unavailable."
+        );
+      }
+
+      await g.AgentIchigo.loadActivePolicyStore();
+
+      return mainThread(context);
+    }
+
     const index = nextWorker++ % workers.length;
     const worker = getWorker(index);
 
-    if (!worker) {
-      // No worker available (or main-thread forced). Run on main thread via KF_AI.choose (ForeseeEngine).
-      // small yield to allow UI to update
-      await g.KF.wait(0);
-      return g.KF_AI.choose(context);
-    }
+    if (!worker) return mainThread(context);
 
     const id = nextId++;
 
-    return new Promise((resolve, reject) => {
-      pending.set(id, { resolve, reject, worker });
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          failWorker(
+            index,
+            new Error("AI worker timed out.")
+          );
+        }, 120000);
 
-      try {
-        // Post the task to the worker thread. Worker will run the same AI selection logic.
-        worker.postMessage({ id, context });
-      } catch (error) {
-        pending.delete(id);
-        reject(error);
+        pending.set(id, {
+          worker,
+          timeout,
+          resolve,
+          reject
+        });
+
+        try {
+          worker.postMessage({ id, context });
+        } catch (error) {
+          clearTimeout(timeout);
+          pending.delete(id);
+          reject(error);
+        }
+      });
+
+      // Detect an old cached ai.js inside a worker.
+      if (result?.debug?.engineVersion !== VERSION) {
+        const error = new Error(
+          "Worker loaded an older ai.js; using current main-thread AI."
+        );
+
+        failWorker(index, error);
+        throw error;
       }
-    });
+
+      return verifyDecision(context, result);
+    } catch (error) {
+      console.warn(
+        "[AIService] Worker path failed; using main thread:",
+        error
+      );
+
+      return mainThread(context);
+    }
   }
 
-  // Expose API
-  g.AIService = { plan };
+  g.AIService = {
+    VERSION,
+    plan
+  };
 })(window);
