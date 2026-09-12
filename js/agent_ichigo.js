@@ -1,14 +1,17 @@
-/**
- * Agent Ichigo — Evolutionary Reinforcement Learning & Linear Policy Engine
- * Path: js/agent_ichigo.js
- */
+/* FILE: js/agent_ichigo.js
+   AgentIchigo — Evolutionary RL trainer for Ichigo.
+   - Seeds from data/wt_ichigo.json or localStorage
+   - Evaluates candidates by forcing main-thread planning and setting a temporary evaluation weight override
+   - Persists policies to localStorage (STORAGE_KEY)
+   - Exports policies to wt_ichigo.json
+*/
 
 (function (window) {
   'use strict';
 
   const STORAGE_KEY = 'ichigo_policy_v1';
+  const EXPORT_FILENAME = 'wt_ichigo.json';
 
-  // Core normalized combat evaluation features
   const FEATURE_KEYS = [
     'selfHp',
     'oppHp',
@@ -23,104 +26,163 @@
     'rangePriority'
   ];
 
+  // In-memory store
   let activePolicyStore = { ichigo: {} };
-  let originalAIServiceChoose = null;
 
-  /** Generates a randomized linear weight vector. */
-  function randomWeights() {
-    const weights = {};
-    FEATURE_KEYS.forEach(key => {
-      // Small non-zero initial weights between -0.5 and +0.5
-      weights[key] = Number(((Math.random() - 0.5) * 1.0).toFixed(4));
-    });
-    return weights;
+  // Keep original selectCPUMove reference (if used elsewhere)
+  if (!window.__original_selectCPUMove__) window.__original_selectCPUMove__ = window.selectCPUMove || null;
+
+  // -------------------------
+  // Utilities
+  // -------------------------
+  function clamp01(v) { return Math.max(0, Math.min(1, Number(v) || 0)); }
+
+  function randNormal() {
+    let u=0,v=0;
+    while(u===0) u=Math.random();
+    while(v===0) v=Math.random();
+    return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
   }
 
-  /**
-   * Normalizes a loaded policy store.
-   * Replaces empty `{}` or all-zero weight vectors with active random baseline weights.
-   */
+  function randomWeights() {
+    const w = {};
+    FEATURE_KEYS.forEach(fn => {
+      w[fn] = Number(((Math.random() * 2 - 1) * 0.6).toFixed(4)); // [-0.6,0.6]
+    });
+    // bias expected damage and range slightly positive
+    w.expectedDmg = Math.abs(w.expectedDmg || 0) + 0.6;
+    w.rangePriority = Math.abs(w.rangePriority || 0) + 0.4;
+    return w;
+  }
+
+  // Normalize loaded store: seed missing opponent slots and replace empty/all-zero vectors with random
   function _normalizeLoadedStore(store) {
     store = store || { ichigo: {} };
     store.ichigo = store.ichigo || {};
 
-    const knownOpponents = ['nigo', 'v3', 'riderman', 'x', 'amazon'];
-
-    // Ensure all known opponent slots exist
-    knownOpponents.forEach(opp => {
-      if (!store.ichigo[opp]) {
-        store.ichigo[opp] = {};
-      }
-    });
-
+    // If the store doesn't list opponents, preserve but we will seed on-demand in getter
     for (const opp of Object.keys(store.ichigo)) {
       const w = store.ichigo[opp];
-
       if (!w || typeof w !== 'object' || Object.keys(w).length === 0) {
         store.ichigo[opp] = randomWeights();
-      } else {
-        const numericKeys = Object.keys(w).filter(k => typeof w[k] === 'number' && !isNaN(w[k]));
-        const allZero = numericKeys.length > 0 && numericKeys.every(k => Math.abs(w[k]) < 1e-9);
-
-        if (numericKeys.length === 0 || allZero) {
-          store.ichigo[opp] = randomWeights();
-        }
+        continue;
+      }
+      const numericKeys = Object.keys(w).filter(k => typeof w[k] === 'number' && !isNaN(w[k]));
+      const allZero = numericKeys.length > 0 && numericKeys.every(k => Math.abs(w[k]) < 1e-9);
+      if (numericKeys.length === 0 || allZero) {
+        store.ichigo[opp] = randomWeights();
       }
     }
 
     return store;
   }
 
-  /** Loads policy store from localStorage or fetches baseline data/wt_ichigo.json. */
+  // -------------------------
+  // Storage: load / save
+  // -------------------------
   async function loadActivePolicyStore() {
+    // Try localStorage first
     try {
-      const localData = localStorage.getItem(STORAGE_KEY);
-      if (localData) {
-        const parsed = JSON.parse(localData);
-        activePolicyStore = _normalizeLoadedStore(parsed.policies || parsed);
-        return activePolicyStore;
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          // Accept either { policies: { ichigo: {...} } } or bare { ichigo: {...} }
+          const candidate = parsed.policies ? parsed.policies : parsed;
+          activePolicyStore = _normalizeLoadedStore(candidate);
+          console.log('[AgentIchigo] loaded policies from localStorage');
+          return activePolicyStore;
+        } catch (e) {
+          console.warn('[AgentIchigo] failed to parse localStorage, continuing to fetch baseline', e);
+        }
       }
     } catch (e) {
-      console.warn('[AgentIchigo] Could not read localStorage, falling back to JSON.');
+      console.warn('[AgentIchigo] localStorage read error', e);
     }
 
+    // Fetch baseline file
     try {
-      const res = await fetch('data/wt_ichigo.json');
-      if (res.ok) {
-        const json = await res.json();
-        const rawStore = (json && json.policies) ? json.policies : (json || {});
-        activePolicyStore = _normalizeLoadedStore(rawStore);
+      const resp = await fetch('data/wt_ichigo.json', { cache: 'no-store' });
+      if (resp.ok) {
+        const json = await resp.json();
+        const raw = json && json.policies ? json.policies : (json || {});
+        activePolicyStore = _normalizeLoadedStore(raw);
+        // persist seeded store to localStorage
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ policies: activePolicyStore })); } catch (_) {}
+        console.log('[AgentIchigo] seeded policies from data/wt_ichigo.json');
         return activePolicyStore;
+      } else {
+        console.warn('[AgentIchigo] baseline file not found, initializing empty store');
       }
     } catch (e) {
-      console.warn('[AgentIchigo] Could not load data/wt_ichigo.json.');
+      console.warn('[AgentIchigo] could not fetch data/wt_ichigo.json', e);
     }
 
     activePolicyStore = _normalizeLoadedStore({ ichigo: {} });
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ policies: activePolicyStore })); } catch (_) {}
     return activePolicyStore;
   }
 
-  /** Computes move utility score using linear feature weights. */
+  function savePolicyStore() {
+    try {
+      const payload = { version: '1.0', updatedAt: new Date().toISOString(), policies: activePolicyStore };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      console.warn('[AgentIchigo] savePolicyStore failed', e);
+    }
+  }
+
+  function getPolicyForOpponent(oppId) {
+    if (!activePolicyStore) activePolicyStore = _normalizeLoadedStore(activePolicyStore);
+    const opp = String(oppId || 'nigo').toLowerCase();
+    if (!activePolicyStore.ichigo[opp]) {
+      activePolicyStore.ichigo[opp] = randomWeights();
+      savePolicyStore();
+    }
+    return activePolicyStore.ichigo[opp];
+  }
+
+  // -------------------------
+  // Feature scoring
+  // -------------------------
+  function estimateExpectedDamage(move, cpu, opp) {
+    const base = move.baseDamage || 0;
+    const hit = (move.hitChance || 80) / 100;
+    const chargeFactor = ((cpu.activeChargePercent || 100) / 100) || 1;
+    const buffAttack = (cpu.activeBuffs || []).some(b => {
+      const id = String(b.id || '').toLowerCase();
+      return b.type === 'attack' || /focus|typhoon|red_lamp|power_focus/.test(id);
+    }) ? 1.12 : 1.0;
+    return base * hit * chargeFactor * buffAttack;
+  }
+
+  function hasRegen(player) {
+    return !!((player.activeBuffs || []).some(b => {
+      const id = String(b.id || '').toLowerCase();
+      return b.type === 'heal' || /regen|inca_blessing|lprecovery|lp_recover/.test(id);
+    }));
+  }
+
   function scoreMoveWithWeights(move, cpu, opp, weights) {
     if (!move) return -Infinity;
-    w = weights || {};
+    const w = weights || {};
+    const maxHp = cpu.maxLp || 3000;
+    const maxChi = cpu.maxChi || 16;
+    const faintLimit = (window.COMBAT_RULES && window.COMBAT_RULES.FAINT_THRESHOLD) || 100;
 
-    const maxHp = 3000;
-    const maxChi = 16;
-    const maxFaint = 100;
+    const f_selfHp = clamp01((cpu.lp || 0) / (maxHp || 1));
+    const f_oppHp = clamp01((opp.lp || 0) / (opp.maxLp || maxHp || 1));
+    const f_selfChi = clamp01((cpu.chi || 0) / (maxChi || 1));
+    const f_oppChi = clamp01((opp.chi || 0) / (opp.maxChi || maxChi || 1));
+    const f_selfFaint = clamp01((cpu.faintMeter || 0) / faintLimit);
+    const f_oppFaint = clamp01((opp.faintMeter || 0) / faintLimit);
 
-    const f_selfHp = (cpu.lp || 0) / maxHp;
-    const f_oppHp = (opp.lp || 0) / maxHp;
-    const f_selfChi = (cpu.chi || 0) / maxChi;
-    const f_oppChi = (opp.chi || 0) / maxChi;
-    const f_selfFaint = (cpu.faint || 0) / maxFaint;
-    const f_oppFaint = (opp.faint || 0) / maxFaint;
-
-    const f_hasRegenBuff = (cpu.buffs && cpu.buffs.regen) ? 1.0 : 0.0;
-    const f_moveAppliesDebuff = (move.statusEffect && move.statusEffect.type === 'debuff') ? 1.0 : 0.0;
-    const f_expectedDmg = (move.baseDamage || 0) / 500;
-    const f_chiCostPenalty = (move.chiCost || 0) / maxChi;
-    const f_rangePriority = (move.priority || 1) / 3;
+    const f_hasRegenBuff = hasRegen(cpu) ? 1 : 0;
+    const f_moveAppliesDebuff = !!(move.debuff || (move.buff && move.buff.type === 'debuff')) ? 1 : 0;
+    const f_expectedDmg = estimateExpectedDamage(move, cpu, opp) / 1200; // scaled
+    const f_chiCostPenalty = -((move.chiCost || 0) / (maxChi || 1));
+    const rangePrio = (move.rangeType ? (move.rangeType === 'PROJECTILE' ? 3 : (['REACH','ROPE','MID_RANGE'].includes(move.rangeType)?2:1)) : (move.priority || 1));
+    const f_rangePriority = (rangePrio - 1) / 2;
 
     const score =
       (w.selfHp || 0) * f_selfHp +
@@ -138,20 +200,15 @@
     return score;
   }
 
-  /**
-   * Evaluates valid moves and picks the best option based on weights.
-   * - Filters out DO_NOTHING if non-idle moves are affordable.
-   * - Applies small random jitter to break exact tie-breaks.
-   */
   function chooseBestMove(cpu, opp, moves, weights) {
     let validKeys = Object.keys(moves || {}).filter(k => (moves[k].chiCost || 0) <= (cpu.chi || 0));
 
-    // Prefer active combat actions: exclude DO_NOTHING when alternative moves are playable
-    if (validKeys.length > 1 && validKeys.includes("DO_NOTHING")) {
-      validKeys = validKeys.filter(k => k !== "DO_NOTHING");
+    // Exclude DO_NOTHING if other options exist
+    if (validKeys.length > 1 && validKeys.includes('DO_NOTHING')) {
+      validKeys = validKeys.filter(k => k !== 'DO_NOTHING');
     }
 
-    if (!validKeys.length) return "DO_NOTHING";
+    if (!validKeys.length) return 'DO_NOTHING';
 
     let best = validKeys[0];
     let bestScore = -Infinity;
@@ -159,9 +216,7 @@
     validKeys.forEach(k => {
       const mv = moves[k];
       const sBase = scoreMoveWithWeights(mv, cpu, opp, weights || {});
-      // Add tiny random jitter to prevent deterministic first-key biases
       const s = sBase + (Math.random() - 0.5) * 1e-6;
-
       if (s > bestScore) {
         bestScore = s;
         best = k;
@@ -171,108 +226,118 @@
     return best;
   }
 
-  /** Gets active weight vector for a given opponent ID. */
-  function getPolicyForOpponent(oppId) {
-    const opp = String(oppId || 'nigo').toLowerCase();
-    if (!activePolicyStore.ichigo || !activePolicyStore.ichigo[opp]) {
-      activePolicyStore = _normalizeLoadedStore(activePolicyStore);
-    }
-    return activePolicyStore.ichigo[opp] || randomWeights();
-  }
+  // -------------------------
+  // Candidate evaluation helper
+  // -------------------------
+  async function evaluateCandidate(weights, opponentId, opts = {}) {
+    opts = opts || {};
+    const matches = opts.matches || 40;
 
-  /** Saves current policy store to localStorage. */
-  function savePolicyStore() {
+    // Force main-thread planning so override weights are applied
+    const prevForce = window.__AGENT_FORCE_MAIN_THREAD__;
+    window.__AGENT_FORCE_MAIN_THREAD__ = true;
+
+    // Provide override weights visible to cpu_controller / AI planner
+    window.__ichigo_eval_weights__ = weights;
+
     try {
-      const payload = {
-        version: '1.0',
-        updatedAt: new Date().toISOString(),
-        policies: activePolicyStore
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (e) {
-      console.warn('[AgentIchigo] Could not write to localStorage:', e);
+      const data = window.KF && typeof window.KF.loadData === 'function' ? await window.KF.loadData() : await (await fetch('data/riders.json')).json();
+      const ichigo = (data.riders || data).find(r => r.id === 'ichigo');
+      const opp = (data.riders || data).find(r => r.id === opponentId);
+      if (!ichigo || !opp) throw new Error('rider data missing for eval');
+
+      // Force Ichigo to be evaluated at SOUL so Agent path is used
+      const summary = await window.runBatchSimulation(
+        { id: ichigo.id, name: ichigo.name, maxLp: ichigo.maxLp },
+        { id: opp.id, name: opp.name, maxLp: opp.maxLp },
+        matches,
+        opts.subjectDifficulty || 'soul', // IMPORTANT: evaluate as soul
+        opts.opponentDifficulty || 'normal'
+      );
+
+      const winRate = Number(summary.p1WinRate) || ((summary.p1Wins || 0) / (summary.completed || matches) * 100);
+      const avgLp = Number(summary.p1AvgLpLeft) || 0;
+      return { res: summary, winRate, avgLp };
+    } finally {
+      // restore flags & override
+      delete window.__ichigo_eval_weights__;
+      window.__AGENT_FORCE_MAIN_THREAD__ = prevForce;
     }
   }
 
-  /**
-   * Runs an evolutionary genetic optimization process against a specific opponent.
-   * Mutates weight populations and retains candidates with highest match win rates.
-   */
-  async function evolveForOpponent(oppId, config = {}) {
-    const opponent = String(oppId || 'nigo').toLowerCase();
-    const generations = config.generations || 8;
-    const popSize = config.popSize || 6;
-    const matchesPerEval = config.matchesPerEval || 10;
+  // -------------------------
+  // Evolutionary optimizer
+  // -------------------------
+  async function evolveForOpponent(opponentId, options = {}) {
+    options = Object.assign({ generations: 12, popSize: 8, elites: 2, matchesPerEval: 40, sigma: 0.25, restarts: 1 }, options || {});
+    console.log('[AgentIchigo] evolveForOpponent start', opponentId, options);
 
-    console.log(`[AgentIchigo] Starting RL evolution vs ${opponent} (${generations} gens, ${popSize} pop)...`);
+    if (!activePolicyStore) await loadActivePolicyStore();
 
-    let currentBest = getPolicyForOpponent(opponent);
+    const opp = String(opponentId || 'nigo').toLowerCase();
+    let currentBest = getPolicyForOpponent(opp);
+    let bestGlobal = null;
 
-    if (!window.AVAILABLE_RIDERS || !window.runBatchSimulation) {
-      console.warn('[AgentIchigo] Simulator environment not fully loaded.');
-      return currentBest;
-    }
-
-    const ichigoRider = window.AVAILABLE_RIDERS.find(r => r.id === 'ichigo') || { id: 'ichigo', name: 'Ichigo' };
-    const oppRider = window.AVAILABLE_RIDERS.find(r => r.id === opponent) || { id: opponent, name: opponent };
-
-    for (let gen = 0; gen < generations; gen++) {
-      const population = [ { ...currentBest } ];
-
-      // Mutate parent weights to form candidate population
-      while (population.length < popSize) {
-        const candidate = {};
-        FEATURE_KEYS.forEach(k => {
-          const val = currentBest[k] || 0;
-          const mutation = (Math.random() - 0.5) * 0.4;
-          candidate[k] = Number((val + mutation).toFixed(4));
-        });
-        population.push(candidate);
+    for (let r = 0; r < options.restarts; r++) {
+      // initialize population around current best
+      let population = [{ weights: currentBest, score: null }];
+      while (population.length < options.popSize) {
+        population.push({ weights: mutateFrom(currentBest, options.sigma), score: null });
       }
 
-      let bestScore = -Infinity;
-      let genWinner = currentBest;
-
-      for (let i = 0; i < population.length; i++) {
-        const candidateWeights = population[i];
-        window.__ichigo_eval_weights__ = candidateWeights;
-
-        try {
-          const simRes = await window.runBatchSimulation(
-            ichigoRider,
-            oppRider,
-            matchesPerEval,
-            'soul',
-            'master'
-          );
-
-          // Evaluation score = Win rate + remaining LP ratio bonus
-          const winRate = simRes.p1WinRate || 0;
-          const lpBonus = (simRes.p1AvgLpLeft || 0) / 3000 * 10;
-          const score = winRate + lpBonus;
-
-          if (score > bestScore) {
-            bestScore = score;
-            genWinner = candidateWeights;
+      for (let gen = 0; gen < options.generations; gen++) {
+        for (let i = 0; i < population.length; i++) {
+          if (population[i].score === null) {
+            try {
+              const ev = await evaluateCandidate(population[i].weights, opp, { matches: options.matchesPerEval });
+              population[i].score = ev.winRate + ev.avgLp / 1000;
+              console.log(`[AgentIchigo] eval opp=${opp} gen=${gen} idx=${i} win=${ev.winRate} avgLp=${ev.avgLp}`);
+            } catch (err) {
+              population[i].score = -9999;
+              console.warn('[AgentIchigo] evaluateCandidate failed', err);
+            }
+            await new Promise(res => setTimeout(res, 10));
           }
-        } catch (err) {
-          console.warn('[AgentIchigo] Simulation eval error during evolution:', err);
-        } finally {
-          delete window.__ichigo_eval_weights__;
         }
-      }
 
-      currentBest = genWinner;
-      console.log(`[AgentIchigo] Gen ${gen + 1}/${generations} Complete. Top Score: ${bestScore.toFixed(2)}`);
-    }
+        population.sort((a,b) => (b.score || -Infinity) - (a.score || -Infinity));
+        const genBest = population[0];
+        if (genBest && (!bestGlobal || genBest.score > bestGlobal.score)) {
+          bestGlobal = { weights: genBest.weights, score: genBest.score };
+          console.log(`[AgentIchigo] new best opp=${opp} gen=${gen} score=${bestGlobal.score.toFixed(3)}`);
+        }
 
-    activePolicyStore.ichigo[opponent] = currentBest;
+        // produce next generation
+        const elites = population.slice(0, Math.max(1, options.elites)).map(e => e.weights);
+        const newPop = elites.map(w => ({ weights: w, score: null }));
+        while (newPop.length < options.popSize) {
+          const parent = elites[Math.floor(Math.random() * elites.length)];
+          newPop.push({ weights: mutateFrom(parent, options.sigma), score: null });
+        }
+        population = newPop;
+      } // gen
+    } // restarts
+
+    // decide winner weights
+    const winner = (bestGlobal && bestGlobal.weights) ? bestGlobal.weights : (currentBest || randomWeights());
+    activePolicyStore.ichigo = activePolicyStore.ichigo || {};
+    activePolicyStore.ichigo[opp] = winner;
     savePolicyStore();
-    console.log(`[AgentIchigo] RL Evolution complete for ${opponent}. Policy saved.`);
-    return currentBest;
+    console.log(`[AgentIchigo] saved policy for ${opp} (score=${bestGlobal ? bestGlobal.score.toFixed(3) : 'n/a'})`);
+    return winner;
   }
 
-  /** Triggers browser download of current active policy store as `wt_ichigo.json`. */
+  function mutateFrom(base, sigma = 0.25) {
+    const c = Object.assign({}, base || {});
+    FEATURE_KEYS.forEach(k => {
+      c[k] = Number(((c[k] || 0) + randNormal() * sigma).toFixed(4));
+    });
+    return c;
+  }
+
+  // -------------------------
+  // Export / Import
+  // -------------------------
   function exportWeights() {
     const payload = {
       version: '1.0',
@@ -280,57 +345,57 @@
       featureNames: FEATURE_KEYS,
       policies: activePolicyStore
     };
-
     const str = JSON.stringify(payload, null, 2);
     const blob = new Blob([str], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'wt_ichigo.json';
+    a.download = EXPORT_FILENAME;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    a.remove();
     URL.revokeObjectURL(url);
+    console.log('[AgentIchigo] exported weights:', Object.keys(activePolicyStore.ichigo || {}));
   }
 
-  /** Applies runtime policy hook for live battle decisions. */
+  // -------------------------
+  // Runtime apply / restore
+  // -------------------------
   function applyPolicyRuntime(oppId) {
-    const weights = getPolicyForOpponent(oppId);
-
-    if (window.AIService && typeof window.AIService.plan === 'function') {
-      if (!originalAIServiceChoose) {
-        originalAIServiceChoose = window.AIService.plan;
-      }
-    }
-  }
-
-  /** Restores standard CPU planning service handler. */
-  function restoreOriginalSelector() {
-    if (originalAIServiceChoose && window.AIService) {
-      window.AIService.plan = originalAIServiceChoose;
-      originalAIServiceChoose = null;
-    }
-  }
-
-  /** Logs live match outcomes for online learning updates. */
-  function recordMatchResult(oppId, won, usedMoves) {
     const opp = String(oppId || 'nigo').toLowerCase();
-    const current = getPolicyForOpponent(opp);
-    const adjustment = won ? 0.02 : -0.02;
+    const w = getPolicyForOpponent(opp);
+    // Force main-thread planning and set override weights for live matches
+    window.__ichigo_eval_weights__ = w;
+    window.__AGENT_FORCE_MAIN_THREAD__ = true;
+    console.log('[AgentIchigo] applied policy runtime for', opp);
+    return true;
+  }
 
+  function restoreOriginalSelector() {
+    try { delete window.__ichigo_eval_weights__; } catch (_) {}
+    try { window.__AGENT_FORCE_MAIN_THREAD__ = false; } catch (_) {}
+    // restore selectCPUMove if overwritten earlier
+    if (window.__original_selectCPUMove__) window.selectCPUMove = window.__original_selectCPUMove__;
+    console.log('[AgentIchigo] restored original selector');
+    return true;
+  }
+
+  // -------------------------
+  // Live match logging / online update
+  // -------------------------
+  function recordMatchResult(oppId, ichigoWon, keyMovesUsed) {
+    const opp = String(oppId || 'nigo').toLowerCase();
+    const current = getPolicyForOpponent(opp) || randomWeights();
+    const lr = ichigoWon ? 0.03 : -0.02;
     FEATURE_KEYS.forEach(k => {
-      current[k] = Number(((current[k] || 0) + (Math.random() - 0.4) * adjustment).toFixed(4));
+      current[k] = Number(((current[k] || 0) + (Math.random() - 0.5) * lr).toFixed(4));
     });
-
     activePolicyStore.ichigo[opp] = current;
     savePolicyStore();
+    console.log('[AgentIchigo] recorded live match update for', opp, 'win=', ichigoWon);
   }
 
-  // Auto-initialize policy store on boot
-  loadActivePolicyStore();
-
-  // Export Global Interface
+  // Attach to window and auto-seed
   window.AgentIchigo = {
     loadActivePolicyStore,
     getPolicyForOpponent,
@@ -340,7 +405,15 @@
     exportWeights,
     applyPolicyRuntime,
     restoreOriginalSelector,
-    recordMatchResult
+    recordMatchResult,
+    FEATURE_KEYS
   };
+
+  // load on boot
+  loadActivePolicyStore().then(() => {
+    console.log('[AgentIchigo] ready — policies loaded.');
+  }).catch(e => {
+    console.warn('[AgentIchigo] failed to initialize', e);
+  });
 
 })(window);
