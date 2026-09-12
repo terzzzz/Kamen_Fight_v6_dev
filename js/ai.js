@@ -1,115 +1,131 @@
-// ai.js
-// Kamen Fight — AI Decision Engine & History Tracking (With AgentIchigo Integration)
+// js/ai.js
+// Shared decision path for live play, simulation, and workers.
 
 (function (g) {
   "use strict";
 
+  const VERSION = "unified-agent-path-1";
   const K = g.KF;
   const C = g.CombatCore;
 
-  /**
-   * Selects an action for the specified player slot using the ForeseeEngine search tree
-   * or delegates to specialized learning agents (e.g., AgentIchigo).
-   *
-   * @param {Object} context - Execution context containing match state, slot, difficulty, history, and PRNG seed.
-   * @returns {Object} Selected action and associated debug evaluation metadata.
-   */
+  function stamp(result) {
+    return {
+      ...result,
+      debug: {
+        ...(result.debug || {}),
+        engineVersion: VERSION
+      }
+    };
+  }
+
   function choose(context) {
+    const { state, slot } = context;
     const difficulty = K.difficulty(context.difficulty);
-    const state = context.state;
-    const slot = context.slot;
-    const oppSlot = slot === "p1" ? "p2" : "p1";
+    const player = state?.[slot];
 
-    const cpuFighter = state[slot];
-    const oppFighter = state[oppSlot];
+    if (!player || !state.moves?.[slot]) {
+      throw new Error("Invalid AI planning context.");
+    }
 
-    // Forced state check: fainted fighters cannot perform any action other than idling/recovering.
-    if (cpuFighter.isFainted) {
-      return {
+    if (state.winner || player.isFainted) {
+      return stamp({
         action: { key: "DO_NOTHING", charge: 0 },
         debug: {
           difficulty,
-          strategy: "Forced faint recovery",
+          strategy: "Forced faint recovery / completed match",
           completedHorizon: 0
         }
-      };
+      });
     }
 
-    // --- AgentIchigo Evolutionary Policy Hook (Active on SOUL / Adaptive difficulty OR during RL evaluation) ---
-    if (cpuFighter && cpuFighter.id === "ichigo" && oppFighter && g.AgentIchigo) {
-      const isSoulLevel = /soul|adaptive|expert/.test(String(context.difficulty || "").toLowerCase());
+    const useAgent =
+      player.id === "ichigo" &&
+      context.disableAgent !== true &&
+      (
+        difficulty === "soul" ||
+        context.policyWeights != null
+      );
 
-      // CRITICAL FIX: Prioritize candidate evaluation weights over stored active policies during simulation passes
-      const weights = window.__ichigo_eval_weights__ || g.AgentIchigo.getPolicyForOpponent(oppFighter.id);
-
-      if ((isSoulLevel || window.__ichigo_eval_weights__) && weights) {
-        const moves = state.moves[slot];
-        const moveKey = g.AgentIchigo.chooseBestMove(cpuFighter, oppFighter, moves, weights);
-
-        const move = moves[moveKey];
-        const maxChargePct = move ? C.maxCharge(cpuFighter, move.direction) : 100;
-
-        return {
-          action: { key: moveKey, charge: maxChargePct },
-          debug: {
-            difficulty,
-            strategy: window.__ichigo_eval_weights__
-              ? `AgentIchigo RL Mutation Candidate Evaluation vs ${oppFighter.id}`
-              : `AgentIchigo Evolutionary Policy (SOUL) vs ${oppFighter.id}`,
-            weights
-          }
-        };
+    if (useAgent) {
+      if (
+        !g.AgentIchigo ||
+        typeof g.AgentIchigo.chooseAction !== "function" ||
+        !g.AgentIchigo.isReady()
+      ) {
+        throw new Error(
+          "Soul Ichigo requires a ready AgentIchigo. " +
+          "Use AIService.plan() or await agent loading first."
+        );
       }
+
+      return stamp(g.AgentIchigo.chooseAction(
+        { ...context, difficulty },
+        context.policyWeights ?? null
+      ));
     }
 
-    // Run lookahead search tree analysis via ForeseeEngine
     const result = g.ForeseeEngine.search({
       ...context,
       difficulty
     });
 
     const rows = result.rows;
-    const tolerance = K.levels[difficulty].nearBest;
+
+    if (!Array.isArray(rows) || !rows.length) {
+      throw new Error("ForeseeEngine returned no candidate actions.");
+    }
+
     const bestScore = rows[0].score;
+    const tolerance = K.levels[difficulty].nearBest;
 
-    const close = rows.filter(
-      row => bestScore - row.score <= tolerance
+    const close = rows.filter(row =>
+      bestScore - row.score <= tolerance
     );
 
-    const rng = K.rng(K.hash(context.seed || 1, "selection"));
-
-    const weights = close.map(row =>
-      Math.exp((row.score - bestScore) / Math.max(1, tolerance / 3))
+    const probabilities = close.map(row =>
+      Math.exp(
+        (row.score - bestScore) /
+        Math.max(1, tolerance / 3)
+      )
     );
 
-    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    const total = probabilities.reduce(
+      (sum, value) => sum + value,
+      0
+    );
+
+    const rng = K.rng(
+      K.hash(context.seed ?? 1, "selection")
+    );
+
     let cursor = rng() * total;
-    let selected = close[0];
+    let selected = close[close.length - 1];
 
-    for (let i = 0; i < close.length; i++) {
-      cursor -= weights[i];
+    for (let index = 0; index < close.length; index++) {
+      cursor -= probabilities[index];
 
       if (cursor <= 0) {
-        selected = close[i];
+        selected = close[index];
         break;
       }
     }
 
-    return {
+    if (!C.isLegal(state, slot, selected.action)) {
+      throw new Error("Search returned an illegal action.");
+    }
+
+    return stamp({
       action: { ...selected.action },
       debug: {
         ...result.debug,
         chosenScore: Number(selected.score.toFixed(2))
       }
-    };
+    });
   }
 
-  /**
-   * Appends the most recent turn's actions and faint statuses to the rolling match history buffer.
-   */
   function remember(history, before, selected) {
     return [
-      ...history,
+      ...(Array.isArray(history) ? history : []),
       {
         p1: { ...selected.p1 },
         p2: { ...selected.p2 },
@@ -121,8 +137,8 @@
     ].slice(-24);
   }
 
-  // Global namespace export
   g.KF_AI = {
+    VERSION,
     choose,
     remember
   };
