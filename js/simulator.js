@@ -44,8 +44,10 @@
       const opponent = state[C.other(slot)];
       const moveList = state.moves[slot];
 
-      // Route through AgentIchigo linear policy if slot is Ichigo and adaptive/eval weights are active
-      if (player.id === 'ichigo' && (difficulty === 'adaptive' || window.__ichigo_eval_weights__)) {
+      const isSoulLevel = /soul|adaptive|expert/.test(String(difficulty || "").toLowerCase());
+
+      // Route through AgentIchigo linear/NN policy if slot is Ichigo and SOUL/eval weights are active
+      if (player.id === 'ichigo' && (isSoulLevel || window.__ichigo_eval_weights__)) {
         const activeWeights = window.__ichigo_eval_weights__ || 
                              (window.AgentIchigo ? window.AgentIchigo.getPolicyForOpponent(opponent.id) : null);
 
