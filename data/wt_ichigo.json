@@ -1,7 +1,6 @@
 {
   "version": "1.0",
-  "createdAt": "2026-09-11T00:00:00Z",
-  "trainer": "none",
+  "exportedAt": "2026-09-12T04:53:38.855Z",
   "featureNames": [
     "selfHp",
     "oppHp",
@@ -17,11 +16,71 @@
   ],
   "policies": {
     "ichigo": {
-      "nigo": {},
-      "v3": {},
-      "riderman": {},
-      "x": {},
-      "amazon": {}
+      "nigo": {
+        "selfHp": 0.0923,
+        "oppHp": 0.4499,
+        "selfChi": 0.5913,
+        "oppChi": -0.4673,
+        "selfFaint": 0.3663,
+        "oppFaint": 0.3431,
+        "hasRegenBuff": 0.0976,
+        "moveAppliesDebuff": -0.5414,
+        "expectedDmg": 0.9702,
+        "chiCostPenalty": 0.3856,
+        "rangePriority": 0.7234
+      },
+      "v3": {
+        "selfHp": 0.3596,
+        "oppHp": -0.128,
+        "selfChi": 0.1976,
+        "oppChi": -0.5374,
+        "selfFaint": 0.0778,
+        "oppFaint": 0.2093,
+        "hasRegenBuff": -0.4647,
+        "moveAppliesDebuff": 0.1554,
+        "expectedDmg": 0.6645,
+        "chiCostPenalty": 0.5826,
+        "rangePriority": 0.6434
+      },
+      "riderman": {
+        "selfHp": 0.3663,
+        "oppHp": -0.5453,
+        "selfChi": -0.4227,
+        "oppChi": -0.5734,
+        "selfFaint": 0.4003,
+        "oppFaint": 0.0967,
+        "hasRegenBuff": -0.1113,
+        "moveAppliesDebuff": 0.3428,
+        "expectedDmg": 0.8412,
+        "chiCostPenalty": -0.5261,
+        "rangePriority": 0.8340000000000001
+      },
+      "x": {
+        "selfHp": -0.1238,
+        "oppHp": 0.2087,
+        "selfChi": -0.1604,
+        "oppChi": 0.2186,
+        "selfFaint": -0.2988,
+        "oppFaint": 0.4194,
+        "hasRegenBuff": -0.3055,
+        "moveAppliesDebuff": -0.1574,
+        "expectedDmg": 1.1381000000000001,
+        "chiCostPenalty": 0.461,
+        "rangePriority": 0.8461000000000001
+      },
+      "amazon": {
+        "selfHp": -0.1734,
+        "oppHp": 0.104,
+        "selfChi": -0.1007,
+        "oppChi": 0.2393,
+        "selfFaint": 0.0205,
+        "oppFaint": 0.1474,
+        "hasRegenBuff": -0.4008,
+        "moveAppliesDebuff": 0.1697,
+        "expectedDmg": 1.0632,
+        "chiCostPenalty": 0.2099,
+        "rangePriority": 0.9003
+      }
     }
   }
 }
