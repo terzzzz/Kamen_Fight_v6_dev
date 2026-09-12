@@ -24,8 +24,9 @@
   function intent(state, slot, difficulty) {
     const self = state[slot];
     const opponent = state[C.other(slot)];
+    const rawDiff = String(difficulty || "").toLowerCase();
     const level = g.KF.difficulty(difficulty);
-    const master = level === "master" || level === "soul";
+    const master = level === "master" || level === "soul" || rawDiff === "soul";
 
     const result = (name, preferred) => ({ name, preferred });
 
@@ -274,11 +275,12 @@
   }
 
   function bonus(state, slot, action, difficulty) {
+    const rawDiff = String(difficulty || "").toLowerCase();
     const level = g.KF.difficulty(difficulty);
 
-    if (level !== "master" && level !== "soul") return 0;
+    if (level !== "master" && level !== "soul" && rawDiff !== "soul") return 0;
 
-    const tree = intent(state, slot, level);
+    const tree = intent(state, slot, difficulty);
     const index = tree.preferred.indexOf(action.key);
 
     if (index < 0) return 0;
