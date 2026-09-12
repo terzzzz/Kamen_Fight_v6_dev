@@ -99,18 +99,30 @@
         START GAME
       </button>
 
-      <!-- Monte Carlo Simulation Trigger Controls -->
-      <div class="sim-controls">
-        <select id="sim-count-select">
-          <option value="10" selected>10 Matches</option>
-          <option value="20">20 Matches</option>
-          <option value="50">50 Matches</option>
-        </select>
+     <div class="sim-controls"
+     style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
 
-        <button id="btn-simulate-matches" class="action-btn sim-btn" disabled>
-          SIMULATE
-        </button>
-      </div>
+  <button id="ichigo-train-btn"
+          type="button"
+          class="action-btn">
+    TRAIN ICHIGO
+  </button>
+
+  <label for="sim-count-select">Test matches:</label>
+
+  <select id="sim-count-select">
+    <option value="10" selected>10 Matches</option>
+    <option value="20">20 Matches</option>
+    <option value="50">50 Matches</option>
+    <option value="100">100 Matches</option>
+  </select>
+
+  <button id="policy-sim-btn"
+          type="button"
+          class="action-btn sim-btn">
+    SIMULATE MATCHES
+  </button>
+</div>
     </div>
   </section>
 
