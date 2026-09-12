@@ -1,24 +1,79 @@
-// simulator.js
-// Kamen Fight — Headless Monte Carlo Simulation Engine & Replay Verifier
+// js/simulator.js
+// Uses the same AIService planning path as live battles.
+//
+// Candidate policies are passed per slot through options.
+// No global evaluation-weight variable is used.
 
 (function (g) {
   "use strict";
 
+  const VERSION = "unified-agent-path-1";
   const K = g.KF;
   const C = g.CombatCore;
 
-  /**
-   * Headlessly simulates a complete match between two riders without DOM or presentation overhead.
-   *
-   * @param {Object} rider1 - P1 Rider definition object.
-   * @param {Object} rider2 - P2 Rider definition object.
-   * @param {Object} moves - Compiled move lookup table.
-   * @param {string} difficulty1 - P1 CPU difficulty level.
-   * @param {string} difficulty2 - P2 CPU difficulty level.
-   * @param {number} seed - Deterministic PRNG seed for combat rolls and decisions.
-   * @param {boolean} [capture=false] - Whether to capture full turn input streams for replay verification.
-   * @returns {Promise<{state: Object, rounds: number, replay: Object|null}>} Resulting match state and replay data.
-   */
+  let batchRunning = false;
+
+  function checkAbort(signal) {
+    if (signal?.aborted) {
+      throw new DOMException(
+        "Simulation cancelled.",
+        "AbortError"
+      );
+    }
+  }
+
+  async function policySnapshot(
+    rider1,
+    rider2,
+    difficulty1,
+    difficulty2,
+    options
+  ) {
+    const supplied = options.policyWeightsBySlot || {};
+    const policies = {};
+
+    const riders = { p1: rider1, p2: rider2 };
+    const difficulties = {
+      p1: K.difficulty(difficulty1),
+      p2: K.difficulty(difficulty2)
+    };
+
+    for (const slot of ["p1", "p2"]) {
+      if (options.disableAgentSlots?.includes(slot)) continue;
+
+      if (supplied[slot] != null) {
+        if (riders[slot].id !== "ichigo") {
+          throw new Error(
+            "Ichigo candidate weights were assigned to another rider."
+          );
+        }
+
+        policies[slot] = { ...supplied[slot] };
+        continue;
+      }
+
+      if (
+        riders[slot].id === "ichigo" &&
+        difficulties[slot] === "soul"
+      ) {
+        if (!g.AgentIchigo?.loadActivePolicyStore) {
+          throw new Error(
+            "Soul Ichigo simulation requires AgentIchigo."
+          );
+        }
+
+        await g.AgentIchigo.loadActivePolicyStore();
+
+        policies[slot] =
+          g.AgentIchigo.getPolicyForOpponent(
+            riders[C.other(slot)].id
+          );
+      }
+    }
+
+    return policies;
+  }
+
   async function playMatch(
     rider1,
     rider2,
@@ -26,66 +81,74 @@
     difficulty1,
     difficulty2,
     seed,
-    capture = false
+    capture = false,
+    options = {}
   ) {
+    checkAbort(options.signal);
+
+    const policies = await policySnapshot(
+      rider1,
+      rider2,
+      difficulty1,
+      difficulty2,
+      options
+    );
+
     let state = C.createMatch(rider1, rider2, moves);
     let history = [];
+    let rounds = 0;
 
     const initial = capture ? C.copyState(state) : null;
     const turns = [];
     const rng = K.rng(K.hash(seed, "combat"));
 
-    let rounds = 0;
+    while (!state.winner) {
+      checkAbort(options.signal);
 
-    // Helper to resolve action decisions (routes to AgentIchigo when applicable)
-    const getSlotAction = async (slot, difficulty) => {
-      const snapshot = C.copyState(state);
-      const player = state[slot];
-      const opponent = state[C.other(slot)];
-      const moveList = state.moves[slot];
-
-      const isSoulLevel = /soul|adaptive|expert/.test(String(difficulty || "").toLowerCase());
-
-      // Route through AgentIchigo linear/NN policy if slot is Ichigo and SOUL/eval weights are active
-      if (player.id === 'ichigo' && (isSoulLevel || window.__ichigo_eval_weights__)) {
-        const activeWeights = window.__ichigo_eval_weights__ || 
-                             (window.AgentIchigo ? window.AgentIchigo.getPolicyForOpponent(opponent.id) : null);
-
-        if (activeWeights && window.AgentIchigo && typeof window.AgentIchigo.chooseBestMove === 'function') {
-          const chosenKey = window.AgentIchigo.chooseBestMove(player, opponent, moveList, activeWeights);
-          return { action: { key: chosenKey, charge: 100 } };
-        }
+      if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) {
+        throw new Error("Simulation exceeded the round limit.");
       }
 
-      // Default AIService Expectimax decision tree planner fallback
-      return await g.AIService.plan({
-        state: snapshot,
-        slot: slot,
-        difficulty: difficulty,
-        history,
-        seed: K.hash(seed, "decision", state.round, slot)
-      });
-    };
+      const snapshot = C.copyState(state);
 
-    // Main headless match evaluation loop
-    while (!state.winner) {
+      function planSlot(slot, difficulty) {
+        const context = {
+          state: snapshot,
+          slot,
+          difficulty: K.difficulty(difficulty),
+          history,
+          seed: K.hash(seed, "decision", state.round, slot),
+          disableAgent:
+            options.disableAgentSlots?.includes(slot) === true
+        };
 
-      // Query AI decision planning asynchronously for both slots in parallel
+        if (policies[slot]) {
+          context.policyWeights = { ...policies[slot] };
+        }
+
+        return g.AIService.plan(context);
+      }
+
       const [decision1, decision2] = await Promise.all([
-        getSlotAction("p1", difficulty1),
-        getSlotAction("p2", difficulty2)
+        planSlot("p1", difficulty1),
+        planSlot("p2", difficulty2)
       ]);
 
-      // Resolve turn combat rules deterministically
+      checkAbort(options.signal);
+
       const result = C.resolve(
         state,
         decision1.action,
         decision2.action,
         rng,
-        false // Trace disabled for headless simulation performance
+        false
       );
 
-      history = g.KF_AI.remember(history, state, result.actions);
+      history = g.KF_AI.remember(
+        history,
+        state,
+        result.actions
+      );
 
       if (capture) {
         turns.push({
@@ -97,34 +160,18 @@
       state = result.state;
       rounds++;
 
-      if (rounds > g.COMBAT_RULES.MAX_ROUNDS) {
-        throw new Error("Simulation exceeded the round limit.");
-      }
-
-      // Micro-task yield to prevent blocking UI thread during long batch simulations
       await K.wait(0);
     }
 
     return {
       state,
       rounds,
-      replay: capture ? { seed, initial, turns, final: state } : null
+      replay: capture
+        ? { seed, initial, turns, final: state }
+        : null
     };
   }
 
-  /**
-   * Runs a batch Monte Carlo simulation series across N matches to gather statistical win rate,
-   * average LP remaining, average Chi remaining, and round duration metrics.
-   *
-   * @param {Object} selectedRider1 - Selected P1 rider definition.
-   * @param {Object} selectedRider2 - Selected P2 rider definition.
-   * @param {number} [matchCount=20] - Number of matches to simulate in batch.
-   * @param {string} [difficulty1="balanced"] - P1 difficulty level.
-   * @param {string} [difficulty2="balanced"] - P2 difficulty level.
-   * @param {function(number, number): void|null} [onProgress=null] - Progress callback (completed, total).
-   * @param {Object} [options={}] - Additional options (e.g., custom seed).
-   * @returns {Promise<Object>} Summary statistics object for UI modal display.
-   */
   async function runBatchSimulation(
     selectedRider1,
     selectedRider2,
@@ -134,109 +181,145 @@
     onProgress = null,
     options = {}
   ) {
-    const count = Math.max(1, Math.floor(Number(matchCount) || 1));
-    const data = await K.loadData();
-
-    const rider1 = data.riders.find(
-      rider => rider.id === selectedRider1.id
-    );
-
-    const rider2 = data.riders.find(
-      rider => rider.id === selectedRider2.id
-    );
-
-    if (!rider1 || !rider2) {
-      throw new Error("Simulation rider not found.");
+    if (batchRunning) {
+      throw new Error("A simulation batch is already running.");
     }
 
-    const seed = Number(options.seed ?? Date.now()) >>> 0;
+    const count = Number(matchCount);
 
-    difficulty1 = K.difficulty(difficulty1);
-    difficulty2 = K.difficulty(difficulty2);
+    if (!Number.isInteger(count) || count < 1) {
+      throw new Error("Match count must be a positive integer.");
+    }
 
-    let p1Wins = 0;
-    let p2Wins = 0;
-    let draws = 0;
+    batchRunning = true;
 
-    let lp1 = 0;
-    let lp2 = 0;
-    let chi1 = 0;
-    let chi2 = 0;
-    let roundTotal = 0;
+    try {
+      checkAbort(options.signal);
 
-    // Execute match iterations sequentially
-    for (let index = 0; index < count; index++) {
-      if (onProgress) onProgress(index + 1, count);
+      const data = await K.loadData();
 
-      const result = await playMatch(
-        rider1,
-        rider2,
-        data.moves,
-        difficulty1,
-        difficulty2,
-        K.hash(seed, "match", index),
-        false
+      const rider1 = data.riders.find(
+        rider => rider.id === selectedRider1.id
       );
 
-      if (result.state.winner === "p1") p1Wins++;
-      else if (result.state.winner === "p2") p2Wins++;
-      else draws++;
+      const rider2 = data.riders.find(
+        rider => rider.id === selectedRider2.id
+      );
 
-      lp1 += result.state.p1.lp;
-      lp2 += result.state.p2.lp;
-      chi1 += result.state.p1.chi;
-      chi2 += result.state.p2.chi;
-      roundTotal += result.rounds;
+      if (!rider1 || !rider2) {
+        throw new Error("Simulation rider not found.");
+      }
+
+      difficulty1 = K.difficulty(difficulty1);
+      difficulty2 = K.difficulty(difficulty2);
+
+      const seed = Number(options.seed ?? Date.now()) >>> 0;
+
+      // Freeze policies for the whole evaluation batch.
+      const policies = await policySnapshot(
+        rider1,
+        rider2,
+        difficulty1,
+        difficulty2,
+        options
+      );
+
+      let p1Wins = 0;
+      let p2Wins = 0;
+      let draws = 0;
+      let lp1 = 0;
+      let lp2 = 0;
+      let chi1 = 0;
+      let chi2 = 0;
+      let roundTotal = 0;
+
+      for (let index = 0; index < count; index++) {
+        checkAbort(options.signal);
+
+        if (onProgress) onProgress(index + 1, count);
+
+        const result = await playMatch(
+          rider1,
+          rider2,
+          data.moves,
+          difficulty1,
+          difficulty2,
+          K.hash(seed, "match", index),
+          false,
+          {
+            ...options,
+            policyWeightsBySlot: policies
+          }
+        );
+
+        if (result.state.winner === "p1") p1Wins++;
+        else if (result.state.winner === "p2") p2Wins++;
+        else draws++;
+
+        lp1 += result.state.p1.lp;
+        lp2 += result.state.p2.lp;
+        chi1 += result.state.p1.chi;
+        chi2 += result.state.p2.chi;
+        roundTotal += result.rounds;
+      }
+
+      const summary = {
+        seed,
+        completed: count,
+        p1Name: rider1.name,
+        p2Name: rider2.name,
+        p1Wins,
+        p2Wins,
+        draws,
+        p1WinRate: (100 * p1Wins / count).toFixed(1),
+        p2WinRate: (100 * p2Wins / count).toFixed(1),
+        p1AvgLpLeft: (lp1 / count).toFixed(1),
+        p2AvgLpLeft: (lp2 / count).toFixed(1),
+        p1AvgChiLeft: (chi1 / count).toFixed(1),
+        p2AvgChiLeft: (chi2 / count).toFixed(1),
+        avgRounds: (roundTotal / count).toFixed(1)
+      };
+
+      g.Simulator.lastBatch = summary;
+
+      g.dispatchEvent(new CustomEvent(
+        "kf:simulation-complete",
+        { detail: summary }
+      ));
+
+      return summary;
+    } finally {
+      batchRunning = false;
     }
-
-    // Compile statistical summary
-    const summary = {
-      seed,
-      completed: count,
-      p1Name: rider1.name,
-      p2Name: rider2.name,
-      p1Wins,
-      p2Wins,
-      draws,
-      p1WinRate: (100 * p1Wins / count).toFixed(1),
-      p2WinRate: (100 * p2Wins / count).toFixed(1),
-      p1AvgLpLeft: (lp1 / count).toFixed(1),
-      p2AvgLpLeft: (lp2 / count).toFixed(1),
-      p1AvgChiLeft: (chi1 / count).toFixed(1),
-      p2AvgChiLeft: (chi2 / count).toFixed(1),
-      avgRounds: (roundTotal / count).toFixed(1)
-    };
-
-    g.Simulator.lastBatch = summary;
-    return summary;
   }
 
-  /**
-   * Verifies deterministic integrity by re-executing captured replay action turns against
-   * initial state and checking for bit-identical match outcomes.
-   *
-   * @param {Object} replay - Captured replay structure {seed, initial, turns, final}.
-   * @returns {boolean} True if replay strictly matches final captured state.
-   */
   function verifyReplay(replay) {
+    if (!replay?.initial || !Array.isArray(replay.turns)) {
+      throw new Error("Invalid replay.");
+    }
+
     let state = C.copyState(replay.initial);
     const rng = K.rng(K.hash(replay.seed, "combat"));
 
     for (const turn of replay.turns) {
-      state = C.resolve(state, turn.p1, turn.p2, rng, false).state;
+      state = C.resolve(
+        state,
+        turn.p1,
+        turn.p2,
+        rng,
+        false
+      ).state;
     }
 
-    const same = JSON.stringify(state) === JSON.stringify(replay.final);
-
-    if (!same) {
+    if (JSON.stringify(state) !== JSON.stringify(replay.final)) {
       throw new Error("Replay diverged from the captured simulation.");
     }
 
     return true;
   }
 
-  // Global namespace export
   g.Simulator = {
+    VERSION,
     playMatch,
     verifyReplay,
     lastBatch: null
