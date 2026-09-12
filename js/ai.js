@@ -35,12 +35,14 @@
       };
     }
 
-    // --- AgentIchigo Evolutionary Policy Hook (Active on SOUL / Adaptive difficulty) ---
+    // --- AgentIchigo Evolutionary Policy Hook (Active on SOUL / Adaptive difficulty OR during RL evaluation) ---
     if (cpuFighter && cpuFighter.id === "ichigo" && oppFighter && g.AgentIchigo) {
       const isSoulLevel = /soul|adaptive|expert/.test(String(context.difficulty || "").toLowerCase());
-      const weights = g.AgentIchigo.getPolicyForOpponent(oppFighter.id);
 
-      if (isSoulLevel && weights) {
+      // CRITICAL FIX: Prioritize candidate evaluation weights over stored active policies during simulation passes
+      const weights = window.__ichigo_eval_weights__ || g.AgentIchigo.getPolicyForOpponent(oppFighter.id);
+
+      if ((isSoulLevel || window.__ichigo_eval_weights__) && weights) {
         const moves = state.moves[slot];
         const moveKey = g.AgentIchigo.chooseBestMove(cpuFighter, oppFighter, moves, weights);
 
@@ -51,7 +53,9 @@
           action: { key: moveKey, charge: maxChargePct },
           debug: {
             difficulty,
-            strategy: `AgentIchigo Evolutionary Policy (SOUL) vs ${oppFighter.id}`,
+            strategy: window.__ichigo_eval_weights__
+              ? `AgentIchigo RL Mutation Candidate Evaluation vs ${oppFighter.id}`
+              : `AgentIchigo Evolutionary Policy (SOUL) vs ${oppFighter.id}`,
             weights
           }
         };
@@ -65,23 +69,19 @@
     });
 
     const rows = result.rows;
-    const tolerance = K.levels[difficulty].nearBest; // Permissible score delta from optimal move
+    const tolerance = K.levels[difficulty].nearBest;
     const bestScore = rows[0].score;
 
-    // Filter candidate moves within the difficulty's nearBest score window
     const close = rows.filter(
       row => bestScore - row.score <= tolerance
     );
 
-    // Initialize deterministic PRNG for move selection
     const rng = K.rng(K.hash(context.seed || 1, "selection"));
 
-    // Convert candidate score differences into relative probability weights (Exponential Softmax)
     const weights = close.map(row =>
       Math.exp((row.score - bestScore) / Math.max(1, tolerance / 3))
     );
 
-    // Perform roulette-wheel selection among near-optimal candidate actions
     const total = weights.reduce((sum, weight) => sum + weight, 0);
     let cursor = rng() * total;
     let selected = close[0];
@@ -118,7 +118,7 @@
           p2: before.p2.isFainted
         }
       }
-    ].slice(-24); // Maintain a maximum rolling window of 24 turns
+    ].slice(-24);
   }
 
   // Global namespace export
