@@ -1,69 +1,67 @@
 /*
- * Kamen Fight — Live Combat Playback Adapter
- * File: js/combat_engine.js
- * Version: live-ui-2
+ * js/combat_engine.js
+ * Live combat presentation with sequential action/reaction playback.
  *
- * Receives events from CombatCore resolution and orchestrates UI animations,
- * center video cutscenes, damage popups, and HUD rendering.
+ * VERSION remains live-ui-2 for match_manager.js compatibility.
+ * PATCH identifies this playback repair separately.
+ *
+ * Does not change combat rules, AI selection or training weights.
  */
 
 (function (g) {
   "use strict";
 
   const VERSION = "live-ui-2";
+  const PATCH = "sequential-reactions-1";
   const SLOTS = ["p1", "p2"];
+
   const C = g.CombatCore;
   const K = g.KF;
 
-  /** Enforces module dependencies before starting live match playback. */
   function assertReady() {
-    if (!C || typeof C.resolve !== "function") {
-      throw new Error("Load combat_core.js before combat_engine.js.");
-    }
+    const requirements = [
+      [
+        C && typeof C.resolve === "function",
+        "Load combat_core.js before combat_engine.js."
+      ],
+      [
+        K && K.VERSION === "shared-core-1",
+        "This adapter requires common.js shared-core-1."
+      ],
+      [
+        typeof g.KF_AI?.remember === "function",
+        "The AI history module is not loaded."
+      ],
+      [
+        typeof g.UI?.showBattleBanner === "function" &&
+        typeof g.UI?.showDamagePopup === "function" &&
+        typeof g.UI?.showActionBanner === "function",
+        "The battle UI module is not loaded."
+      ],
+      [
+        typeof g.GameView?.paint === "function" &&
+        typeof g.GameView?.finish === "function",
+        "The game view is not loaded."
+      ],
+      [
+        g.KFMedia?.VERSION === "sequential-media-1" &&
+        typeof g.playCenterVideo === "function" &&
+        typeof g.playReactionVideo === "function" &&
+        typeof g.KFMedia.freezeSides === "function",
+        "Replace media.js with the sequential-media-1 version."
+      ],
+      [
+        typeof g.MatchManager?.begin === "function",
+        "The match manager is not loaded."
+      ]
+    ];
 
-    if (!K || K.VERSION !== "shared-core-1") {
-      throw new Error(
-        "This playback adapter requires common.js shared-core-1."
-      );
-    }
-
-    if (
-      !g.KF_AI ||
-      typeof g.KF_AI.remember !== "function"
-    ) {
-      throw new Error("The AI history module is not loaded.");
-    }
-
-    if (
-      !g.UI ||
-      typeof g.UI.showBattleBanner !== "function" ||
-      typeof g.UI.showDamagePopup !== "function"
-    ) {
-      throw new Error("The battle UI module is not loaded.");
-    }
-
-    if (
-      !g.GameView ||
-      typeof g.GameView.paint !== "function" ||
-      typeof g.GameView.finish !== "function"
-    ) {
-      throw new Error("The game view is not loaded.");
-    }
-
-    if (typeof g.playCenterVideo !== "function") {
-      throw new Error("Load media.js before starting a live match.");
-    }
-
-    if (
-      !g.MatchManager ||
-      typeof g.MatchManager.begin !== "function"
-    ) {
-      throw new Error("The match manager is not loaded.");
+    for (const [ready, message] of requirements) {
+      if (!ready) throw new Error(message);
     }
   }
 
-  /** Execution guard: verifies if async playback belongs to the active turn token. */
-  function isCurrent(gs, token) {
+  function ownsTurn(gs, token) {
     return (
       g.gameState === gs &&
       gs.roundToken === token &&
@@ -71,7 +69,6 @@
     );
   }
 
-  /** Synchronizes HUD display from a state snapshot without re-calculating stats. */
   function paintSnapshot(gs, snapshot) {
     for (const slot of SLOTS) {
       gs[slot] = C.copyFighter(snapshot[slot]);
@@ -80,86 +77,124 @@
     g.GameView.paint();
   }
 
-  /** Triggers side character media video state changes safely. */
-  function showSideMedia(slot, state) {
-    if (typeof g.updateCharacterMedia !== "function") return;
-
-    try {
-      g.updateCharacterMedia(slot, state);
-    } catch (error) {
-      console.warn("Side media warning:", error);
-    }
-  }
-
-  /** Displays floating damage popup text over player box. */
   function popup(slot, text, type = "scratch") {
     g.UI.showDamagePopup(`${slot}-box`, text, type);
   }
 
-  /** Plays center action cutscene video with a safety timeout guard. */
-  async function playMoveVideo(gs, token, slot, move) {
-    if (!isCurrent(gs, token) || !move.video) return;
+  function outcomeLabel(event) {
+    const damage = Math.max(0, Number(event.damage) || 0);
 
-    const timeout = Math.max(
+    const labels = {
+      miss: "MISS",
+      block: damage > 0 ? `BLOCK: -${damage}` : "BLOCK",
+      partialBlock: `PARTIAL BLOCK: -${damage}`,
+      guardFail: `GUARD FAILED: -${damage}`,
+      glancing: `SCRATCH: -${damage}`
+    };
+
+    return labels[event.outcome] || `-${damage}`;
+  }
+
+  function reactionFor(gs, event) {
+    const target = gs[event.target];
+
+    if (target.lp <= 0) return "KO";
+    if (target.isFainted) return "FAINT";
+    if (event.outcome === "miss") return "DODGE";
+
+    // A failed guard should show a hit, not a successful guard.
+    if (
+      event.outcome === "block" ||
+      event.outcome === "partialBlock" ||
+      (event.guarded && event.outcome !== "guardFail")
+    ) {
+      return "GUARD";
+    }
+
+    return "HIT";
+  }
+
+  function videoOptions(context) {
+    return {
+      signal: context.controller.signal,
+      isCurrent: context.current
+    };
+  }
+
+  /*
+   * Media errors are presentation failures, not combat-rule failures.
+   * Cancelled playback stops this turn's presentation.
+   * Missing/stalled media is reported and the resolved turn continues.
+   */
+  async function awaitClip(context, startClip) {
+    if (!context.current()) return false;
+
+    try {
+      const result = await startClip();
+
+      if (result?.status === "cancelled") {
+        context.controller.abort();
+        return false;
+      }
+
+      if (!context.current()) return false;
+
+      if (result?.status !== "ended") {
+        console.warn("[CombatPlayback] Clip did not finish normally:", result);
+
+        // Brief readability delay only when no complete video was shown.
+        // This is NOT the duration used for normal reaction playback.
+        await K.wait(250);
+      }
+    } catch (error) {
+      if (
+        error?.name === "AbortError" ||
+        !context.current()
+      ) {
+        context.controller.abort();
+        return false;
+      }
+
+      console.warn("[CombatPlayback] Presentation warning:", error);
+      await K.wait(250);
+    }
+
+    return context.current();
+  }
+
+  async function playAction(context, slot, move) {
+    if (!move?.video) return context.current();
+
+    const stallTimeout = Math.max(
       1000,
       Number(g.GAME_CONFIG?.VIDEO_TIMEOUT_MS) || 8000
     );
 
-    try {
-      await g.playCenterVideo(
-        slot,
-        move.video,
-        move.name || move.key || "",
-        timeout,
-        move
-      );
-    } catch (error) {
-      console.warn("Action video warning:", error);
-
-      if (isCurrent(gs, token)) {
-        g.UI.showBattleBanner(
-          "VIDEO UNAVAILABLE — continuing the resolved turn."
-        );
-        await K.wait(400);
-      }
-    }
+    return awaitClip(context, () => g.playCenterVideo(
+      slot,
+      move.video,
+      move.name || move.key || "",
+      stallTimeout,
+      move,
+      videoOptions(context)
+    ));
   }
 
-  /** Formats attack outcome label for battle banner and popup rendering. */
-  function attackLabel(event) {
-    const damage = Math.max(0, Number(event.damage) || 0);
-
-    switch (event.outcome) {
-      case "miss":
-        return "MISS";
-
-      case "block":
-        return damage > 0 ? `BLOCK: -${damage}` : "BLOCK";
-
-      case "partialBlock":
-        return `PARTIAL BLOCK: -${damage}`;
-
-      case "guardFail":
-        return `GUARD FAILED: -${damage}`;
-
-      case "glancing":
-        return `SCRATCH: -${damage}`;
-
-      default:
-        return `-${damage}`;
-    }
+  async function playReaction(context, slot, state) {
+    return awaitClip(context, () => g.playReactionVideo(
+      slot,
+      state,
+      videoOptions(context)
+    ));
   }
 
-  /**
-   * Sequentially presents a single combat event emitted by CombatCore.resolve().
-   */
-  async function presentEvent(gs, token, event) {
-    if (!isCurrent(gs, token) || event.type === "end") return;
+  async function presentEvent(context, event) {
+    if (!context.current() || event.type === "end") return;
 
+    const gs = context.gs;
     const slot = event.slot;
     const move = gs.core.moves[slot]?.[event.key] || C.IDLE;
 
-    // Handle move interruption sequence
     if (event.type === "interrupted") {
       paintSnapshot(gs, event);
 
@@ -172,33 +207,29 @@
       return;
     }
 
-    if (
-      event.type !== "guardReady" &&
-      event.type !== "utility" &&
-      event.type !== "attack"
-    ) {
+    if (!["guardReady", "utility", "attack"].includes(event.type)) {
       throw new Error(`Unsupported combat event: ${event.type}`);
     }
 
-    const previousLp = gs[slot].lp;
     const actorName = gs[slot].name;
+    const previousLp = gs[slot].lp;
 
     g.UI.showBattleBanner(
       `[${slot.toUpperCase()}] ${actorName}: ${move.name || event.key}`
     );
 
-    // Play action cutscene video
-    await playMoveVideo(gs, token, slot, move);
+    // 1. Finish the attack/utility/guard action clip.
+    if (!await playAction(context, slot, move)) return;
+    if (!context.current()) return;
 
-    if (!isCurrent(gs, token)) return;
-
-    // Update state snapshot from CombatCore event data
+    // 2. Present the already-resolved state. No damage recalculation.
     paintSnapshot(gs, event);
 
     if (event.type === "guardReady") {
-      showSideMedia(slot, "GUARD");
       popup(slot, "GUARD READY");
-      await K.wait(300);
+
+      // Await this reaction too; do not leave a guard clip running.
+      await playReaction(context, slot, "GUARD");
       return;
     }
 
@@ -207,17 +238,18 @@
 
       popup(
         slot,
-        recovered > 0 ? `+${recovered} LP` : (move.name || "UTILITY")
+        recovered > 0
+          ? `+${recovered} LP`
+          : (move.name || "UTILITY")
       );
 
-      showSideMedia(slot, "IDLE");
+      // Do not start an idle loop in the middle of resolution.
       await K.wait(450);
       return;
     }
 
-    // Handle attack hit/miss/block outcomes and target visual reactions
     const target = event.target;
-    const label = attackLabel(event);
+    const label = outcomeLabel(event);
 
     popup(
       target,
@@ -230,35 +262,25 @@
       `${gs[target].name}: ${label}`
     );
 
-    if (gs[target].lp <= 0) {
-      showSideMedia(target, "KO");
-    } else if (gs[target].isFainted) {
-      showSideMedia(target, "FAINT");
-    } else if (event.outcome === "miss") {
-      showSideMedia(target, "DODGE");
-    } else if (event.guarded) {
-      showSideMedia(target, "GUARD");
-    } else {
-      showSideMedia(target, "HIT");
-    }
-
-    await K.wait(650);
+    // 3. Finish the defender's reaction before the next combat event.
+    // No fixed 650 ms timing assumption.
+    await playReaction(
+      context,
+      target,
+      reactionFor(gs, event)
+    );
   }
 
-  /**
-   * Main turn playback handler. Resolves the turn via CombatCore once,
-   * streams playback events to the UI, updates history, and advances match state.
-   */
   async function playTurn(gs, token) {
     assertReady();
 
-    if (!isCurrent(gs, token)) return false;
+    if (!ownsTurn(gs, token)) return false;
 
-    // Concurrency guard: prevent duplicate playback execution
+    // Preserve the existing duplicate-resolution guard.
     if (gs.playbackToken === token) return false;
 
     if (!gs.actions?.p1 || !gs.actions?.p2) {
-      throw new Error("Cannot resolve until both actions are locked.");
+      throw new Error("Both actions must be locked before resolution.");
     }
 
     if (typeof gs.combatRng !== "function") {
@@ -267,82 +289,118 @@
 
     gs.playbackToken = token;
 
-    const before = C.copyState(gs.core);
+    const controller = new AbortController();
 
-    // Single deterministic resolution call with tracing enabled for playback
-    const result = C.resolve(
-      before,
-      gs.actions.p1,
-      gs.actions.p2,
-      gs.combatRng,
-      true
-    );
+    const context = {
+      gs,
+      token,
+      controller,
+      current: () => (
+        !controller.signal.aborted &&
+        ownsTurn(gs, token)
+      )
+    };
 
-    const nextHistory = g.KF_AI.remember(
-      gs.history || [],
-      before,
-      result.actions
-    );
+    // Stop pending media when navigation/restart changes the turn token.
+    const ownershipTimer = setInterval(() => {
+      if (!ownsTurn(gs, token)) controller.abort();
+    }, 100);
 
-    const timer = document.getElementById("turn-timer");
-    if (timer) timer.textContent = "RESOLVING…";
+    try {
+      g.KFMedia.freezeSides();
 
-    // Play back event animations sequentially
-    for (const event of result.events) {
-      if (!isCurrent(gs, token)) return false;
+      const before = C.copyState(gs.core);
 
-      await presentEvent(gs, token, event);
-    }
+      // Exactly one deterministic combat resolution.
+      const result = C.resolve(
+        before,
+        gs.actions.p1,
+        gs.actions.p2,
+        gs.combatRng,
+        true
+      );
 
-    if (!isCurrent(gs, token)) return false;
+      const nextHistory = g.KF_AI.remember(
+        gs.history || [],
+        before,
+        result.actions
+      );
 
-    // Capture turn state for match replay system
-    if (!gs.liveReplay) {
-      gs.liveReplay = {
-        seed: gs.seed,
-        initial: C.copyState(before),
-        turns: [],
-        final: null
-      };
-    }
+      const timer = document.getElementById("turn-timer");
+      if (timer) timer.textContent = "RESOLVING…";
 
-    gs.liveReplay.turns.push({
-      p1: { ...result.actions.p1 },
-      p2: { ...result.actions.p2 }
-    });
+      for (const event of result.events) {
+        if (!context.current()) return false;
 
-    gs.liveReplay.final = C.copyState(result.state);
+        await presentEvent(context, event);
 
-    // Commit resolved state to global game state
-    gs.core = result.state;
-    gs.actions = result.actions;
-    gs.history = nextHistory;
-    gs.roundCounter = gs.core.round;
+        if (!context.current()) return false;
+      }
 
-    paintSnapshot(gs, gs.core);
-    g.UI.showActionBanner("");
+      if (!context.current()) return false;
 
-    if (gs.core.winner) {
-      g.GameView.finish(gs.core.winner);
+      // Preserve the replay data format.
+      if (!gs.liveReplay) {
+        gs.liveReplay = {
+          seed: gs.seed,
+          initial: C.copyState(before),
+          turns: [],
+          final: null
+        };
+      }
+
+      gs.liveReplay.turns.push({
+        p1: { ...result.actions.p1 },
+        p2: { ...result.actions.p2 }
+      });
+
+      gs.liveReplay.final = C.copyState(result.state);
+
+      // Commit only after all presentation events have completed.
+      gs.core = result.state;
+      gs.actions = result.actions;
+      gs.history = nextHistory;
+      gs.roundCounter = gs.core.round;
+
+      paintSnapshot(gs, gs.core);
+      g.UI.showActionBanner("");
+
+      if (gs.core.winner) {
+        // Existing GameView.finish() requests victory/KO media.
+        // The new media controller queues those clips sequentially.
+        g.GameView.finish(gs.core.winner);
+        return true;
+      }
+
+      // Keep side media paused until the next planning phase.
+      await K.wait(450);
+
+      if (!context.current()) return false;
+
+      // MatchManager.begin() restores each fighter's IDLE/FAINT/AIR state.
+      await g.MatchManager.begin();
       return true;
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        !ownsTurn(gs, token)
+      ) {
+        return false;
+      }
+
+      throw error;
+    } finally {
+      clearInterval(ownershipTimer);
+
+      // Cancels only requests owned by this turn, not the next round
+      // or GameView.finish() victory/KO requests.
+      controller.abort();
     }
-
-    for (const slot of SLOTS) {
-      showSideMedia(slot, "IDLE");
-    }
-
-    await K.wait(450);
-
-    if (!isCurrent(gs, token)) return false;
-
-    // Trigger next round planning phase
-    await g.MatchManager.begin();
-    return true;
   }
 
-  // Global namespace export
   g.CombatPlayback = {
     VERSION,
+    PATCH,
     assertReady,
     playTurn
   };
