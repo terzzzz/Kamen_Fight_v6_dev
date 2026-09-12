@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "exportedAt": "2026-09-12T04:53:38.855Z",
+  "version": "ichigo-linear-mc-1",
+  "featureSchema": "post-turn-linear-mc-1",
   "featureNames": [
     "selfHp",
     "oppHp",
@@ -17,30 +17,30 @@
   "policies": {
     "ichigo": {
       "nigo": {
-        "selfHp": 0.0923,
-        "oppHp": 0.4499,
-        "selfChi": 0.5913,
-        "oppChi": -0.4673,
-        "selfFaint": 0.3663,
-        "oppFaint": 0.3431,
-        "hasRegenBuff": 0.0976,
-        "moveAppliesDebuff": -0.5414,
-        "expectedDmg": 0.9702,
-        "chiCostPenalty": 0.3856,
-        "rangePriority": 0.7234
+        "selfHp": 0.27202167677391176,
+        "oppHp": 0.5546008838729408,
+        "selfChi": 0.4822705988165216,
+        "oppChi": -0.634271085392868,
+        "selfFaint": 0.2269322098779647,
+        "oppFaint": 0.20993148358760835,
+        "hasRegenBuff": 0.0893441384568007,
+        "moveAppliesDebuff": -0.6167443213687024,
+        "expectedDmg": 0.930558853739579,
+        "chiCostPenalty": 0.4603320548662583,
+        "rangePriority": 0.8344970503874639
       },
       "v3": {
-        "selfHp": 0.3596,
-        "oppHp": -0.128,
-        "selfChi": 0.1976,
-        "oppChi": -0.5374,
-        "selfFaint": 0.0778,
-        "oppFaint": 0.2093,
-        "hasRegenBuff": -0.4647,
-        "moveAppliesDebuff": 0.1554,
-        "expectedDmg": 0.6645,
-        "chiCostPenalty": 0.5826,
-        "rangePriority": 0.6434
+        "selfHp": 0.5194324750580637,
+        "oppHp": -0.07821134913797606,
+        "selfChi": 0.051066855096599,
+        "oppChi": -0.958549280591555,
+        "selfFaint": -0.002303862154622055,
+        "oppFaint": 0.2568548573156017,
+        "hasRegenBuff": -0.38652451495196816,
+        "moveAppliesDebuff": 0.4217939655634763,
+        "expectedDmg": 0.6272790634841595,
+        "chiCostPenalty": 0.45529525966176476,
+        "rangePriority": 0.850561470803582
       },
       "riderman": {
         "selfHp": 0.3663,
@@ -80,7 +80,115 @@
         "expectedDmg": 1.0632,
         "chiCostPenalty": 0.2099,
         "rangePriority": 0.9003
+      },
+      "ichigo": {
+        "selfHp": 3,
+        "oppHp": -3,
+        "selfChi": 0.7,
+        "oppChi": -0.4,
+        "selfFaint": -0.8,
+        "oppFaint": 0.8,
+        "hasRegenBuff": 0.25,
+        "moveAppliesDebuff": 0.2,
+        "expectedDmg": 1,
+        "chiCostPenalty": 0.2,
+        "rangePriority": 0.05
       }
     }
-  }
+  },
+  "metadata": {
+    "ichigo": {
+      "origin": "default",
+      "trainedByThisImplementation": false
+    },
+    "nigo": {
+      "origin": "bundled",
+      "trainedByThisImplementation": true,
+      "note": "Imported coefficients; legacy semantics unverified.",
+      "trainingRuns": 1,
+      "lastTraining": {
+        "method": "linear-weight evolutionary search",
+        "opponentId": "nigo",
+        "opponentDifficulty": "balanced",
+        "seed": 12345,
+        "generations": 1,
+        "popSize": 2,
+        "matchesPerEval": 2,
+        "validationMatches": 2,
+        "evaluatedGames": 8,
+        "accepted": true,
+        "baseline": {
+          "games": 2,
+          "wins": 0,
+          "losses": 2,
+          "draws": 0,
+          "points": 0,
+          "utility": -0.011184848484848485
+        },
+        "challenger": {
+          "games": 2,
+          "wins": 1,
+          "losses": 1,
+          "draws": 0,
+          "points": 0.5,
+          "utility": 0.4989269696969697
+        },
+        "completedAt": "2026-09-12T15:35:52.209Z"
+      },
+      "policyUpdatedAt": "2026-09-12T15:35:52.209Z"
+    },
+    "v3": {
+      "origin": "bundled",
+      "trainedByThisImplementation": true,
+      "note": "Imported coefficients; legacy semantics unverified.",
+      "trainingRuns": 1,
+      "lastTraining": {
+        "method": "linear-weight evolutionary search",
+        "opponentId": "v3",
+        "opponentDifficulty": "balanced",
+        "seed": 2521436420,
+        "generations": 10,
+        "popSize": 8,
+        "matchesPerEval": 10,
+        "validationMatches": 10,
+        "evaluatedGames": 820,
+        "accepted": true,
+        "baseline": {
+          "games": 10,
+          "wins": 4,
+          "losses": 6,
+          "draws": 0,
+          "points": 0.4,
+          "utility": 0.39620403174603175
+        },
+        "challenger": {
+          "games": 10,
+          "wins": 6,
+          "losses": 4,
+          "draws": 0,
+          "points": 0.6,
+          "utility": 0.5999006666666666
+        },
+        "completedAt": "2026-09-12T16:04:23.275Z"
+      },
+      "policyUpdatedAt": "2026-09-12T16:04:23.275Z"
+    },
+    "riderman": {
+      "origin": "bundled",
+      "trainedByThisImplementation": false,
+      "note": "Imported coefficients; legacy semantics unverified."
+    },
+    "x": {
+      "origin": "bundled",
+      "trainedByThisImplementation": false,
+      "note": "Imported coefficients; legacy semantics unverified."
+    },
+    "amazon": {
+      "origin": "bundled",
+      "trainedByThisImplementation": false,
+      "note": "Imported coefficients; legacy semantics unverified."
+    }
+  },
+  "liveStats": {},
+  "exportedAt": "2026-09-12T17:22:57.314Z"
 }
