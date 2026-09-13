@@ -17,17 +17,17 @@
   "policies": {
     "ichigo": {
       "nigo": {
-        "selfHp": 0.27202167677391176,
-        "oppHp": 0.5546008838729408,
-        "selfChi": 0.4822705988165216,
-        "oppChi": -0.634271085392868,
-        "selfFaint": 0.2269322098779647,
-        "oppFaint": 0.20993148358760835,
-        "hasRegenBuff": 0.0893441384568007,
-        "moveAppliesDebuff": -0.6167443213687024,
-        "expectedDmg": 0.930558853739579,
-        "chiCostPenalty": 0.4603320548662583,
-        "rangePriority": 0.8344970503874639
+        "selfHp": 0.46642816617742644,
+        "oppHp": 0.24390523562696112,
+        "selfChi": 0.30275667178907373,
+        "oppChi": -0.9622982468224652,
+        "selfFaint": 0.3624041551940683,
+        "oppFaint": 0.2572067300286158,
+        "hasRegenBuff": 0.03733885257304195,
+        "moveAppliesDebuff": -0.2942826087877812,
+        "expectedDmg": 0.8352158742137421,
+        "chiCostPenalty": 0.07049875959224249,
+        "rangePriority": 0.607163280774415
       },
       "v3": {
         "selfHp": 0.5194324750580637,
@@ -105,37 +105,37 @@
       "origin": "bundled",
       "trainedByThisImplementation": true,
       "note": "Imported coefficients; legacy semantics unverified.",
-      "trainingRuns": 1,
+      "trainingRuns": 4,
       "lastTraining": {
         "method": "linear-weight evolutionary search",
         "opponentId": "nigo",
         "opponentDifficulty": "balanced",
-        "seed": 12345,
-        "generations": 1,
-        "popSize": 2,
-        "matchesPerEval": 2,
-        "validationMatches": 2,
-        "evaluatedGames": 8,
+        "seed": 2605977413,
+        "generations": 3,
+        "popSize": 8,
+        "matchesPerEval": 10,
+        "validationMatches": 10,
+        "evaluatedGames": 260,
         "accepted": true,
         "baseline": {
-          "games": 2,
-          "wins": 0,
-          "losses": 2,
+          "games": 10,
+          "wins": 4,
+          "losses": 6,
           "draws": 0,
-          "points": 0,
-          "utility": -0.011184848484848485
+          "points": 0.4,
+          "utility": 0.3936406666666667
         },
         "challenger": {
-          "games": 2,
-          "wins": 1,
-          "losses": 1,
+          "games": 10,
+          "wins": 8,
+          "losses": 2,
           "draws": 0,
-          "points": 0.5,
-          "utility": 0.4989269696969697
+          "points": 0.8,
+          "utility": 0.8052933333333334
         },
-        "completedAt": "2026-09-12T15:35:52.209Z"
+        "completedAt": "2026-09-13T15:14:48.048Z"
       },
-      "policyUpdatedAt": "2026-09-12T15:35:52.209Z"
+      "policyUpdatedAt": "2026-09-13T15:14:48.048Z"
     },
     "v3": {
       "origin": "bundled",
@@ -190,5 +190,5 @@
     }
   },
   "liveStats": {},
-  "exportedAt": "2026-09-12T17:22:57.314Z"
+  "exportedAt": "2026-09-13T15:15:51.038Z"
 }
