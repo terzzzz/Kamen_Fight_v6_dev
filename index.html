@@ -1,392 +1,194 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Kamen Fight</title>
-
-  <link rel="stylesheet" href="css/style.css">
-
-  <style>
-    [hidden] { display: none !important; }
-
-    .battle-banner { white-space: pre-line; }
-
-    .pad-btn {
-      touch-action: none;
-      user-select: none;
-      -webkit-user-select: none;
+{
+  "version": "ichigo-linear-mc-1",
+  "featureSchema": "post-turn-linear-mc-1",
+  "featureNames": [
+    "selfHp",
+    "oppHp",
+    "selfChi",
+    "oppChi",
+    "selfFaint",
+    "oppFaint",
+    "hasRegenBuff",
+    "moveAppliesDebuff",
+    "expectedDmg",
+    "chiCostPenalty",
+    "rangePriority"
+  ],
+  "policies": {
+    "ichigo": {
+      "nigo": {
+        "selfHp": 0.46642816617742644,
+        "oppHp": 0.24390523562696112,
+        "selfChi": 0.30275667178907373,
+        "oppChi": -0.9622982468224652,
+        "selfFaint": 0.3624041551940683,
+        "oppFaint": 0.2572067300286158,
+        "hasRegenBuff": 0.03733885257304195,
+        "moveAppliesDebuff": -0.2942826087877812,
+        "expectedDmg": 0.8352158742137421,
+        "chiCostPenalty": 0.07049875959224249,
+        "rangePriority": 0.607163280774415
+      },
+      "v3": {
+        "selfHp": 0.5194324750580637,
+        "oppHp": -0.07821134913797606,
+        "selfChi": 0.051066855096599,
+        "oppChi": -0.958549280591555,
+        "selfFaint": -0.002303862154622055,
+        "oppFaint": 0.2568548573156017,
+        "hasRegenBuff": -0.38652451495196816,
+        "moveAppliesDebuff": 0.4217939655634763,
+        "expectedDmg": 0.6272790634841595,
+        "chiCostPenalty": 0.45529525966176476,
+        "rangePriority": 0.850561470803582
+      },
+      "riderman": {
+        "selfHp": 0.3663,
+        "oppHp": -0.5453,
+        "selfChi": -0.4227,
+        "oppChi": -0.5734,
+        "selfFaint": 0.4003,
+        "oppFaint": 0.0967,
+        "hasRegenBuff": -0.1113,
+        "moveAppliesDebuff": 0.3428,
+        "expectedDmg": 0.8412,
+        "chiCostPenalty": -0.5261,
+        "rangePriority": 0.8340000000000001
+      },
+      "x": {
+        "selfHp": -0.1238,
+        "oppHp": 0.2087,
+        "selfChi": -0.1604,
+        "oppChi": 0.2186,
+        "selfFaint": -0.2988,
+        "oppFaint": 0.4194,
+        "hasRegenBuff": -0.3055,
+        "moveAppliesDebuff": -0.1574,
+        "expectedDmg": 1.1381000000000001,
+        "chiCostPenalty": 0.461,
+        "rangePriority": 0.8461000000000001
+      },
+      "amazon": {
+        "selfHp": -0.1734,
+        "oppHp": 0.104,
+        "selfChi": -0.1007,
+        "oppChi": 0.2393,
+        "selfFaint": 0.0205,
+        "oppFaint": 0.1474,
+        "hasRegenBuff": -0.4008,
+        "moveAppliesDebuff": 0.1697,
+        "expectedDmg": 1.0632,
+        "chiCostPenalty": 0.2099,
+        "rangePriority": 0.9003
+      },
+      "ichigo": {
+        "selfHp": 3,
+        "oppHp": -3,
+        "selfChi": 0.7,
+        "oppChi": -0.4,
+        "selfFaint": -0.8,
+        "oppFaint": 0.8,
+        "hasRegenBuff": 0.25,
+        "moveAppliesDebuff": 0.2,
+        "expectedDmg": 1,
+        "chiCostPenalty": 0.2,
+        "rangePriority": 0.05
+      }
     }
-
-    .chi-bar-wrapper {
-      width: 100%;
-      height: 8px;
-      background: #111;
-      border: 1px solid #00ffcc;
-      margin: 3px 0;
-      overflow: hidden;
+  },
+  "metadata": {
+    "ichigo": {
+      "origin": "default",
+      "trainedByThisImplementation": false
+    },
+    "nigo": {
+      "origin": "bundled",
+      "trainedByThisImplementation": true,
+      "note": "Imported coefficients; legacy semantics unverified.",
+      "trainingRuns": 4,
+      "lastTraining": {
+        "method": "linear-weight evolutionary search",
+        "opponentId": "nigo",
+        "opponentDifficulty": "balanced",
+        "seed": 2605977413,
+        "generations": 3,
+        "popSize": 8,
+        "matchesPerEval": 10,
+        "validationMatches": 10,
+        "evaluatedGames": 260,
+        "accepted": true,
+        "baseline": {
+          "games": 10,
+          "wins": 4,
+          "losses": 6,
+          "draws": 0,
+          "points": 0.4,
+          "utility": 0.3936406666666667
+        },
+        "challenger": {
+          "games": 10,
+          "wins": 8,
+          "losses": 2,
+          "draws": 0,
+          "points": 0.8,
+          "utility": 0.8052933333333334
+        },
+        "completedAt": "2026-09-13T15:14:48.048Z"
+      },
+      "policyUpdatedAt": "2026-09-13T15:14:48.048Z"
+    },
+    "v3": {
+      "origin": "bundled",
+      "trainedByThisImplementation": true,
+      "note": "Imported coefficients; legacy semantics unverified.",
+      "trainingRuns": 1,
+      "lastTraining": {
+        "method": "linear-weight evolutionary search",
+        "opponentId": "v3",
+        "opponentDifficulty": "balanced",
+        "seed": 2521436420,
+        "generations": 10,
+        "popSize": 8,
+        "matchesPerEval": 10,
+        "validationMatches": 10,
+        "evaluatedGames": 820,
+        "accepted": true,
+        "baseline": {
+          "games": 10,
+          "wins": 4,
+          "losses": 6,
+          "draws": 0,
+          "points": 0.4,
+          "utility": 0.39620403174603175
+        },
+        "challenger": {
+          "games": 10,
+          "wins": 6,
+          "losses": 4,
+          "draws": 0,
+          "points": 0.6,
+          "utility": 0.5999006666666666
+        },
+        "completedAt": "2026-09-12T16:04:23.275Z"
+      },
+      "policyUpdatedAt": "2026-09-12T16:04:23.275Z"
+    },
+    "riderman": {
+      "origin": "bundled",
+      "trainedByThisImplementation": false,
+      "note": "Imported coefficients; legacy semantics unverified."
+    },
+    "x": {
+      "origin": "bundled",
+      "trainedByThisImplementation": false,
+      "note": "Imported coefficients; legacy semantics unverified."
+    },
+    "amazon": {
+      "origin": "bundled",
+      "trainedByThisImplementation": false,
+      "note": "Imported coefficients; legacy semantics unverified."
     }
-
-    .chi-bar-fill {
-      width: 50%;
-      height: 100%;
-      background: #00ffcc;
-      transition: width 0.2s;
-    }
-
-    #start-prompt { cursor: pointer; }
-  </style>
-</head>
-
-<body>
-  <!-- Device Orientation Guard Overlay -->
-  <div id="portrait-orientation-overlay">
-    <div class="rotate-icon">📱</div>
-    <h2>PLEASE ROTATE DEVICE</h2>
-    <p>Use portrait orientation.</p>
-  </div>
-
-  <!-- Screen 1: Game Loading Screen -->
-  <main id="loading-screen" class="screen-container">
-    <div class="loading-content">
-      <h1 class="game-launch-title">KAMEN FIGHT</h1>
-      <div id="loading-status" class="loading-status">LOADING…</div>
-
-      <div id="loading-bar-wrapper" class="loading-bar-wrapper">
-        <div id="loading-bar-fill" class="loading-bar-fill"></div>
-      </div>
-
-      <button id="start-prompt" class="start-prompt" hidden>
-        TAP OR PRESS A KEY TO START
-      </button>
-    </div>
-  </main>
-
-  <!-- Screen 2: Character VS Selection Screen -->
-  <section id="vs-select-screen" class="screen-container" hidden>
-    <div class="bgm-volume-control">
-      <label for="bgm-slider">BGM</label>
-      <input id="bgm-slider"
-             type="range"
-             min="0"
-             max="1"
-             step="0.05"
-             value="0.5"
-             oninput="changeBGMVolume(this.value)">
-    </div>
-
-    <div class="vs-select-stage">
-      <h1 id="select-step-title" class="vs-header-title">SELECT PLAYER 1</h1>
-
-      <!-- Dynamic Rider Selection Card Layout Container -->
-      <div id="selection-layout" class="selection-layout"></div>
-
-      <div id="vs-error-banner" class="error-banner" hidden>
-        AT LEAST ONE PLAYER MUST BE CPU.
-      </div>
-    </div>
-
-    <div class="selection-actions">
-      <button id="back-btn" class="nav-btn" onclick="handleBackStep()" disabled>
-        BACK
-      </button>
-
-      <button id="confirm-btn" class="action-btn" onclick="handleConfirmStep()">
-        CONFIRM P1
-      </button>
-
-      <button id="start-game-btn" class="action-btn start-glow" onclick="validateAndStartMatch()" hidden>
-        START GAME
-      </button>
-
-     <div class="sim-controls"
-     style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
-
-  <button id="ichigo-train-btn"
-          type="button"
-          class="action-btn">
-    TRAIN ICHIGO
-  </button>
-
-  <label for="sim-count-select">Test matches:</label>
-
-  <select id="sim-count-select">
-    <option value="10" selected>10 Matches</option>
-    <option value="20">20 Matches</option>
-    <option value="50">50 Matches</option>
-    <option value="100">100 Matches</option>
-  </select>
-
-  <button id="policy-sim-btn"
-          type="button"
-          class="action-btn sim-btn">
-    SIMULATE MATCHES
-  </button>
-</div>
-    </div>
-  </section>
-
-  <!-- Screen 3: Match Transition Splash Screen -->
-  <section id="match-transition-screen" class="splash-screen" hidden>
-    <div class="splash-content">
-      <h1 id="splash-round-text">GET READY!</h1>
-      <h2 id="splash-names-text"></h2>
-    </div>
-  </section>
-
-  <!-- Screen 4: Live Battle Viewport & Dual Control Screen -->
-  <section id="battle-screen" class="screen-container" hidden>
-    <!-- Top HUD Bar: Names, LP, Chi, Faint, Round Timer -->
-    <div id="battle-hud" class="hud-bar"></div>
-
-    <!-- Center Battle Announcement Banners -->
-    <div id="battle-message" class="battle-banner" hidden></div>
-    <div id="center-action-label" class="action-sub-banner" hidden></div>
-
-    <!-- Center Viewport: Video/Sprite Display & Action Cutscene Container -->
-    <div id="battle-viewport" class="battle-viewport"></div>
-
-    <!-- Bottom Controls: Dual Virtual D-Pads for P1 and P2 -->
-    <div id="human-control-panel" class="dual-controls-panel"></div>
-  </section>
-
-  <!-- Monte Carlo Simulation Results Modal Dialog -->
-  <div id="sim-modal" class="sim-modal" hidden>
-    <div class="sim-modal-content">
-      <h2 style="color:#00ffcc;text-align:center">SIMULATION RESULTS</h2>
-      <div id="sim-results-body"></div>
-
-      <div style="display:flex; justify-content:center; gap:10px; margin-top:15px;">
-        <button id="btn-export-ichigo" class="nav-btn" style="background:#0088cc; color:#fff; border:1px solid #00aaff;">
-          📥 EXPORT ICHIGO WEIGHTS
-        </button>
-        <button id="btn-close-sim-modal" class="nav-btn">CLOSE</button>
-      </div>
-    </div>
-  </div>
-
-  <noscript>This game requires JavaScript.</noscript>
-
-  <!-- Inline Dynamic DOM Template Builder -->
-  <script>
-    (function () {
-      const slots = ["p1", "p2"];
-
-      /** Generates VS Screen Rider selection card template. */
-      function card(slot, index) {
-        return `
-          <div id="${slot}-card" class="rider-card ${index === 0 ? "active-slot" : "locked-slot"}">
-            <h2>PLAYER ${index + 1}</h2>
-
-            <div class="portrait-box">
-              <img id="${slot}-img" src="assets/images/icons/ichigo.png" alt="Player ${index + 1} rider">
-            </div>
-
-            <h3 id="${slot}-name-display">Kamen Rider Ichigo</h3>
-
-            <div class="card-controls">
-              <button id="${slot}-left-btn" onclick="cycleRider('${slot}', -1)">&lt;</button>
-              <span id="${slot}-type-display" class="type-badge" onclick="toggleControlType('${slot}')">
-                ${index === 0 ? "HUMAN" : "CPU"}
-              </span>
-              <button id="${slot}-right-btn" onclick="cycleRider('${slot}', 1)">&gt;</button>
-            </div>
-
-            <div class="difficulty-control-group">
-              <span class="diff-label">DIFFICULTY:</span>
-              <span id="${slot}-diff-display" class="diff-badge" onclick="toggleDifficulty('${slot}')">
-                ${index === 0 ? "N/A" : "BALANCED"}
-              </span>
-            </div>
-          </div>
-        `;
-      }
-
-      /** Generates top battle HUD template. */
-      function hud(slot) {
-        return `
-          <div class="player-hud ${slot}-hud">
-            <h2 id="${slot}-name"></h2>
-
-            <div class="stat-line">
-              <span id="${slot}-lp" class="stat-value-styled"></span>
-            </div>
-
-            <div class="stat-line">
-              <span id="${slot}-chi" class="stat-value-styled"></span>
-            </div>
-
-            <div class="chi-bar-wrapper">
-              <div id="${slot}-chi-bar-fill" class="chi-bar-fill"></div>
-            </div>
-
-            <div class="faint-bar-wrapper">
-              <span class="faint-label">FAINT</span>
-              <div class="faint-track">
-                <div id="${slot}-faint-fill" class="faint-fill"></div>
-              </div>
-            </div>
-
-            <div id="${slot}-status" class="status-tag" hidden></div>
-            <div id="${slot}-buff-tray" class="buff-tray"></div>
-          </div>
-        `;
-      }
-
-      /** Generates center battle video/sprite viewport template. */
-      function viewport(slot) {
-        return `
-          <div class="player-box" id="${slot}-box">
-            <div id="${slot}-stun-overlay" class="stun-overlay" hidden>FAINTED!</div>
-
-            <video id="${slot}-video" autoplay muted playsinline loop></video>
-            <img id="${slot}-sprite" alt="Rider portrait" hidden>
-
-            <div class="player-charge-container">
-              <div class="player-charge-track">
-                <div id="${slot}-charge-fill" class="player-charge-fill" style="width:0%"></div>
-                <span id="${slot}-charge-text" class="player-charge-text">READY</span>
-              </div>
-            </div>
-          </div>
-        `;
-      }
-
-      /** Generates virtual controller D-pad input layout template. */
-      function controls(slot, index) {
-        const keys = ["W", "A", "S", "D", "I", "J", "K", "L"];
-        const p2Labels = {
-          W: "▲", A: "◄", S: "▼", D: "►",
-          I: "5", J: "1", K: "2", L: "3"
-        };
-
-        const buttons = keys.map(key => {
-          const direction = "WASD".includes(key);
-          const id = index === 0 ? `key-${key}` : `p2-key-${key}`;
-
-          return `
-            <button id="${id}"
-                    class="pad-btn ${slot}-${direction ? "btn" : "act"} ${direction ? "dir-btn" : "act-btn"}">
-              ${index === 0 ? key : p2Labels[key]}
-            </button>
-          `;
-        }).join("");
-
-        return `
-          <div id="${slot}-controls" class="compact-pad-container ${slot}-side">
-            <div class="pad-label">
-              ${index === 0 ? "PLAYER 1 [W-A-S-D + I-J-K-L]" : "PLAYER 2 [ARROWS + 1-2-3-5]"}
-            </div>
-
-            <div class="charge-bar-wrapper">
-              <div id="${index === 0 ? "charge-status-display" : "p2-charge-status-display"}" class="charge-status">
-                HOLD DIRECTION TO CHARGE
-              </div>
-
-              <div id="${slot}-action-flag" class="action-flag" hidden>LOCKED!</div>
-            </div>
-
-            <div class="pad-grid-4x2">${buttons}</div>
-          </div>
-        `;
-      }
-
-      // Inject generated template layouts into structural DOM containers
-      document.getElementById("selection-layout").innerHTML =
-        card("p1", 0) + '<div class="vs-divider">VS</div>' + card("p2", 1);
-
-      document.getElementById("battle-hud").innerHTML =
-        hud("p1") +
-        `<div class="center-hud">
-           <div id="turn-display" class="round-title">ROUND 1</div>
-           <div id="turn-timer" class="timer-display">TIME: 8.0s</div>
-         </div>` +
-        hud("p2");
-
-      document.getElementById("battle-viewport").innerHTML =
-        viewport("p1") +
-        `<div class="center-action-box" id="center-box" hidden>
-           <video id="center-video" autoplay muted playsinline></video>
-         </div>` +
-        viewport("p2");
-
-      document.getElementById("human-control-panel").innerHTML =
-        slots.map(controls).join("");
-    })();
-  </script>
-
-  <!-- 1. Shared Constants, Deterministic PRNG & Core Rules Engine -->
-  <script src="js/common.js"></script>
-  <script src="js/combat_core.js"></script>
-
-  <!-- 2. AI Heuristic Brains & Expectimax Search Engine -->
-  <script src="js/rider_brains.js"></script>
-  <script src="js/foresee_engine.js"></script>
-  <script src="js/ai.js"></script>
-
-  <!-- 3. Media Preloader & UI Renderer Modules -->
-  <script src="js/media.js"></script>
-  <script src="js/ui.js"></script>
-
-  <!-- 4. Runtime Controllers, Live Playback Adapter & Simulation Engine -->
-  <script src="js/cpu_controller.js"></script>
-  <script src="js/combat_engine.js"></script>
-  <script src="js/match_manager.js"></script>
-  <script src="js/simulator.js"></script>
-
-  <!-- 5. AI Agent (load AFTER simulator so it can attach logger safely) -->
-  <script src="js/agent_ichigo.js"></script>
-
-  <!-- 6. Screen Navigation & Application Bootstrapper -->
-  <script src="js/vs_select.js"></script>
-  <script src="js/game.js"></script>
-
-  <!-- 7. Deferred Agent initialization guard & Export button listener -->
-  <script>
-    (function () {
-      document.addEventListener('DOMContentLoaded', function () {
-        const btn = document.getElementById('btn-export-ichigo');
-        if (btn) {
-          btn.addEventListener('click', function () {
-            if (window.AgentIchigo && typeof window.AgentIchigo.exportWeights === 'function') {
-              window.AgentIchigo.exportWeights();
-            } else {
-              alert('AgentIchigo not ready or no weights available yet.');
-            }
-          });
-        }
-      });
-
-      function tryAttachAgentLogger() {
-        try {
-          if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
-            window.AgentIchigo.attachSimulatorLogger();
-            console.log('[AgentIchigo] attachSimulatorLogger invoked (deferred).');
-          } else {
-            let tries = 0;
-            const maxTries = 10;
-            const iv = setInterval(() => {
-              tries++;
-              if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
-                window.AgentIchigo.attachSimulatorLogger();
-                console.log('[AgentIchigo] attachSimulatorLogger invoked (delayed).');
-                clearInterval(iv);
-              } else if (tries >= maxTries) {
-                clearInterval(iv);
-                console.warn('[AgentIchigo] attachSimulatorLogger could not be invoked (Agent not loaded).');
-              }
-            }, 200);
-          }
-        } catch (err) {
-          console.warn('[AgentIchigo] deferred attach error', err);
-        }
-      }
-
-      setTimeout(tryAttachAgentLogger, 50);
-    })();
-  </script>
-<script src="js/training_ui.js"></script>
-  <!-- 8. Automated Unit Tests & Benchmarking Suite -->
-  <script src="js/combat_tests.js"></script>
-</body>
-</html>
+  },
+  "liveStats": {},
+  "exportedAt": "2026-09-13T15:15:51.038Z"
+}
