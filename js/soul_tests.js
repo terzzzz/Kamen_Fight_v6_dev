@@ -238,6 +238,82 @@
       );
     }
 
+// Regression tests for Part A's one-step replay implementation.
+    // These check return construction, not fighting performance.
+    {
+      const spec = E.makeSpec(data);
+
+      const observation = new Float32Array(spec.input);
+      const nextObservation = new Float32Array(spec.input);
+
+      const legal = Uint8Array.from(
+        { length: 10 },
+        () => 1
+      );
+
+      const learner = new N.Learner(
+        new N.Network(spec.input, 19)
+      );
+
+      const transition = {
+        s: observation,
+        a: 0,
+        m: legal,
+        demo: false,
+        r: 0.25,
+        s1: nextObservation,
+        m1: legal,
+        done: false
+      };
+
+      learner.accept(transition, 0);
+
+      check(
+        learner.replay.items.length === 1,
+        "One-step experience is stored immediately. " +
+        "If this fails, check Part A and reload updated scripts."
+      );
+
+      const first = learner.replay.items[0];
+
+      check(
+        first.r === 0.25 &&
+        first.discount === E.GAMMA,
+        "Nonterminal experience retains its reward and one-step discount."
+      );
+
+      learner.accept({
+        ...transition,
+        a: 9,
+        r: -1,
+        done: true
+      }, 0);
+
+      const entries = learner.replay.items;
+
+      check(
+        entries.length === 2,
+        "Two accepted transitions produce exactly two replay entries."
+      );
+
+      check(
+        entries[0].r === 0.25 &&
+        entries[0].discount === E.GAMMA,
+        "A later terminal reward does not alter the earlier one-step return."
+      );
+
+      check(
+        entries[1].r === -1 &&
+        entries[1].discount === 0,
+        "Terminal experience has no bootstrap value."
+      );
+
+      check(
+        learner.queue.length === 0,
+        "No transitions remain queued after terminal experience."
+      );
+    }
+
     return { passed };
   };
 })(window);
