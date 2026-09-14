@@ -21,13 +21,11 @@
 
         let a;
 
-        if (!net || options.guide) {
-          a = teacher(observation, m);
-        } else if (rng() < (options.epsilon || 0)) {
-          a = N.randomAction(m, rng);
-        } else {
-          a = N.argmax(net.predict(s), m);
-        }
+if (!net || options.guide) {
+  a = options.guide && typeof options.teacher === "function"
+    ? options.teacher(e, slot)
+    : teacher(observation, m);
+}
 
         if (!m[a]) {
           throw new Error("Controller selected an unavailable action.");
@@ -139,16 +137,35 @@
       }
 
       const e = E.create(state, previousActions);
+const guidedRound = choices() < guideProbability;
+let trainingTeacher = null;
 
+if (guidedRound && opponentMode !== "mixed") {
+  if (!g.KF_AI?.choose) {
+    throw new Error("Search guidance requires the search AI modules.");
+  }
+
+  const demonstration = g.KF_AI.choose({
+    state: C.copyState(state),
+    slot: learnerSlot,
+    history,
+    difficulty: K.difficulty(opponentMode),
+    disableAgent: true,
+    seed: K.hash(seed, "training-teacher", state.round, learnerSlot)
+  });
+
+  trainingTeacher = E.planned(demonstration.action);
+}
       const learner = reactor(
         spec,
         net,
         K.rng(K.hash(seed, "controller", state.round, learnerSlot)),
-        {
-          epsilon,
-          guide: choices() < guideProbability,
-          style: "reactive"
-        }
+{
+  epsilon,
+  guide: guidedRound,
+  teacher: trainingTeacher,
+  style: "reactive"
+}
       );
 
       let opponentAct;
