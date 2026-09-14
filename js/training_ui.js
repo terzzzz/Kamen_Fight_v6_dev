@@ -2,13 +2,17 @@
 (function (g) {
   "use strict";
 
+  const BUILD = "round-discount-master-guide-v3";
   let initialized = false;
 
   async function initialize() {
     if (initialized) return;
     initialized = true;
 
-    const dedicated = document.getElementById("soul-training-root");
+    const dedicated = document.getElementById(
+      "soul-training-root"
+    );
+
     const host = dedicated || document.createElement("dialog");
 
     if (!dedicated) {
@@ -22,9 +26,17 @@
       <h2>ICHIGO — NEURAL SOUL</h2>
 
       <p>
-        Training is headless. Live models remain unchanged until you activate
-        an evaluated candidate. Passing mechanical tests does not prove
-        that the candidate has learned to fight better.
+        Training is headless. ACTIVE is not changed by training.
+        Evaluate a candidate before activating it.
+        Mechanical tests do not prove improved fighting performance.
+      </p>
+
+      <p>
+        <strong>Trainer build:</strong> ${BUILD}<br>
+        <strong>Guided-round teacher:</strong>
+        MASTER, independent of the opponent controller.<br>
+        <strong>Reward discount clock:</strong>
+        completed combat rounds.
       </p>
 
       <div class="soul-fields">
@@ -38,59 +50,113 @@
         <label>
           Opponent controller
           <select data-field="mode">
-            <option value="mixed">Scripted warm-up — not difficulty AI</option>
-            <option value="easy" selected>Existing NOVICE search</option>
-            <option value="balanced">Existing BALANCED search</option>
-            <option value="master">Existing MASTER search — slower</option>
-            <option value="soul">Existing SOUL search — slower</option>
+            <option value="mixed">
+              Scripted warm-up — not difficulty AI
+            </option>
+            <option value="easy" selected>
+              Existing NOVICE search
+            </option>
+            <option value="balanced">
+              Existing BALANCED search
+            </option>
+            <option value="master">
+              Existing MASTER search — slower
+            </option>
+            <option value="soul">
+              Existing SOUL search — slower
+            </option>
           </select>
         </label>
 
         <label>
           Training matches
-          <input data-field="train-count" type="number"
-                 min="2" max="100000" step="1" value="500">
+          <input
+            data-field="train-count"
+            type="number"
+            min="2"
+            max="100000"
+            step="1"
+            value="500"
+          >
         </label>
 
         <label>
           Evaluation matches
-          <input data-field="eval-count" type="number"
-                 min="2" max="100000" step="2" value="100">
+          <input
+            data-field="eval-count"
+            type="number"
+            min="2"
+            max="100000"
+            step="2"
+            value="100"
+          >
         </label>
 
         <label>
           Seed
-          <input data-field="seed" type="number"
-                 min="0" max="4294967295" step="1" value="12345">
+          <input
+            data-field="seed"
+            type="number"
+            min="0"
+            max="4294967295"
+            step="1"
+            value="12345"
+          >
         </label>
       </div>
 
       <div class="soul-buttons">
-        <button data-action="train">TRAIN / RESUME CANDIDATE</button>
-        <button data-action="eval-candidate">EVALUATE CANDIDATE</button>
-        <button data-action="eval-active">EVALUATE ACTIVE</button>
-        <button data-action="promote">ACTIVATE CANDIDATE</button>
-        <button data-action="stop" disabled>STOP</button>
+        <button type="button" data-action="train">
+          TRAIN / RESUME CANDIDATE
+        </button>
+        <button type="button" data-action="eval-candidate">
+          EVALUATE CANDIDATE
+        </button>
+        <button type="button" data-action="eval-active">
+          EVALUATE ACTIVE
+        </button>
+        <button type="button" data-action="promote">
+          ACTIVATE CANDIDATE
+        </button>
+        <button type="button" data-action="stop" disabled>
+          STOP
+        </button>
       </div>
 
       <div class="soul-buttons">
-        <button data-action="export-candidate">EXPORT CANDIDATE</button>
-        <button data-action="export-active">EXPORT ACTIVE</button>
-        <button data-action="import">IMPORT AS CANDIDATE</button>
-        <button data-action="tests">RUN MECHANICAL TESTS</button>
-        ${dedicated ? "" : '<button data-action="close">CLOSE</button>'}
+        <button type="button" data-action="export-candidate">
+          EXPORT CANDIDATE
+        </button>
+        <button type="button" data-action="export-active">
+          EXPORT ACTIVE
+        </button>
+        <button type="button" data-action="import">
+          IMPORT AS CANDIDATE
+        </button>
+        <button type="button" data-action="tests">
+          RUN MECHANICAL TESTS
+        </button>
+        ${
+          dedicated
+            ? ""
+            : '<button type="button" data-action="close">CLOSE</button>'
+        }
       </div>
 
-      <input data-field="file" type="file"
-             accept=".json,application/json" hidden>
+      <input
+        data-field="file"
+        type="file"
+        accept=".json,application/json"
+        hidden
+      >
 
       <pre data-field="status"></pre>
       <pre data-field="output" aria-live="polite">Loading…</pre>
 
       <p>
-        First live use without an active neural checkpoint uses a clearly
-        labelled scripted fallback. Checkpoint imports must match this
-        game's data and controller schema.
+        Checkpoints must match this game's data and controller schema.
+        Keep an exported backup of your best model.
+        Training resumes CANDIDATE first, not ACTIVE.
       </p>
     `;
 
@@ -118,7 +184,8 @@
         color: #00ffcc;
       }
 
-      .soul-fields, .soul-buttons {
+      .soul-fields,
+      .soul-buttons {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
@@ -160,14 +227,17 @@
     document.head.appendChild(style);
 
     const field = name =>
-      host.querySelector('[data-field="' + name + '"]');
+      host.querySelector(
+        '[data-field="' + name + '"]'
+      );
 
     const action = name =>
-      host.querySelector('[data-action="' + name + '"]');
+      host.querySelector(
+        '[data-action="' + name + '"]'
+      );
 
     let worker = null;
     let busy = false;
-    let readyData = null;
     let evaluationTarget = null;
 
     const modeLabels = {
@@ -187,27 +257,31 @@
 
       field("status").textContent = [
         state.active
-          ? "ACTIVE: " + state.active.games +
-            " training matches; model " + state.active.id
+          ? "ACTIVE: " +
+            state.active.games +
+            " training matches; model " +
+            state.active.id
           : "ACTIVE: scripted fallback — no neural checkpoint activated.",
 
         state.candidate
-          ? "CANDIDATE: " + state.candidate.games +
-            " training matches; model " + state.candidate.id
+          ? "CANDIDATE: " +
+            state.candidate.games +
+            " training matches; model " +
+            state.candidate.id
           : "CANDIDATE: none.",
 
         state.storageWarning,
-        ...state.warnings
+        ...(state.warnings || [])
       ].filter(Boolean).join("\n");
 
-      host.querySelectorAll("button").forEach(b => {
-        b.disabled = busy;
+      host.querySelectorAll("button").forEach(button => {
+        button.disabled = busy;
       });
 
       host.querySelectorAll(
         "select, input:not([type=file])"
-      ).forEach(el => {
-        el.disabled = busy;
+      ).forEach(element => {
+        element.disabled = busy;
       });
 
       action("stop").disabled = !busy;
@@ -217,7 +291,8 @@
         action("export-candidate").disabled = !state.candidate;
 
         action("promote").disabled =
-          !state.candidate || !state.candidate.evaluated;
+          !state.candidate ||
+          !state.candidate.evaluated;
 
         action("eval-active").disabled = !state.active;
         action("export-active").disabled = !state.active;
@@ -236,39 +311,76 @@
         : String(r.opponent ?? "Unknown");
 
       const controller =
-        modeLabels[r.mode] || String(r.mode ?? "Unknown");
+        modeLabels[r.mode] ||
+        String(r.mode ?? "Unknown");
 
       const lines = [
         heading,
+        "Trainer build: " + (r.build || "Unavailable"),
         ""
       ];
 
       if (!training) {
         lines.push(
           "Evaluated checkpoint: " +
-            (evaluationTarget
-              ? evaluationTarget.toUpperCase()
-              : "UNKNOWN"),
-          "Model fingerprint: " + (r.weightsID ?? "Unavailable"),
+            (
+              evaluationTarget
+                ? evaluationTarget.toUpperCase()
+                : "UNKNOWN"
+            ),
+
+          "Checkpoint fingerprint: " +
+            (r.weightsID ?? "Unavailable"),
+
+          "Loaded-network fingerprint: " +
+            (r.loadedWeightsID ?? "Unavailable"),
+
           ""
         );
       }
 
       lines.push(
         "Opponent: " + opponent,
-        "Opponent controller: " + controller,
+        "Opponent controller: " + controller
+      );
+
+      if (training) {
+        lines.push(
+          "Teacher: MASTER — guided rounds only",
+          "Guided-round probability: " +
+            (100 * r.guideProbability).toFixed(1) + "%",
+
+          "Exploration probability: " +
+            (100 * r.epsilon).toFixed(1) + "%",
+
+          "Imitation coefficient: " +
+            r.imitationCoefficient.toFixed(5),
+
+          "Discount clock: completed combat rounds"
+        );
+      }
+
+      lines.push(
         "",
         "Completed: " + r.games + " / " + r.requested,
+
         "Wins / losses / draws: " +
-          r.wins + " / " + r.losses + " / " + r.draws,
+          r.wins + " / " +
+          r.losses + " / " +
+          r.draws,
+
         "Win rate: " + r.winRate.toFixed(1) + "%",
-        "Average rounds: " + r.averageRounds.toFixed(1),
-        "Matches/minute: " + r.matchesPerMinute.toFixed(1),
+
+        "Average rounds: " +
+          r.averageRounds.toFixed(1),
+
+        "Matches/minute: " +
+          r.matchesPerMinute.toFixed(1),
+
         "Decision transitions/second: " +
           r.decisionsPerSecond.toFixed(1)
       );
 
-      // These are training diagnostics, not evaluation scores.
       if (training) {
         lines.push(
           "Replay entries: " + r.replaySize,
@@ -291,21 +403,24 @@
       if (r.mode === "mixed") {
         lines.push(
           "",
-          "NOTE: This run uses the scripted warm-up mode.",
-          "It does not measure performance against an existing difficulty."
+          "NOTE: The opponent uses scripted warm-up mode.",
+          "This is not an evaluation against a search difficulty."
         );
       }
 
       if (training) {
         lines.push(
           "",
-          "Training win rate is not an unassisted evaluation score."
+          "Training win rate includes assistance and exploration.",
+          "It is not the network's unassisted evaluation score."
         );
       }
 
       lines.push("", "BREAKDOWN");
 
-      for (const [name, row] of Object.entries(r.breakdown || {})) {
+      for (
+        const [name, row] of Object.entries(r.breakdown || {})
+      ) {
         lines.push(
           name + ": " +
           row.wins + "W / " +
@@ -318,7 +433,9 @@
     }
 
     function finishWorker() {
-      if (worker) worker.terminate();
+      if (worker) {
+        worker.terminate();
+      }
 
       worker = null;
       busy = false;
@@ -349,17 +466,19 @@
 
       const ready = await g.SoulAgent.ready();
 
-      // Another click may have started a job while ready() was pending.
+      /*
+       * Another click may have started a job during ready().
+       */
       if (busy) return;
 
       const training = kind === "train";
-
       let checkpoint;
 
       if (training) {
         checkpoint =
           g.SoulAgent.snapshot("candidate") ||
           g.SoulAgent.snapshot("active");
+
       } else {
         checkpoint = g.SoulAgent.snapshot(target);
 
@@ -376,13 +495,19 @@
         100000
       );
 
-      // Evaluation alternates paired P1/P2 games.
+      /*
+       * Evaluation alternates paired P1/P2 games.
+       */
       if (!training && count % 2 !== 0) {
         count++;
         field("eval-count").value = count;
       }
 
-      const seed = numberField("seed", 0, 4294967295);
+      const seed = numberField(
+        "seed",
+        0,
+        4294967295
+      );
 
       if (location.protocol === "file:") {
         throw new Error(
@@ -394,18 +519,28 @@
       evaluationTarget = training ? null : target;
 
       refresh();
-      output("Starting " + kind + " worker…");
+
+      output(
+        "Starting " + kind + " worker…\n" +
+        "Expected build: " + BUILD
+      );
 
       try {
-        worker = new Worker(
-          new URL(
-            "js/training_worker.js?v=soul3",
-            document.baseURI
-          )
+        const workerURL = new URL(
+          "js/training_worker.js",
+          document.baseURI
         );
 
+        workerURL.searchParams.set("v", BUILD);
+
+        worker = new Worker(workerURL);
+
         worker.onerror = event => {
-          output("WORKER ERROR\n" + event.message);
+          output(
+            "WORKER ERROR\n" +
+            event.message
+          );
+
           finishWorker();
         };
 
@@ -413,6 +548,7 @@
           output(
             "WORKER ERROR\nCould not decode worker message."
           );
+
           finishWorker();
         };
 
@@ -420,11 +556,24 @@
           try {
             const message = event.data;
 
+            if (message?.build !== BUILD) {
+              throw new Error(
+                "Worker cache/version mismatch.\n" +
+                "Expected: " + BUILD + "\n" +
+                "Received: " +
+                (message?.build || "older/unidentified worker") +
+                "\nReplace the revised files and hard-refresh."
+              );
+            }
+
             if (message.type === "progress") {
               output(formatReport(message.report));
 
             } else if (message.type === "checkpoint") {
-              g.SoulAgent.setCandidate(message.checkpoint);
+              g.SoulAgent.setCandidate(
+                message.checkpoint
+              );
+
               refresh();
 
             } else if (message.type === "done") {
@@ -436,9 +585,14 @@
                 report.games >= 2 &&
                 report.games === report.requested;
 
-              // A stopped/partial evaluation must not replace
-              // a previously completed evaluation.
-              if (evaluationTarget && completeEvaluation) {
+              /*
+               * Partial evaluations must not replace a
+               * previously completed evaluation.
+               */
+              if (
+                evaluationTarget &&
+                completeEvaluation
+              ) {
                 g.SoulAgent.recordEvaluation(
                   evaluationTarget,
                   report
@@ -450,32 +604,46 @@
               if (training) {
                 ending =
                   "\n\nCandidate saved in memory/browser storage. " +
-                  "Evaluate it against the target difficulty " +
-                  "before activation.";
+                  "ACTIVE was not changed by this training job. " +
+                  "Evaluate before activation.";
+
               } else if (!completeEvaluation) {
                 ending =
-                  "\n\nEvaluation incomplete. This partial run was " +
-                  "not saved as a completed evaluation. " +
-                  "Run a full evaluation before comparing models.";
+                  "\n\nEvaluation incomplete. " +
+                  "This partial result was not saved as " +
+                  "a completed evaluation.";
+
               } else {
                 ending =
-                  "\n\nEvaluation finished. Compare ACTIVE and " +
-                  "CANDIDATE using the same opponent, controller, " +
-                  "seed, and match count. Repeat the comparison " +
-                  "with additional seeds before judging improvement.";
+                  "\n\nEvaluation finished. " +
+                  "Compare checkpoints using the same opponent, " +
+                  "controller, seed, and match count.";
               }
 
-              // Render before finishWorker() clears evaluationTarget.
-              output(formatReport(report) + ending);
+              /*
+               * Render before finishWorker clears the target.
+               */
+              output(
+                formatReport(report) + ending
+              );
 
               finishWorker();
 
             } else if (message.type === "error") {
-              output("JOB ERROR\n" + message.error);
+              output(
+                "JOB ERROR\n" +
+                message.error
+              );
+
               finishWorker();
             }
+
           } catch (error) {
-            output("ERROR\n" + error.message);
+            output(
+              "ERROR\n" +
+              error.message
+            );
+
             finishWorker();
           }
         };
@@ -483,6 +651,7 @@
         worker.postMessage({
           type: "start",
           job: {
+            build: BUILD,
             kind,
             data: ready.data,
             checkpoint,
@@ -504,8 +673,9 @@
         host.showModal();
       }
 
-      const selectedCount =
-        document.getElementById("sim-count-select");
+      const selectedCount = document.getElementById(
+        "sim-count-select"
+      );
 
       if (selectedCount && !busy) {
         field("eval-count").value = selectedCount.value;
@@ -515,15 +685,20 @@
     }
 
     host.addEventListener("cancel", event => {
-      if (busy) event.preventDefault();
+      if (busy) {
+        event.preventDefault();
+      }
     });
 
     host.addEventListener("click", async event => {
-      const b = event.target.closest("[data-action]");
-      if (!b) return;
+      const button = event.target?.closest?.(
+        "[data-action]"
+      );
+
+      if (!button || button.disabled) return;
 
       try {
-        switch (b.dataset.action) {
+        switch (button.dataset.action) {
           case "train":
             await start("train");
             break;
@@ -537,7 +712,9 @@
             break;
 
           case "stop":
-            worker?.postMessage({ type: "stop" });
+            worker?.postMessage({
+              type: "stop"
+            });
 
             output(
               field("output").textContent +
@@ -571,20 +748,31 @@
             busy = true;
             refresh();
 
-            output("Running mechanical and learning-component tests…");
+            output(
+              "Running mechanical and learning-component tests…"
+            );
 
             try {
+              if (typeof g.runSoulTests !== "function") {
+                throw new Error(
+                  "The soul_tests.js module is not loaded."
+                );
+              }
+
               const result = await g.runSoulTests();
 
               output(
-                "SOUL TESTS: " + result.passed + " passed.\n\n" +
-                "Mechanical tests passed; fighting improvement not tested.\n\n" +
-                "These tests check implementation behavior. " +
-                "They do not demonstrate that training improves " +
-                "win rate against NOVICE, BALANCED, MASTER, or SOUL.\n\n" +
-                "Use matched ACTIVE-versus-CANDIDATE evaluations " +
-                "against your actual target difficulty to assess improvement."
+                "SOUL TESTS: " +
+                result.passed +
+                " passed.\n\n" +
+
+                "Mechanical/component tests passed. " +
+                "Fighting improvement was not tested.\n\n" +
+
+                "These checks do not establish that the " +
+                "revised training process improves win rate."
               );
+
             } finally {
               busy = false;
               refresh();
@@ -592,56 +780,80 @@
             break;
 
           case "close":
-            if (!busy) host.close();
+            if (!busy) {
+              host.close();
+            }
             break;
         }
 
       } catch (error) {
-        output("ERROR\n" + error.message);
-        refresh();
-      }
-    });
-
-    field("file").addEventListener("change", async event => {
-      const file = event.target.files[0];
-      if (!file || busy) return;
-
-      try {
-        if (file.size > 15 * 1024 * 1024) {
-          throw new Error(
-            "Checkpoint file is unexpectedly large."
-          );
-        }
-
-        await g.SoulAgent.ready();
-
-        const payload = JSON.parse(await file.text());
-        g.SoulAgent.importCandidate(payload);
-
-        refresh();
-
         output(
-          "Checkpoint imported as candidate. " +
-          "Evaluate against the target difficulty before activation."
+          "ERROR\n" +
+          error.message
         );
 
-      } catch (error) {
-        output("IMPORT ERROR\n" + error.message);
-
-      } finally {
-        event.target.value = "";
+        refresh();
       }
     });
+
+    field("file").addEventListener(
+      "change",
+      async event => {
+        const input = event.target;
+        const file = input.files[0];
+
+        if (!file || busy) {
+          input.value = "";
+          return;
+        }
+
+        busy = true;
+        refresh();
+
+        try {
+          if (file.size > 15 * 1024 * 1024) {
+            throw new Error(
+              "Checkpoint file is unexpectedly large."
+            );
+          }
+
+          await g.SoulAgent.ready();
+
+          const payload = JSON.parse(
+            await file.text()
+          );
+
+          g.SoulAgent.importCandidate(payload);
+
+          output(
+            "Checkpoint imported as CANDIDATE.\n\n" +
+            "ACTIVE was not changed. " +
+            "TRAIN / RESUME will continue this imported candidate."
+          );
+
+        } catch (error) {
+          output(
+            "IMPORT ERROR\n" +
+            error.message
+          );
+
+        } finally {
+          input.value = "";
+          busy = false;
+          refresh();
+        }
+      }
+    );
 
     /*
      * Capture phase prevents legacy handlers from also starting
-     * evolutionary training or the old simulation path.
+     * older training or simulation paths.
      */
     document.addEventListener("click", event => {
-      const target = event.target.closest?.(
+      const target = event.target?.closest?.(
         "#ichigo-train-btn, #policy-sim-btn, " +
-        "#btn-simulate-matches, #btn-simulate, #simulate-btn, " +
-        "#btn-export-ichigo"
+        "#btn-simulate-matches, #btn-simulate, " +
+        "#simulate-btn, #btn-export-ichigo"
       );
 
       if (!target) return;
@@ -652,10 +864,12 @@
       if (target.id === "btn-export-ichigo") {
         try {
           g.SoulAgent.download("active");
+
         } catch (error) {
           openTools();
           output(error.message);
         }
+
       } else {
         openTools();
       }
@@ -664,7 +878,27 @@
     g.handleSimulateMatches = openTools;
 
     try {
-      readyData = await g.SoulAgent.ready();
+      /*
+       * Prevent a new UI from silently using old page modules.
+       * Worker dependencies are checked separately in the worker.
+       */
+      if (
+        g.SoulNN?.BUILD !== BUILD ||
+        g.SoulSim?.BUILD !== BUILD
+      ) {
+        throw new Error(
+          "Page module cache/version mismatch.\n" +
+          "Expected build: " + BUILD + "\n" +
+          "neural_core.js: " +
+          (g.SoulNN?.BUILD || "older/unidentified") + "\n" +
+          "soul_sim.js: " +
+          (g.SoulSim?.BUILD || "older/unidentified") + "\n\n" +
+          "Replace all four revised files and hard-refresh. " +
+          "Do not clear browser checkpoint storage."
+        );
+      }
+
+      const readyData = await g.SoulAgent.ready();
 
       for (const rider of readyData.data.riders) {
         const option = document.createElement("option");
@@ -676,31 +910,42 @@
       }
 
       output(
-        "Ready.\n\n" +
-        "1. Run mechanical tests. Passing does not prove better fighting.\n" +
-        "2. Select the actual target opponent and difficulty " +
-          "(NOVICE is the default).\n" +
-        "3. Evaluate the ACTIVE model as a baseline, if available.\n" +
-        "4. Train the candidate against that target difficulty.\n" +
-        "5. Evaluate the CANDIDATE using the same opponent, " +
-          "controller, seed, and match count as ACTIVE.\n" +
-        "6. Repeat matched evaluations with additional seeds.\n" +
-        "7. Activate only after the candidate demonstrates improvement " +
-          "and passes the activation checks.\n\n" +
-        "Scripted warm-up is not mixed-difficulty training.\n\n" +
-        "TRAIN / RESUME continues the existing candidate first. " +
-        "If there is no candidate, it starts from ACTIVE when available.\n\n" +
-        "A resumed job keeps weights and counters; " +
-        "replay memory and Adam state restart."
+        "Ready.\n" +
+        "Trainer build: " + BUILD + "\n\n" +
+
+        "Guided-round teacher: MASTER in every opponent mode.\n" +
+        "Evaluation: no guidance, exploration, or learning.\n" +
+        "Minimum demonstration imitation coefficient: 0.02.\n" +
+        "Discounting: once per completed combat round.\n\n" +
+
+        "For this revision, import your saved best checkpoint " +
+        "as CANDIDATE before training. " +
+        "Do not resume an already-degraded candidate.\n\n" +
+
+        "TRAIN / RESUME continues CANDIDATE first. " +
+        "It uses ACTIVE only when no candidate exists.\n\n" +
+
+        "Resuming preserves network weights and counters. " +
+        "Replay memory and Adam state still restart.\n\n" +
+
+        "Scripted warm-up describes the opponent, not the teacher. " +
+        "It is not mixed-difficulty search training.\n\n" +
+
+        "Keep your best exported checkpoint. " +
+        "This revision does not automatically roll back " +
+        "a candidate that loses performance."
       );
 
       refresh();
 
     } catch (error) {
-      output("INITIALIZATION ERROR\n" + error.message);
+      output(
+        "INITIALIZATION ERROR\n" +
+        error.message
+      );
 
-      host.querySelectorAll("button").forEach(b => {
-        b.disabled = true;
+      host.querySelectorAll("button").forEach(button => {
+        button.disabled = true;
       });
 
       if (action("close")) {
@@ -710,7 +955,10 @@
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initialize);
+    document.addEventListener(
+      "DOMContentLoaded",
+      initialize
+    );
   } else {
     void initialize();
   }
