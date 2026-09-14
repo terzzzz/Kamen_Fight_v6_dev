@@ -1,6 +1,17 @@
-/* js/soul_sim.js */
+/* js/soul_sim.js
+ *
+ * Revised:
+ * - MASTER is the guided-round teacher in every opponent mode.
+ * - Opponent difficulty remains independent of teacher difficulty.
+ * - Rewards and bootstrapping use completed-round discounts.
+ * - Evaluation remains unguided when guideProbability is zero.
+ */
 (function (g) {
   "use strict";
+
+  const BUILD = "round-discount-master-guide-v3";
+  const TEACHER_DIFFICULTY = "master";
+  const SHAPING_SCALE = 0.2;
 
   const E = g.SoulEnv;
   const N = g.SoulNN;
@@ -9,17 +20,22 @@
 
   function reactor(spec, net, rng, options = {}) {
     const frames = new E.Frames(spec);
-    const teacher = E.scripted(rng, options.style || "reactive");
+    const scriptedTeacher = E.scripted(
+      rng,
+      options.style || "reactive"
+    );
 
     return {
       decide(e, slot) {
-        if (!E.isDecision(e) || e.cells[slot].locked) return null;
+        if (!E.isDecision(e) || e.cells[slot].locked) {
+          return null;
+        }
 
         const observation = E.observe(e, slot);
         const s = frames.push(E.vector(observation, spec));
         const m = E.mask(e, slot);
 
-       let a;
+        let a;
         const guided = !net || Boolean(options.guide);
 
         if (guided) {
@@ -29,7 +45,7 @@
 
           a = customTeacher
             ? options.teacher(e, slot)
-            : teacher(observation, m);
+            : scriptedTeacher(observation, m);
 
         } else if (rng() < (options.epsilon || 0)) {
           a = N.randomAction(m, rng);
@@ -54,7 +70,7 @@
           s,
           m,
           a,
-          demo: !!options.guide
+          demo: Boolean(options.guide)
         };
       }
     };
@@ -63,8 +79,10 @@
   function potential(state, slot) {
     const enemy = C.other(slot);
 
-    return state[slot].lp / state[slot].maxLp -
-      state[enemy].lp / state[enemy].maxLp;
+    return (
+      state[slot].lp / state[slot].maxLp -
+      state[enemy].lp / state[enemy].maxLp
+    );
   }
 
   function remember(history, state, selected) {
@@ -74,20 +92,16 @@
         p1: { ...selected.p1 },
         p2: { ...selected.p2 },
         fainted: {
-          p1: !!state.p1.isFainted,
-          p2: !!state.p2.isFainted
+          p1: Boolean(state.p1.isFainted),
+          p2: Boolean(state.p2.isFainted)
         }
       }
     ].slice(-24);
   }
 
   /*
-   * Yields transitions and periodic clock events.
-   * No wall-clock delay occurs here.
-   *
-   * options:
-   * data, spec, net, learnerSlot, opponent,
-   * opponentMode, opponentNet, seed, epsilon, guideProbability
+   * Yields controller transitions and periodic clock events.
+   * No wall-clock delay occurs inside this generator.
    */
   function* episode(options) {
     const {
@@ -103,8 +117,13 @@
       guideProbability = 0
     } = options;
 
-    const ichigo = data.riders.find(r => r.id === "ichigo");
-    if (!ichigo) throw new Error("Ichigo is missing from active riders.");
+    const ichigo = data.riders.find(
+      rider => rider.id === "ichigo"
+    );
+
+    if (!ichigo) {
+      throw new Error("Ichigo is missing from active riders.");
+    }
 
     const enemySlot = C.other(learnerSlot);
 
@@ -124,6 +143,35 @@
     let ticks = 0;
 
     function closeTransition(next, terminal) {
+      if (!pending) {
+        throw new Error("Cannot close an empty transition.");
+      }
+
+      /*
+       * Count resolved combat rounds, not controller decisions.
+       *
+       * Repeated WAIT/direction inputs within one round therefore
+       * do not further discount an eventual loss.
+       *
+       * This also counts skipped decision opportunities when the
+       * learner is fainted, and counts the terminal resolution.
+       */
+      const elapsedRounds = rounds - pending.completedRounds;
+
+      if (
+        !Number.isSafeInteger(elapsedRounds) ||
+        elapsedRounds < 0
+      ) {
+        throw new Error("Invalid completed-round transition.");
+      }
+
+      const roundDiscount = Math.pow(
+        E.GAMMA,
+        elapsedRounds
+      );
+
+      const discount = terminal ? 0 : roundDiscount;
+
       const nextPotential = terminal
         ? 0
         : potential(state, learnerSlot);
@@ -132,59 +180,99 @@
         ? 0
         : state.winner === "draw"
           ? 0
-          : state.winner === learnerSlot ? 1 : -1;
+          : state.winner === learnerSlot
+            ? 1
+            : -1;
 
       return {
         s: pending.s,
         a: pending.a,
         m: pending.m,
         demo: pending.demo,
-        r: terminalReward +
-          0.2 * (
-            (terminal ? 0 : E.GAMMA * nextPotential) -
-            pending.phi
+
+        /*
+         * Outcome and potential shaping use the same round clock.
+         * Terminal transitions have no bootstrap.
+         */
+        r:
+          roundDiscount * terminalReward +
+          SHAPING_SCALE * (
+            discount * nextPotential - pending.phi
           ),
-        s1: next ? next.s : new Float32Array(spec.input),
-        m1: next ? next.m : Uint8Array.from([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+
+        discount,
+
+        s1: next
+          ? next.s
+          : new Float32Array(spec.input),
+
+        m1: next
+          ? next.m
+          : Uint8Array.from([
+              1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ]),
+
         done: terminal
       };
     }
 
     while (!state.winner) {
       if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) {
-        throw new Error("Headless match exceeded the round limit.");
+        throw new Error(
+          "Headless match exceeded the round limit."
+        );
       }
 
       const e = E.create(state, previousActions);
-const guidedRound = choices() < guideProbability;
-let trainingTeacher = null;
+      const guidedRound = choices() < guideProbability;
 
-if (guidedRound && opponentMode !== "mixed") {
-  if (!g.KF_AI?.choose) {
-    throw new Error("Search guidance requires the search AI modules.");
-  }
+      let trainingTeacher = null;
 
-  const demonstration = g.KF_AI.choose({
-    state: C.copyState(state),
-    slot: learnerSlot,
-    history,
-    difficulty: K.difficulty(opponentMode),
-    disableAgent: true,
-    seed: K.hash(seed, "training-teacher", state.round, learnerSlot)
-  });
+      /*
+       * Teacher selection is independent of opponentMode.
+       * Scripted/NOVICE opponents do not downgrade the teacher.
+       */
+      if (guidedRound) {
+        if (!g.KF_AI?.choose) {
+          throw new Error(
+            "MASTER guidance requires the search AI modules."
+          );
+        }
 
-  trainingTeacher = E.planned(demonstration.action);
-}
+        const demonstration = g.KF_AI.choose({
+          state: C.copyState(state),
+          slot: learnerSlot,
+          history,
+          difficulty: TEACHER_DIFFICULTY,
+          disableAgent: true,
+          seed: K.hash(
+            seed,
+            "training-teacher",
+            state.round,
+            learnerSlot
+          )
+        });
+
+        trainingTeacher = E.planned(demonstration.action);
+      }
+
       const learner = reactor(
         spec,
         net,
-        K.rng(K.hash(seed, "controller", state.round, learnerSlot)),
-{
-  epsilon,
-  guide: guidedRound,
-  teacher: trainingTeacher,
-  style: "reactive"
-}
+        K.rng(
+          K.hash(
+            seed,
+            "controller",
+            state.round,
+            learnerSlot
+          )
+        ),
+        {
+          epsilon,
+          guide: guidedRound,
+          teacher: trainingTeacher,
+          style: "reactive"
+        }
       );
 
       let opponentAct;
@@ -193,12 +281,28 @@ if (guidedRound && opponentMode !== "mixed") {
         const actor = reactor(
           spec,
           opponentNet,
-          K.rng(K.hash(seed, "controller", state.round, enemySlot))
+          K.rng(
+            K.hash(
+              seed,
+              "controller",
+              state.round,
+              enemySlot
+            )
+          )
         );
 
-        opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
+        opponentAct = env =>
+          actor.decide(env, enemySlot)?.a ?? 0;
+
       } else if (opponentMode === "mixed") {
-        const styles = ["reactive", "aggressive", "guard", "feint", "random"];
+        const styles = [
+          "reactive",
+          "aggressive",
+          "guard",
+          "feint",
+          "random"
+        ];
+
         const style = styles[
           K.hash(seed, "style", state.round) % styles.length
         ];
@@ -206,32 +310,51 @@ if (guidedRound && opponentMode !== "mixed") {
         const actor = reactor(
           spec,
           null,
-          K.rng(K.hash(seed, "controller", state.round, enemySlot)),
+          K.rng(
+            K.hash(
+              seed,
+              "controller",
+              state.round,
+              enemySlot
+            )
+          ),
           { style }
         );
 
-        opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
+        opponentAct = env =>
+          actor.decide(env, enemySlot)?.a ?? 0;
+
       } else {
         if (!g.KF_AI?.choose) {
           throw new Error("Search AI modules are not loaded.");
         }
 
-        // Uses existing search difficulty, not the old linear learner.
+        /*
+         * Only this opponent call uses the selected difficulty.
+         */
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
           history,
           difficulty: K.difficulty(opponentMode),
           disableAgent: true,
-          seed: K.hash(seed, "decision", state.round, enemySlot)
+          seed: K.hash(
+            seed,
+            "decision",
+            state.round,
+            enemySlot
+          )
         });
 
         const planned = E.planned(decision.action);
+
         opponentAct = env => planned(env, enemySlot);
       }
 
       while (!e.done) {
-        // Both observe the same pre-input state.
+        /*
+         * Both controllers observe the same pre-input state.
+         */
         const ownDecision = learner.decide(e, learnerSlot);
         const opposingAction = opponentAct(e);
 
@@ -239,13 +362,17 @@ if (guidedRound && opponentMode !== "mixed") {
           if (pending) {
             yield {
               type: "transition",
-              transition: closeTransition(ownDecision, false)
+              transition: closeTransition(
+                ownDecision,
+                false
+              )
             };
           }
 
           pending = {
             ...ownDecision,
-            phi: potential(state, learnerSlot)
+            phi: potential(state, learnerSlot),
+            completedRounds: rounds
           };
         }
 
@@ -257,11 +384,16 @@ if (guidedRound && opponentMode !== "mixed") {
         const rejected = E.step(e, inputs);
 
         if (rejected.length) {
-          throw new Error("Illegal input in headless controller.");
+          throw new Error(
+            "Illegal input in headless controller."
+          );
         }
 
         ticks++;
-        if (ticks % 8 === 0) yield { type: "clock" };
+
+        if (ticks % 8 === 0) {
+          yield { type: "clock" };
+        }
       }
 
       const selected = E.actions(e);
@@ -274,12 +406,24 @@ if (guidedRound && opponentMode !== "mixed") {
         false
       );
 
-      history = remember(history, state, result.actions);
+      history = remember(
+        history,
+        state,
+        result.actions
+      );
+
       previousActions = result.actions;
       state = result.state;
+
+      /*
+       * Increment even when this resolution ends the match.
+       */
       rounds++;
 
-      yield { type: "round", rounds };
+      yield {
+        type: "round",
+        rounds
+      };
     }
 
     if (pending) {
@@ -291,11 +435,16 @@ if (guidedRound && opponentMode !== "mixed") {
 
     yield {
       type: "end",
-      result: { state, rounds, ticks }
+      result: {
+        state,
+        rounds,
+        ticks
+      }
     };
   }
 
   g.SoulSim = {
+    BUILD,
     reactor,
     episode
   };
