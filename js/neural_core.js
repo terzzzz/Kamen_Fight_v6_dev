@@ -329,38 +329,20 @@
     }
 
     fold() {
-      const count = Math.min(5, this.queue.length);
-      const first = this.queue[0];
+  const transition = this.queue.shift();
+  if (!transition) return;
 
-      let reward = 0;
-      let discount = 1;
-      let last = first;
-
-      for (let i = 0; i < count; i++) {
-        last = this.queue[i];
-        reward += discount * last.r;
-
-        if (last.done) {
-          discount = 0;
-          break;
-        }
-
-        discount *= this.gamma;
-      }
-
-      this.replay.add({
-        s: first.s,
-        a: first.a,
-        m: first.m,
-        demo: first.demo,
-        r: reward,
-        discount,
-        s1: last.s1,
-        m1: last.m1
-      });
-
-      this.queue.shift();
-    }
+  this.replay.add({
+    s: transition.s,
+    a: transition.a,
+    m: transition.m,
+    demo: transition.demo,
+    r: transition.r,
+    discount: transition.done ? 0 : this.gamma,
+    s1: transition.s1,
+    m1: transition.m1
+  });
+}
 
     accept(transition, imitation = 0.03) {
       this.steps++;
@@ -368,7 +350,7 @@
 
       if (transition.done) {
         while (this.queue.length) this.fold();
-      } else if (this.queue.length >= 5) {
+      } else if (this.queue.length >= 1) {
         this.fold();
       }
 
