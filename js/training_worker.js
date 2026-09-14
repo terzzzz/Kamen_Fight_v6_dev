@@ -2,14 +2,14 @@
 "use strict";
 
 importScripts(
-  "common.js?v=soul1",
-  "combat_core.js?v=soul1",
-  "rider_brains.js?v=soul1",
-  "foresee_engine.js?v=soul1",
-  "ai.js?v=soul1",
-  "charge_env.js?v=soul1",
-  "neural_core.js?v=soul1",
-  "soul_sim.js?v=soul1"
+  "common.js?v=soul3",
+  "combat_core.js?v=soul3",
+  "rider_brains.js?v=soul3",
+  "foresee_engine.js?v=soul3",
+  "ai.js?v=soul3",
+  "charge_env.js?v=soul3",
+  "neural_core.js?v=soul3",
+  "soul_sim.js?v=soul3"
 );
 
 let busy = false;
