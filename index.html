@@ -317,78 +317,37 @@
     })();
   </script>
 
-  <!-- 1. Shared Constants, Deterministic PRNG & Core Rules Engine -->
-  <script src="js/common.js"></script>
-  <script src="js/combat_core.js"></script>
+<!-- Shared game rules -->
+  <script src="js/common.js?v=soul1"></script>
+  <script src="js/combat_core.js?v=soul1"></script>
 
-  <!-- 2. AI Heuristic Brains & Expectimax Search Engine -->
-  <script src="js/rider_brains.js"></script>
-  <script src="js/foresee_engine.js"></script>
-  <script src="js/ai.js"></script>
+  <!-- Existing search AI for non-neural CPU fighters -->
+  <script src="js/rider_brains.js?v=soul1"></script>
+  <script src="js/foresee_engine.js?v=soul1"></script>
+  <script src="js/ai.js?v=soul1"></script>
+  <script src="js/cpu_controller.js?v=soul1"></script>
 
-  <!-- 3. Media Preloader & UI Renderer Modules -->
-  <script src="js/media.js"></script>
-  <script src="js/ui.js"></script>
+  <!-- Neural SOUL and shared charging environment -->
+  <script src="js/charge_env.js?v=soul1"></script>
+  <script src="js/neural_core.js?v=soul1"></script>
+  <script src="js/soul_sim.js?v=soul1"></script>
+  <script src="js/soul_agent.js?v=soul1"></script>
 
-  <!-- 4. Runtime Controllers, Live Playback Adapter & Simulation Engine -->
-  <script src="js/cpu_controller.js"></script>
-  <script src="js/combat_engine.js"></script>
-  <script src="js/match_manager.js"></script>
-  <script src="js/simulator.js"></script>
+  <!-- Existing presentation -->
+  <script src="js/media.js?v=soul1"></script>
+  <script src="js/ui.js?v=soul1"></script>
+  <script src="js/combat_engine.js?v=soul1"></script>
 
-  <!-- 5. AI Agent (load AFTER simulator so it can attach logger safely) -->
-  <script src="js/agent_ichigo.js"></script>
+  <!-- New reactive match manager -->
+  <script src="js/match_manager.js?v=soul1"></script>
 
-  <!-- 6. Screen Navigation & Application Bootstrapper -->
-  <script src="js/vs_select.js"></script>
-  <script src="js/game.js"></script>
+  <!-- Existing navigation/bootstrap -->
+  <script src="js/vs_select.js?v=soul1"></script>
+  <script src="js/game.js?v=soul1"></script>
 
-  <!-- 7. Deferred Agent initialization guard & Export button listener -->
-  <script>
-    (function () {
-      document.addEventListener('DOMContentLoaded', function () {
-        const btn = document.getElementById('btn-export-ichigo');
-        if (btn) {
-          btn.addEventListener('click', function () {
-            if (window.AgentIchigo && typeof window.AgentIchigo.exportWeights === 'function') {
-              window.AgentIchigo.exportWeights();
-            } else {
-              alert('AgentIchigo not ready or no weights available yet.');
-            }
-          });
-        }
-      });
-
-      function tryAttachAgentLogger() {
-        try {
-          if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
-            window.AgentIchigo.attachSimulatorLogger();
-            console.log('[AgentIchigo] attachSimulatorLogger invoked (deferred).');
-          } else {
-            let tries = 0;
-            const maxTries = 10;
-            const iv = setInterval(() => {
-              tries++;
-              if (window.AgentIchigo && typeof window.AgentIchigo.attachSimulatorLogger === 'function') {
-                window.AgentIchigo.attachSimulatorLogger();
-                console.log('[AgentIchigo] attachSimulatorLogger invoked (delayed).');
-                clearInterval(iv);
-              } else if (tries >= maxTries) {
-                clearInterval(iv);
-                console.warn('[AgentIchigo] attachSimulatorLogger could not be invoked (Agent not loaded).');
-              }
-            }, 200);
-          }
-        } catch (err) {
-          console.warn('[AgentIchigo] deferred attach error', err);
-        }
-      }
-
-      setTimeout(tryAttachAgentLogger, 50);
-    })();
-  </script>
-<script src="js/training_ui.js"></script>
-  <!-- 8. Automated Unit Tests & Benchmarking Suite -->
-  <script src="js/combat_tests.js"></script>
+  <!-- Tests and new training interface -->
+  <script src="js/combat_tests.js?v=soul1"></script>
+  <script src="js/soul_tests.js?v=soul1"></script>
+  <script src="js/training_ui.js?v=soul1"></script>
 </body>
 </html>
