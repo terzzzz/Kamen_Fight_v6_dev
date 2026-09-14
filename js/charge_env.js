@@ -411,31 +411,34 @@
    * Adapter for the existing pre-round search planners.
    * It still has to earn its charge through this environment.
    */
-  function planned(action) {
-    const plan = { ...action };
+function planned(action) {
+  const plan = { ...action };
 
-    return function (e, slot) {
-      const c = e.cells[slot];
+  return function (e, slot) {
+    const c = e.cells[slot];
 
-      if (c.locked || e.t < REACTION) return 0;
-      if (plan.key === "DO_NOTHING") return 9;
+    // Match the neural/scripted controller's decision schedule.
+    if (c.locked || !isDecision(e)) return 0;
 
-      const [direction, button] = plan.key.split("+");
+    if (plan.key === "DO_NOTHING") return 9;
 
-      if (c.direction !== direction) {
-        return INPUTS.indexOf(direction);
-      }
+    const [direction, button] = plan.key.split("+");
 
-      const lastTick = e.t >= limit() - STEP;
+    if (c.direction !== direction) {
+      return INPUTS.indexOf(direction);
+    }
 
-      if (c.charge >= plan.charge || lastTick) {
-        const a = INPUTS.indexOf(button);
-        return mask(e, slot)[a] ? a : 9;
-      }
+    // There will be no further decision before the deadline.
+    const lastDecision = e.t + DECISION >= limit();
 
-      return 0;
-    };
-  }
+    if (c.charge >= plan.charge || lastDecision) {
+      const a = INPUTS.indexOf(button);
+      return mask(e, slot)[a] ? a : 9;
+    }
+
+    return 0;
+  };
+}
 
   /*
    * Lightweight public-information opponent / warm-start teacher.
