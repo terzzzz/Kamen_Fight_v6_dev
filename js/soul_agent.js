@@ -149,20 +149,66 @@
     persist();
   }
 
-  function promote() {
-    if (!candidate) throw new Error("There is no candidate to activate.");
+ function promote() {
+  if (!candidate) {
+    throw new Error("There is no candidate to activate.");
+  }
+
+  function completeEvaluation(model) {
+    const report = model?.evaluation;
+
+    return !!(
+      report &&
+      !report.cancelled &&
+      report.games >= 2 &&
+      report.games === report.requested &&
+      report.weightsID === fingerprint(model)
+    );
+  }
+
+  if (!completeEvaluation(candidate)) {
+    throw new Error("Complete an evaluation of this candidate first.");
+  }
+
+  const next = candidate.evaluation;
+  const targetModes = ["easy", "balanced", "master", "soul"];
+
+  if (!targetModes.includes(next.mode)) {
+    throw new Error(
+      "Scripted performance alone cannot qualify this model. " +
+      "Evaluate against an existing difficulty."
+    );
+  }
+
+  if (next.wins === 0) {
+    throw new Error("A zero-win candidate cannot be activated.");
+  }
+
+  if (active) {
+    const baseline = active.evaluation;
+    const fields = ["opponent", "mode", "seed", "games", "requested"];
 
     if (
-      !candidate.evaluation ||
-      candidate.evaluation.games < 2 ||
-      candidate.evaluation.weightsID !== fingerprint(candidate)
+      !completeEvaluation(active) ||
+      fields.some(field => baseline[field] !== next[field])
     ) {
-      throw new Error("Evaluate this candidate before activating it.");
+      throw new Error(
+        "Evaluate the active model with the same opponent, " +
+        "difficulty, seed, and match count."
+      );
     }
 
-    active = clone(candidate);
-    persist();
+    if (next.wins <= baseline.wins) {
+      throw new Error(
+        "Candidate did not improve the matched evaluation. " +
+        "The active model has been preserved."
+      );
+    }
   }
+
+  active = clone(candidate);
+  persist();
+}
 
   function importCandidate(payload) {
     const checked = validate(payload);
