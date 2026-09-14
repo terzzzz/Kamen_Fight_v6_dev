@@ -1,488 +1,537 @@
-// js/training_ui.js
-// Separate training and evaluation controls.
-// Keeps the existing one-policy-per-opponent weight format.
-
+/* js/training_ui.js */
 (function (g) {
   "use strict";
 
-  // Training settings are independent of the simulation dropdown.
-  const POPULATION = 8;
-  const MATCHES_PER_CANDIDATE = 10;
-  const VALIDATION_MATCHES = 10;
+  let initialized = false;
 
-  let lastGenerations = 3;
-  let busy = false;
-  let jobType = null;
-  let simulationController = null;
-  let progressTimer = null;
+  async function initialize() {
+    if (initialized) return;
+    initialized = true;
 
-  const byId = id => document.getElementById(id);
+    const dedicated = document.getElementById("soul-training-root");
+    const host = dedicated || document.createElement("dialog");
 
-  const difficultyLabel = value => ({
-    easy: "NOVICE",
-    balanced: "BALANCED",
-    master: "MASTER",
-    soul: "SOUL"
-  }[value] || String(value).toUpperCase());
-
-  // A separate dialog avoids conflicts with the legacy results modal.
-  const dialog = document.createElement("dialog");
-  dialog.id = "training-tools-dialog";
-  dialog.setAttribute("aria-labelledby", "training-tools-title");
-  dialog.innerHTML = `
-    <h2 id="training-tools-title"></h2>
-
-    <pre id="training-tools-output"
-         aria-live="polite"
-         aria-atomic="true"></pre>
-
-    <div class="training-tools-actions">
-      <button id="training-tools-export"
-              type="button"
-              class="nav-btn">
-        EXPORT ICHIGO WEIGHTS
-      </button>
-
-      <button id="training-tools-cancel"
-              type="button"
-              class="nav-btn"
-              hidden>
-        CANCEL RUN
-      </button>
-
-      <button id="training-tools-close"
-              type="button"
-              class="nav-btn">
-        CLOSE
-      </button>
-    </div>
-  `;
-  document.body.appendChild(dialog);
-
-  const style = document.createElement("style");
-  style.textContent = `
-    #training-tools-dialog {
-      width: min(850px, 90vw);
-      max-height: 85vh;
-      box-sizing: border-box;
-      overflow: auto;
-      padding: 24px;
-      color: #00ffcc;
-      background: #10131c;
-      border: 2px solid #00ffcc;
-      border-radius: 14px;
-      font-family: monospace;
+    if (!dedicated) {
+      host.id = "soul-training-dialog";
+      document.body.appendChild(host);
     }
 
-    #training-tools-dialog::backdrop {
-      background: rgba(0, 0, 0, 0.8);
+    host.classList.add("soul-tools");
+
+    host.innerHTML = `
+      <h2>ICHIGO — NEURAL SOUL</h2>
+
+      <p>
+        Training is headless. Live models remain unchanged until you activate
+        an evaluated candidate.
+      </p>
+
+      <div class="soul-fields">
+        <label>
+          Opponent
+          <select data-field="opponent">
+            <option value="*">All active riders</option>
+          </select>
+        </label>
+
+        <label>
+          Opponent controller
+          <select data-field="mode">
+            <option value="mixed">Mixed scripted — fastest</option>
+            <option value="easy">Existing NOVICE search</option>
+            <option value="balanced">Existing BALANCED search</option>
+            <option value="master">Existing MASTER search — slower</option>
+            <option value="soul">Existing SOUL search — slower</option>
+          </select>
+        </label>
+
+        <label>
+          Training matches
+          <input data-field="train-count" type="number"
+                 min="2" max="100000" step="1" value="500">
+        </label>
+
+        <label>
+          Evaluation matches
+          <input data-field="eval-count" type="number"
+                 min="2" max="100000" step="2" value="100">
+        </label>
+
+        <label>
+          Seed
+          <input data-field="seed" type="number"
+                 min="0" max="4294967295" step="1" value="12345">
+        </label>
+      </div>
+
+      <div class="soul-buttons">
+        <button data-action="train">TRAIN / RESUME CANDIDATE</button>
+        <button data-action="eval-candidate">EVALUATE CANDIDATE</button>
+        <button data-action="eval-active">EVALUATE ACTIVE</button>
+        <button data-action="promote">ACTIVATE CANDIDATE</button>
+        <button data-action="stop" disabled>STOP</button>
+      </div>
+
+      <div class="soul-buttons">
+        <button data-action="export-candidate">EXPORT CANDIDATE</button>
+        <button data-action="export-active">EXPORT ACTIVE</button>
+        <button data-action="import">IMPORT AS CANDIDATE</button>
+        <button data-action="tests">RUN TESTS</button>
+        ${dedicated ? "" : '<button data-action="close">CLOSE</button>'}
+      </div>
+
+      <input data-field="file" type="file"
+             accept=".json,application/json" hidden>
+
+      <pre data-field="status"></pre>
+      <pre data-field="output" aria-live="polite">Loading…</pre>
+
+      <p>
+        First live use without an active neural checkpoint uses a clearly
+        labelled scripted fallback. Checkpoint imports must match this
+        game's data and controller schema.
+      </p>
+    `;
+
+    const style = document.createElement("style");
+    style.textContent = `
+      .soul-tools {
+        box-sizing: border-box;
+        width: min(950px, 94vw);
+        max-height: 90vh;
+        overflow: auto;
+        padding: 20px;
+        color: #e9fff9;
+        background: #10151c;
+        border: 2px solid #00d9b2;
+        border-radius: 12px;
+        font: 15px/1.5 system-ui, sans-serif;
+      }
+      dialog.soul-tools::backdrop {
+        background: rgba(0, 0, 0, .82);
+      }
+      .soul-tools h2 { color: #00ffcc; }
+      .soul-fields, .soul-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 14px 0;
+      }
+      .soul-fields label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .soul-tools input, .soul-tools select, .soul-tools button {
+        font: inherit;
+        padding: 8px;
+      }
+      .soul-tools button {
+        cursor: pointer;
+        color: #effffb;
+        background: #174b43;
+        border: 1px solid #00bda0;
+        border-radius: 5px;
+      }
+      .soul-tools button:disabled {
+        opacity: .4;
+        cursor: not-allowed;
+      }
+      .soul-tools pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+    `;
+    document.head.appendChild(style);
+
+    const field = name => host.querySelector('[data-field="' + name + '"]');
+    const action = name => host.querySelector('[data-action="' + name + '"]');
+
+    let worker = null;
+    let busy = false;
+    let readyData = null;
+    let evaluationTarget = null;
+
+    function output(text) {
+      field("output").textContent = text;
     }
 
-    #training-tools-title {
-      text-align: center;
+    function refresh() {
+      const state = g.SoulAgent.status();
+
+      field("status").textContent = [
+        state.active
+          ? "ACTIVE: " + state.active.games +
+            " training matches; model " + state.active.id
+          : "ACTIVE: scripted fallback — no neural checkpoint activated.",
+
+        state.candidate
+          ? "CANDIDATE: " + state.candidate.games +
+            " training matches; model " + state.candidate.id
+          : "CANDIDATE: none.",
+
+        state.storageWarning,
+        ...state.warnings
+      ].filter(Boolean).join("\n");
+
+      host.querySelectorAll("button").forEach(b => {
+        b.disabled = busy;
+      });
+
+      host.querySelectorAll("select, input:not([type=file])").forEach(el => {
+        el.disabled = busy;
+      });
+
+      action("stop").disabled = !busy;
+
+      if (!busy) {
+        action("eval-candidate").disabled = !state.candidate;
+        action("export-candidate").disabled = !state.candidate;
+        action("promote").disabled =
+          !state.candidate || !state.candidate.evaluated;
+
+        action("eval-active").disabled = !state.active;
+        action("export-active").disabled = !state.active;
+      }
     }
 
-    #training-tools-output {
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      color: #fff;
-      font: inherit;
-      font-size: 16px;
-      line-height: 1.65;
-    }
+    function formatReport(r) {
+      const heading = r.kind === "train"
+        ? "TRAINING RESULTS — include exploration / guided play"
+        : "EVALUATION — no exploration or learning";
 
-    .training-tools-actions {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 20px;
-    }
+      const lines = [
+        heading,
+        "",
+        "Completed: " + r.games + " / " + r.requested,
+        "Wins / losses / draws: " + r.wins + " / " + r.losses + " / " + r.draws,
+        "Win rate: " + r.winRate.toFixed(1) + "%",
+        "Average rounds: " + r.averageRounds.toFixed(1),
+        "Matches/minute: " + r.matchesPerMinute.toFixed(1),
+        "Decision transitions/second: " + r.decisionsPerSecond.toFixed(1),
+        "Replay entries: " + r.replaySize,
+        "Latest TD loss: " + r.loss.toFixed(5),
+        "Elapsed: " + r.seconds.toFixed(1) + "s",
+        "Seed: " + r.seed,
+        r.cancelled ? "Stopped. Completed results are retained." : "",
+        "",
+        "BREAKDOWN"
+      ];
 
-    #training-tools-dialog button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-  `;
-  document.head.appendChild(style);
-
-  const title = byId("training-tools-title");
-  const output = byId("training-tools-output");
-  const exportButton = byId("training-tools-export");
-  const cancelButton = byId("training-tools-cancel");
-  const closeButton = byId("training-tools-close");
-
-  function write(text) {
-    // Use textContent so names and error messages are not parsed as HTML.
-    output.textContent = text;
-  }
-
-  function refreshControls() {
-    for (const id of [
-      "ichigo-train-btn",
-      "policy-sim-btn",
-      "sim-count-select"
-    ]) {
-      const element = byId(id);
-      if (element) element.disabled = busy;
-    }
-
-    closeButton.disabled = busy;
-    cancelButton.hidden = !busy;
-    cancelButton.disabled = !busy;
-
-    exportButton.disabled =
-      busy || typeof g.AgentIchigo?.exportWeights !== "function";
-  }
-
-  function getSelection() {
-    const state = g.vsSelectionState;
-    const riders = g.AVAILABLE_RIDERS || [];
-
-    if (!state) {
-      throw new Error("Character selection is not ready.");
-    }
-
-    const p1 = riders[state.p1Index];
-    const p2 = riders[state.p2Index];
-
-    if (!p1 || !p2) {
-      throw new Error("Select both riders first.");
-    }
-
-    // These tools run CPU-versus-CPU matches.
-    if (!state.p1IsCPU || !state.p2IsCPU) {
-      throw new Error(
-        "Set both players to CPU before training or simulating."
-      );
-    }
-
-    return {
-      p1: { ...p1 },
-      p2: { ...p2 },
-      d1: state.p1Difficulty || "balanced",
-      d2: state.p2Difficulty || "balanced"
-    };
-  }
-
-  function matchup(selection) {
-    return (
-      `${selection.p1.name} (${difficultyLabel(selection.d1)})\n` +
-      `VS\n` +
-      `${selection.p2.name} (${difficultyLabel(selection.d2)})`
-    );
-  }
-
-  function validationLine(label, result) {
-    const rate = result.games
-      ? (100 * result.wins / result.games).toFixed(1)
-      : "0.0";
-
-    return (
-      `${label}: ${result.wins} wins / ` +
-      `${result.losses} losses / ${result.draws} draws\n` +
-      `Win rate: ${rate}%`
-    );
-  }
-
-  async function run(kind, event) {
-    if (event) event.preventDefault();
-    if (busy) return;
-
-    let selection;
-    let generations;
-    let opponent;
-    let opponentDifficulty;
-    let matchCount;
-
-    try {
-      if (g.AgentIchigo?.status?.().training) {
-        throw new Error("Another training run is already active.");
+      for (const [name, row] of Object.entries(r.breakdown || {})) {
+        lines.push(
+          name + ": " +
+          row.wins + "W / " +
+          row.losses + "L / " +
+          row.draws + "D"
+        );
       }
 
-      selection = getSelection();
+      return lines.filter(x => x !== undefined).join("\n");
+    }
 
-      if (kind === "train") {
-        if (
-          typeof g.AgentIchigo?.evolveForOpponent !== "function" ||
-          typeof g.AgentIchigo?.status !== "function"
-        ) {
-          throw new Error(
-            "The required AgentIchigo implementation is not loaded."
-          );
+    function finishWorker() {
+      if (worker) worker.terminate();
+      worker = null;
+      busy = false;
+      evaluationTarget = null;
+      refresh();
+    }
+
+    function numberField(name, minimum, maximum) {
+      const value = Number(field(name).value);
+
+      if (
+        !Number.isSafeInteger(value) ||
+        value < minimum ||
+        value > maximum
+      ) {
+        throw new Error(
+          name + " must be an integer from " + minimum + " to " + maximum
+        );
+      }
+
+      return value;
+    }
+
+    async function start(kind, target = "candidate") {
+      if (busy) return;
+
+      const ready = await g.SoulAgent.ready();
+      const training = kind === "train";
+
+      let checkpoint;
+
+      if (training) {
+        checkpoint =
+          g.SoulAgent.snapshot("candidate") ||
+          g.SoulAgent.snapshot("active");
+      } else {
+        checkpoint = g.SoulAgent.snapshot(target);
+
+        if (!checkpoint) {
+          throw new Error("No " + target + " checkpoint exists.");
         }
+      }
 
-        const learnerIsP1 =
-          selection.p1.id === "ichigo" && selection.d1 === "soul";
+      let count = numberField(
+        training ? "train-count" : "eval-count",
+        2,
+        100000
+      );
 
-        const learnerIsP2 =
-          selection.p2.id === "ichigo" && selection.d2 === "soul";
+      // Evaluation alternates paired P1/P2 games.
+      if (!training && count % 2 !== 0) {
+        count++;
+        field("eval-count").value = count;
+      }
 
-        if (!learnerIsP1 && !learnerIsP2) {
-          throw new Error(
-            "Select Ichigo as a CPU at SOUL difficulty on either side."
-          );
-        }
+      const seed = numberField("seed", 0, 4294967295);
 
-        // For Soul Ichigo mirror matches, P1 is the learner.
-        opponent = learnerIsP1 ? selection.p2 : selection.p1;
-        opponentDifficulty = learnerIsP1
-          ? selection.d2
-          : selection.d1;
+      if (location.protocol === "file:") {
+        throw new Error("Serve the project over HTTP/HTTPS, not file://.");
+      }
 
-        const answer = g.prompt(
-          "How many training generations? Enter 1–50.\n\n" +
-          "Each generation: 80 battles.\n" +
-          "Final validation: up to 20 additional battles.\n\n" +
-          "Examples:\n" +
-          "1 generation = up to 100 battles\n" +
-          "3 generations = up to 260 battles\n" +
-          "10 generations = up to 820 battles\n\n" +
-          "The simulation match dropdown does not affect training.",
-          String(lastGenerations)
+      busy = true;
+      evaluationTarget = training ? null : target;
+      refresh();
+      output("Starting " + kind + " worker…");
+
+      try {
+        worker = new Worker(
+          new URL("js/training_worker.js?v=soul1", document.baseURI)
         );
 
-        if (answer === null) return;
-
-        generations = Number(answer);
-
-        if (
-          !Number.isInteger(generations) ||
-          generations < 1 ||
-          generations > 50
-        ) {
-          throw new Error("Generations must be an integer from 1 to 50.");
-        }
-
-        lastGenerations = generations;
-      } else {
-        if (typeof g.runBatchSimulation !== "function") {
-          throw new Error("The simulation engine is not loaded.");
-        }
-
-        matchCount = Number(byId("sim-count-select")?.value || 10);
-
-        if (!Number.isInteger(matchCount) || matchCount < 1) {
-          throw new Error("Choose a positive whole number of matches.");
-        }
-      }
-    } catch (error) {
-      g.alert(error.message);
-      return;
-    }
-
-    busy = true;
-    jobType = kind;
-    refreshControls();
-
-    const startedAt = Date.now();
-    const elapsed = () =>
-      `${((Date.now() - startedAt) / 1000).toFixed(1)} seconds`;
-
-    try {
-      title.textContent =
-        kind === "train" ? "ICHIGO TRAINING" : "SIMULATION RESULTS";
-
-      write("Loading...");
-      if (!dialog.open) dialog.showModal();
-
-      // Allow the initial dialog to paint.
-      await new Promise(resolve => setTimeout(resolve, 30));
-
-      if (kind === "train") {
-        const maximumBattles =
-          generations * POPULATION * MATCHES_PER_CANDIDATE +
-          2 * VALIDATION_MATCHES;
-
-        const updateProgress = () => {
-          const status = g.AgentIchigo.status();
-          const progress = status.training;
-          const completed = progress?.evaluatedGames || 0;
-          const percent = (100 * completed / maximumBattles).toFixed(1);
-
-          write(
-            `Soul Ichigo training against ${opponent.name}\n` +
-            `Opponent difficulty: ${difficultyLabel(opponentDifficulty)}\n\n` +
-            `Stage: ${progress?.stage || "loading"}\n` +
-            `Generation: ${progress?.generation || 0} / ${generations}\n` +
-            `Battles finished: ${completed} / up to ${maximumBattles}\n` +
-            `Maximum battle budget used: ${percent}%\n` +
-            `Elapsed: ${elapsed()}\n\n` +
-            "Training only. No final simulation batch will run."
-          );
+        worker.onerror = event => {
+          output("WORKER ERROR\n" + event.message);
+          finishWorker();
         };
 
-        updateProgress();
-        progressTimer = setInterval(updateProgress, 250);
+        worker.onmessageerror = () => {
+          output("WORKER ERROR\nCould not decode worker message.");
+          finishWorker();
+        };
 
-        const report = await g.AgentIchigo.evolveForOpponent(
-          opponent.id,
-          {
-            generations,
-            popSize: POPULATION,
-            matchesPerEval: MATCHES_PER_CANDIDATE,
-            validationMatches: VALIDATION_MATCHES,
-            opponentDifficulty
+        worker.onmessage = event => {
+          try {
+            const message = event.data;
+
+            if (message.type === "progress") {
+              output(formatReport(message.report));
+            } else if (message.type === "checkpoint") {
+              g.SoulAgent.setCandidate(message.checkpoint);
+              refresh();
+            } else if (message.type === "done") {
+              if (
+                evaluationTarget &&
+                message.report.games >= 2
+              ) {
+                g.SoulAgent.recordEvaluation(
+                  evaluationTarget,
+                  message.report
+                );
+              }
+
+              output(
+                formatReport(message.report) +
+                (training
+                  ? "\n\nCandidate saved in memory/browser storage. Evaluate it before activation."
+                  : "\n\nEvaluation finished. Compare active and candidate using the same settings.")
+              );
+
+              finishWorker();
+            } else if (message.type === "error") {
+              output("TRAINING ERROR\n" + message.error);
+              finishWorker();
+            }
+          } catch (error) {
+            output("ERROR\n" + error.message);
+            finishWorker();
           }
-        );
+        };
 
-        clearInterval(progressTimer);
-        progressTimer = null;
+        worker.postMessage({
+          type: "start",
+          job: {
+            kind,
+            data: ready.data,
+            checkpoint,
+            matches: count,
+            seed,
+            opponent: field("opponent").value,
+            mode: field("mode").value
+          }
+        });
+      } catch (error) {
+        finishWorker();
+        throw error;
+      }
+    }
 
-        const storageStatus = g.AgentIchigo.status();
-        const saved =
-          !storageStatus.unsavedChanges && !storageStatus.storageError;
+    function openTools() {
+      if (!dedicated && !host.open) host.showModal();
 
-        title.textContent = "TRAINING COMPLETE";
+      const selectedCount = document.getElementById("sim-count-select");
+      if (selectedCount && !busy) {
+        field("eval-count").value = selectedCount.value;
+      }
 
-        write(
-          `Opponent: ${opponent.name}\n` +
-          `Difficulty: ${difficultyLabel(opponentDifficulty)}\n` +
-          `Generations: ${report.generations}\n` +
-          `Training + validation battles: ${report.evaluatedGames}\n` +
-          `Elapsed: ${elapsed()}\n\n` +
-          validationLine("Original weights", report.baseline) + "\n\n" +
-          validationLine("Candidate weights", report.challenger) + "\n\n" +
-          (
-            report.accepted
-              ? "UPDATE ACCEPTED: new weights are active.\n"
-              : "NO UPDATE: the previous weights were retained.\n"
-          ) +
-          (
-            saved
-              ? "Policy and training report saved in this browser.\n"
-              : "WARNING: browser saving failed or changes remain unsaved.\n" +
-                "Export now to preserve the current in-memory policy.\n"
-          ) +
-          "\nNo test matches were run afterward.\n" +
-          "Use SIMULATE MATCHES when you want a separate test."
-        );
-      } else {
-        simulationController = new AbortController();
+      refresh();
+    }
 
-        const result = await g.runBatchSimulation(
-          selection.p1,
-          selection.p2,
-          matchCount,
-          selection.d1,
-          selection.d2,
-          (current, total) => {
-            write(
-              matchup(selection) + "\n\n" +
-              `Running match ${current} / ${total}\n` +
-              `Elapsed: ${elapsed()}\n\n` +
-              "Evaluation only — no training or weight updates."
+    host.addEventListener("cancel", event => {
+      if (busy) event.preventDefault();
+    });
+
+    host.addEventListener("click", async event => {
+      const b = event.target.closest("[data-action]");
+      if (!b) return;
+
+      try {
+        switch (b.dataset.action) {
+          case "train":
+            await start("train");
+            break;
+
+          case "eval-candidate":
+            await start("evaluate", "candidate");
+            break;
+
+          case "eval-active":
+            await start("evaluate", "active");
+            break;
+
+          case "stop":
+            worker?.postMessage({ type: "stop" });
+            output(
+              field("output").textContent +
+              "\n\nStop requested. Waiting for the worker to yield…"
             );
-          },
-          { signal: simulationController.signal }
-        );
+            break;
 
-        const winner =
-          result.p1Wins === result.p2Wins
-            ? "TIE"
-            : result.p1Wins > result.p2Wins
-              ? result.p1Name
-              : result.p2Name;
+          case "promote":
+            g.SoulAgent.promote();
+            refresh();
+            output("Candidate activated. It will be used from the next live match.");
+            break;
 
-        write(
-          matchup(selection) + "\n\n" +
-          `Overall winner: ${winner}\n` +
-          `Completed matches: ${result.completed}\n\n` +
-          `${result.p1Name}: ${result.p1Wins} wins ` +
-          `(${result.p1WinRate}%)\n` +
-          `${result.p2Name}: ${result.p2Wins} wins ` +
-          `(${result.p2WinRate}%)\n` +
-          `Draws: ${result.draws}\n\n` +
-          "Average LP remaining:\n" +
-          `  P1: ${result.p1AvgLpLeft}\n` +
-          `  P2: ${result.p2AvgLpLeft}\n\n` +
-          "Average Chi remaining:\n" +
-          `  P1: ${result.p1AvgChiLeft}\n` +
-          `  P2: ${result.p2AvgChiLeft}\n\n` +
-          `Average duration: ${result.avgRounds} rounds\n` +
-          `Elapsed: ${elapsed()}\n\n` +
-          "Evaluation complete. No weights were trained or changed."
-        );
+          case "export-candidate":
+            g.SoulAgent.download("candidate");
+            break;
+
+          case "export-active":
+            g.SoulAgent.download("active");
+            break;
+
+          case "import":
+            field("file").click();
+            break;
+
+          case "tests":
+            busy = true;
+            refresh();
+            try {
+              const result = await g.runSoulTests();
+              output("SOUL TESTS: " + result.passed + " passed.");
+            } finally {
+              busy = false;
+              refresh();
+            }
+            break;
+
+          case "close":
+            if (!busy) host.close();
+            break;
+        }
+      } catch (error) {
+        output("ERROR\n" + error.message);
+        refresh();
       }
-    } catch (error) {
-      if (error.name === "AbortError") {
-        title.textContent = "RUN CANCELLED";
-        write(
-          "The run was cancelled.\n\n" +
-          (
-            kind === "train"
-              ? "No candidate from this unfinished run was saved.\n" +
-                "Your previously active policy remains available."
-              : "No weights were changed. The partial batch is not " +
-                "shown as a completed result."
-          )
-        );
+    });
+
+    field("file").addEventListener("change", async event => {
+      const file = event.target.files[0];
+      if (!file || busy) return;
+
+      try {
+        if (file.size > 15 * 1024 * 1024) {
+          throw new Error("Checkpoint file is unexpectedly large.");
+        }
+
+        await g.SoulAgent.ready();
+        const payload = JSON.parse(await file.text());
+        g.SoulAgent.importCandidate(payload);
+
+        refresh();
+        output("Checkpoint imported as candidate. Evaluate before activation.");
+      } catch (error) {
+        output("IMPORT ERROR\n" + error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    /*
+     * Capture phase prevents legacy handlers from also starting
+     * evolutionary training or the old simulation path.
+     */
+    document.addEventListener("click", event => {
+      const target = event.target.closest?.(
+        "#ichigo-train-btn, #policy-sim-btn, " +
+        "#btn-simulate-matches, #btn-simulate, #simulate-btn, " +
+        "#btn-export-ichigo"
+      );
+
+      if (!target) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      if (target.id === "btn-export-ichigo") {
+        try {
+          g.SoulAgent.download("active");
+        } catch (error) {
+          openTools();
+          output(error.message);
+        }
       } else {
-        console.error("[TrainingTools]", error);
-        title.textContent = "RUN ERROR";
-        write(error.message || String(error));
+        openTools();
       }
-    } finally {
-      if (progressTimer !== null) {
-        clearInterval(progressTimer);
-        progressTimer = null;
+    }, true);
+
+    g.handleSimulateMatches = openTools;
+
+    try {
+      readyData = await g.SoulAgent.ready();
+
+      for (const rider of readyData.data.riders) {
+        const option = document.createElement("option");
+        option.value = rider.id;
+        option.textContent = rider.name;
+        field("opponent").appendChild(option);
       }
 
-      simulationController = null;
-      busy = false;
-      jobType = null;
-      refreshControls();
+      output(
+        "Ready.\n\n" +
+        "1. Run tests.\n" +
+        "2. Train with Mixed scripted opponents.\n" +
+        "3. Evaluate the candidate.\n" +
+        "4. Compare with the active model, if available.\n" +
+        "5. Activate the candidate when satisfied.\n\n" +
+        "A resumed job keeps weights and counters; replay memory and Adam state restart."
+      );
+
+      refresh();
+    } catch (error) {
+      output("INITIALIZATION ERROR\n" + error.message);
+      host.querySelectorAll("button").forEach(b => b.disabled = true);
+      if (action("close")) action("close").disabled = false;
     }
   }
 
-  closeButton.addEventListener("click", () => {
-    if (!busy) dialog.close();
-  });
-
-  // Escape must not dismiss a still-running job.
-  dialog.addEventListener("cancel", event => {
-    if (busy) event.preventDefault();
-  });
-
-  cancelButton.addEventListener("click", () => {
-    if (!busy) return;
-
-    cancelButton.disabled = true;
-
-    if (jobType === "train") {
-      g.AgentIchigo.cancelTraining();
-    } else {
-      simulationController?.abort();
-    }
-  });
-
-  exportButton.addEventListener("click", async () => {
-    if (busy) return;
-
-    exportButton.disabled = true;
-
-    try {
-      await g.AgentIchigo.exportWeights();
-    } catch (error) {
-      g.alert("Export failed: " + error.message);
-    } finally {
-      refreshControls();
-    }
-  });
-
-  // Override the legacy combined handler as an additional safeguard.
-  g.handleSimulateMatches = event => run("simulate", event);
-  g.handleTrainIchigo = event => run("train", event);
-
-  byId("ichigo-train-btn")?.addEventListener(
-    "click",
-    g.handleTrainIchigo
-  );
-
-  byId("policy-sim-btn")?.addEventListener(
-    "click",
-    g.handleSimulateMatches
-  );
-
-  refreshControls();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initialize);
+  } else {
+    void initialize();
+  }
 })(window);
