@@ -19,16 +19,35 @@
         const s = frames.push(E.vector(observation, spec));
         const m = E.mask(e, slot);
 
-        let a;
+       let a;
+        const guided = !net || Boolean(options.guide);
 
-if (!net || options.guide) {
-  a = options.guide && typeof options.teacher === "function"
-    ? options.teacher(e, slot)
-    : teacher(observation, m);
-}
+        if (guided) {
+          const customTeacher =
+            options.guide &&
+            typeof options.teacher === "function";
 
-        if (!m[a]) {
-          throw new Error("Controller selected an unavailable action.");
+          a = customTeacher
+            ? options.teacher(e, slot)
+            : teacher(observation, m);
+
+        } else if (rng() < (options.epsilon || 0)) {
+          a = N.randomAction(m, rng);
+
+        } else {
+          a = N.argmax(net.predict(s), m);
+        }
+
+        if (!Number.isInteger(a) || !m[a]) {
+          throw new Error(
+            "Controller action rejected: " +
+            JSON.stringify({
+              action: String(a),
+              slot,
+              guided,
+              legalMask: Array.from(m)
+            })
+          );
         }
 
         return {
