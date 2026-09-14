@@ -75,7 +75,21 @@ async function run(job) {
 
   const baseGames = old?.games || 0;
   const baseSteps = old?.steps || 0;
+const taskKey = JSON.stringify([
+  "one-step-search-guide-v2",
+  job.opponent,
+  job.mode
+]);
 
+const previousTask = old?.trainingTask;
+
+const taskBaseGames =
+  previousTask?.key === taskKey &&
+  Number.isSafeInteger(previousTask.games) &&
+  previousTask.games >= 0
+    ? previousTask.games
+    : 0;
+  
   const opponents = job.opponent === "*"
     ? data.riders
     : data.riders.filter(r => r.id === job.opponent);
@@ -111,6 +125,8 @@ async function run(job) {
       savedAt: new Date().toISOString(),
       seed,
       evaluation: null
+      trainingTask: {  key: taskKey,  games: taskBaseGames + games},
+    
     };
   }
 
@@ -168,7 +184,7 @@ async function run(job) {
       opponentNet = pool[Math.floor(chooser() * pool.length)];
     }
 
-    const learnedGames = baseGames + games;
+    const learnedGames = taskBaseGames + games
 
     const guideProbability = !training
       ? 0
@@ -176,9 +192,9 @@ async function run(job) {
         ? 1
         : Math.max(0.05, 0.6 * Math.exp(-learnedGames / 100));
 
-    const epsilon = training
-      ? Math.max(0.05, 0.25 * Math.exp(-learner.steps / 50000))
-      : 0;
+const epsilon = training
+  ? Math.max(0.05, 0.20 * Math.exp(-learnedGames / 200))
+  : 0;
 
     const generator = SoulSim.episode({
       data,
