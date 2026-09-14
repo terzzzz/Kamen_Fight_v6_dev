@@ -1,436 +1,274 @@
-/*
- * Kamen Fight — live input and round manager
- * File: js/match_manager.js
- * Version: live-ui-2
- *
- * Tap a direction once to start charging.
- * Releasing the button does NOT stop charging.
- * Repeating the same direction does NOT restart charging.
- * Changing direction resets that round's charge.
- * An action button locks the selected move and its charge.
+/* js/match_manager.js
+ * Reactive live controller adapter.
+ * Playback interface remains compatible with live-ui-2.
  */
-
 (function (g) {
   "use strict";
 
-  const VERSION = "live-ui-2";
   const C = g.CombatCore;
   const K = g.KF;
+  const E = g.SoulEnv;
 
   const SLOTS = ["p1", "p2"];
-  const DIRECTIONS = ["W", "A", "S", "D"];
-  const ACTIONS = ["I", "J", "K", "L"];
-  const KEYS = [...DIRECTIONS, ...ACTIONS];
+  const DIRS = ["W", "A", "S", "D"];
+  const BUTTONS = ["I", "J", "K", "L"];
+  const KEYS = [...DIRS, ...BUTTONS];
 
   let frame = null;
-  let inputsBound = false;
-  let windowFocused = true;
+  let bound = false;
+  let focused = true;
 
-  function inputFor(gs, slot) {
-    return slot === "p1" ? gs.input : gs.p2Input;
+  const byId = id => document.getElementById(id);
+
+  function button(slot, key) {
+    return byId(slot === "p1" ? "key-" + key : "p2-key-" + key) ||
+      byId(slot + "-key-" + key);
   }
 
-  function buttonFor(slot, key) {
-    if (slot === "p1") {
-      return (
-        document.getElementById(`key-${key}`) ||
-        document.getElementById(`p1-key-${key}`)
-      );
-    }
-
-    return document.getElementById(`p2-key-${key}`);
-  }
-
-  function roundLimitMs() {
-    return 1000 * g.GAME_CONFIG.ROUND_TIME_LIMIT;
-  }
-
-  function ownsRound(gs, token) {
+  function owns(gs, token) {
     return g.gameState === gs && gs.roundToken === token;
   }
 
-  function freshInput() {
-    return {
-      direction: null,
-      charging: false,
-      startedAt: 0,
-      charge: 0
-    };
+  function neuralSlot(gs, slot) {
+    return gs.matchConfig[slot + "IsCPU"] &&
+      gs.core[slot].id === "ichigo" &&
+      K.difficulty(gs.matchConfig[slot + "Difficulty"]) === "soul";
   }
 
-  function clearButtonHighlights() {
-    for (const slot of SLOTS) {
-      for (const key of KEYS) {
-        const button = buttonFor(slot, key);
-        if (!button) continue;
-
-        button.classList.remove("pressed", "active");
-
-        if (DIRECTIONS.includes(key)) {
-          button.setAttribute("aria-pressed", "false");
-        }
-      }
-    }
-  }
-
-  function highlightDirection(slot, direction) {
-    for (const key of DIRECTIONS) {
-      const button = buttonFor(slot, key);
-      if (!button) continue;
-
-      const selected = key === direction;
-      button.classList.toggle("active", selected);
-      button.setAttribute("aria-pressed", String(selected));
-    }
-  }
-
-  function renderCharge(slot, charge, direction, locked, idle = false) {
-    const percent = K.clamp(
-      Number.isFinite(charge) ? charge : 0,
-      0,
-      100
-    );
-
-    const integer = Math.floor(percent);
-
-    let label;
-
-    if (locked) {
-      label = idle ? "IDLE" : `LOCKED ${integer}%`;
-    } else if (direction) {
-      label = `${direction}: ${integer}%`;
-    } else {
-      label = "READY";
-    }
-
-    const fill = document.getElementById(`${slot}-charge-fill`);
-    const text = document.getElementById(`${slot}-charge-text`);
-
-    const status = document.getElementById(
-      slot === "p1"
-        ? "charge-status-display"
-        : "p2-charge-status-display"
-    );
-
-    const flag = document.getElementById(`${slot}-action-flag`);
-
-    if (fill) fill.style.width = `${percent}%`;
-    if (text) text.textContent = label;
-
-    if (status) {
-      status.textContent =
-        !locked && !direction ? "TAP DIRECTION TO CHARGE" : label;
-    }
-
-    if (flag) {
-      flag.hidden = !locked;
-      flag.textContent = idle ? "IDLE" : "LOCKED!";
-    }
-  }
-
-  function showInputBanner(gs) {
-    g.UI.showBattleBanner(
-      `ROUND ${gs.core.round} · LIVE UI 2\n` +
-      "Tap direction once, then tap an action."
-    );
-  }
-
-  function currentCharge(gs, slot, now = performance.now()) {
-    const input = inputFor(gs, slot);
-
-    if (!input || !input.direction) return 0;
-
-    if (input.charging) {
-      const clock = gs.inputPausedAt ?? now;
-
-      // Do not accumulate beyond this round's input deadline.
-      const end = Math.min(
-        clock,
-        gs.inputStartedAt + roundLimitMs()
-      );
-
-      const duration = C.chargeMs(gs.core[slot], input.direction);
-
-      input.charge = K.clamp(
-        Math.floor(100 * Math.max(0, end - input.startedAt) / duration),
-        0,
-        100
-      );
-    }
-
-    return input.charge;
-  }
-
-  function canHumanAct(gs, slot) {
-    return Boolean(
-      gs &&
-      gs.core &&
-      SLOTS.includes(slot) &&
-      gs.roundPhase === "INPUT" &&
-      gs.inputPausedAt == null &&
-      !document.hidden &&
-      !gs.matchConfig[`${slot}IsCPU`] &&
-      !gs.core[slot].isFainted &&
-      !gs.actions[slot] &&
-      performance.now() - gs.inputStartedAt < roundLimitMs()
-    );
-  }
-
-  function pressDirection(slot, direction) {
-    const gs = g.gameState;
-
-    if (
-      !DIRECTIONS.includes(direction) ||
-      !canHumanAct(gs, slot)
-    ) {
-      return false;
-    }
-
-    const input = inputFor(gs, slot);
-
-    // A repeated tap or keyboard repeat must not restart the timer.
-    if (input.direction === direction && input.charging) {
-      return true;
-    }
-
-    input.direction = direction;
-    input.startedAt = performance.now();
-    input.charge = 0;
-    input.charging = true;
-
-    highlightDirection(slot, direction);
-    renderCharge(slot, 0, direction, false);
-
-    return true;
-  }
-
-  function confirm(slot, requestedAction) {
-    const gs = g.gameState;
-
-    if (
-      !gs ||
-      !gs.core ||
-      !SLOTS.includes(slot) ||
-      gs.roundPhase !== "INPUT" ||
-      gs.actions[slot]
-    ) {
-      return false;
-    }
-
-    if (!C.isLegal(gs.core, slot, requestedAction)) {
-      if (!gs.matchConfig[`${slot}IsCPU`]) {
-        g.UI.showDamagePopup(
-          `${slot}-box`,
-          "INVALID / LOW CHI",
-          "scratch"
-        );
-      }
-
-      // Invalid input does not lock the player or stop charging.
-      return false;
-    }
-
-    const action = C.normalizeAction(gs.core, slot, requestedAction);
-    const input = inputFor(gs, slot);
-
-    gs.actions[slot] = { ...action };
-
-    input.charge = action.charge;
-    input.charging = false;
-
-    if (gs[slot]) {
-      // Presentation copy only; never edit core fighter stats here.
-      gs[slot].activeChargePercent = action.charge;
-    }
-
-    const idle = action.key === "DO_NOTHING";
-    const direction = idle ? null : action.key.split("+")[0];
-
-    renderCharge(slot, action.charge, direction, true, idle);
-
-    return true;
-  }
-
-  function pressAction(slot, button) {
-    const gs = g.gameState;
-
-    if (
-      !ACTIONS.includes(button) ||
-      !canHumanAct(gs, slot)
-    ) {
-      return false;
-    }
-
-    const input = inputFor(gs, slot);
-
-    if (!input.direction) {
-      g.UI.showDamagePopup(
-        `${slot}-box`,
-        "SELECT A DIRECTION FIRST",
-        "scratch"
-      );
-      return false;
-    }
-
-    return confirm(slot, {
-      key: `${input.direction}+${button}`,
-      charge: currentCharge(gs, slot)
+  function clearButtons() {
+    document.querySelectorAll(".pad-btn").forEach(b => {
+      b.classList.remove("active", "pressed");
+      b.setAttribute("aria-pressed", "false");
     });
   }
 
   function stop() {
-    if (frame !== null) {
-      cancelAnimationFrame(frame);
-      frame = null;
-    }
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
 
     const gs = g.gameState;
 
     if (gs) {
       gs.roundToken = (Number(gs.roundToken) || 0) + 1;
       gs.inputPausedAt = null;
-
-      for (const slot of SLOTS) {
-        const input = inputFor(gs, slot);
-        if (input) input.charging = false;
-      }
     }
 
-    clearButtonHighlights();
+    clearButtons();
   }
 
-  async function resolveRound(gs, token) {
+  function banner(gs) {
+    const neural = SLOTS.some(slot => neuralSlot(gs, slot));
+
+    let label = "Tap direction, then an action.";
+
+    if (neural) {
+      label += gs.soulNet
+        ? "\nSOUL: NEURAL REACTIVE"
+        : "\nSOUL: SCRIPTED FALLBACK — train and activate a model.";
+    }
+
+    g.UI.showBattleBanner("ROUND " + gs.core.round + "\n" + label);
+  }
+
+  function paint(gs) {
+    const e = gs.soulEnv;
+    if (!e) return;
+
+    const timer = byId("turn-timer");
+    if (timer) {
+      timer.textContent =
+        "TIME: " + ((E.limit() - e.t) / 1000).toFixed(1) + "s";
+    }
+
+    for (const slot of SLOTS) {
+      const cell = e.cells[slot];
+      const idle = cell.action?.key === "DO_NOTHING";
+
+      const label = cell.locked
+        ? idle ? "IDLE" : "LOCKED " + cell.charge + "%"
+        : cell.direction
+          ? cell.direction + ": " + cell.charge + "%"
+          : "READY";
+
+      const fill = byId(slot + "-charge-fill");
+      const text = byId(slot + "-charge-text");
+      const flag = byId(slot + "-action-flag");
+      const status = byId(
+        slot === "p1"
+          ? "charge-status-display"
+          : "p2-charge-status-display"
+      );
+
+      if (fill) fill.style.width = cell.charge + "%";
+      if (text) text.textContent = label;
+
+      if (status) {
+        status.textContent =
+          !cell.direction && !cell.locked
+            ? "TAP DIRECTION TO CHARGE"
+            : label;
+      }
+
+      if (flag) {
+        flag.hidden = !cell.locked;
+        flag.textContent = idle ? "IDLE" : "LOCKED!";
+      }
+
+      const presentation = {
+        direction: cell.direction,
+        charging: !!cell.direction && !cell.locked,
+        startedAt: gs.inputStartedAt + cell.start,
+        charge: cell.charge
+      };
+
+      if (slot === "p1") gs.input = presentation;
+      else gs.p2Input = presentation;
+
+      if (gs[slot]) gs[slot].activeChargePercent = cell.charge;
+
+      for (const key of DIRS) {
+        const b = button(slot, key);
+        if (!b) continue;
+
+        const selected = cell.direction === key;
+        b.classList.toggle("active", selected);
+        b.setAttribute("aria-pressed", String(selected));
+      }
+    }
+  }
+
+  function humanCanAct(gs, slot) {
+    return !!(
+      gs?.soulEnv &&
+      SLOTS.includes(slot) &&
+      gs.roundPhase === "INPUT" &&
+      gs.inputPausedAt == null &&
+      focused &&
+      !document.hidden &&
+      !gs.matchConfig[slot + "IsCPU"] &&
+      !gs.soulEnv.cells[slot].locked &&
+      performance.now() - gs.inputStartedAt < E.limit()
+    );
+  }
+
+  function queueInput(slot, key) {
+    const gs = g.gameState;
+
+    if (!humanCanAct(gs, slot) || !E.INPUTS.includes(key)) {
+      return false;
+    }
+
+    const elapsed = performance.now() - gs.inputStartedAt;
+    const at = Math.ceil(elapsed / E.STEP) * E.STEP;
+
+    if (at >= E.limit()) return false;
+
+    gs.soulQueue.push({ slot, key, at });
+    return true;
+  }
+
+  // Compatibility entry point. Supplied charge cannot bypass the clock.
+  function confirm(slot, requested) {
+    if (requested?.key === "DO_NOTHING") {
+      return queueInput(slot, "IDLE");
+    }
+
+    const gs = g.gameState;
+    const [direction, action] = String(requested?.key || "").split("+");
+
     if (
-      !ownsRound(gs, token) ||
-      gs.roundPhase !== "INPUT"
+      gs?.soulEnv?.cells[slot]?.direction !== direction ||
+      !BUTTONS.includes(action)
     ) {
-      return;
+      return false;
     }
 
+    return queueInput(slot, action);
+  }
+
+  async function resolve(gs, token) {
+    if (!owns(gs, token) || gs.roundPhase !== "INPUT") return;
+
+    gs.actions = E.actions(gs.soulEnv);
     gs.roundPhase = "RESOLUTION";
-
-    if (frame !== null) {
-      cancelAnimationFrame(frame);
-      frame = null;
-    }
 
     try {
       await g.CombatPlayback.playTurn(gs, token);
     } catch (error) {
-      if (ownsRound(gs, token)) {
-        g.GameView.fail(error);
-      }
+      if (owns(gs, token)) g.GameView.fail(error);
     }
   }
 
   function tick(gs, token, now) {
-    if (
-      !ownsRound(gs, token) ||
-      gs.roundPhase !== "INPUT"
-    ) {
-      return;
-    }
-
     frame = null;
 
+    if (!owns(gs, token) || gs.roundPhase !== "INPUT") return;
+
     try {
-      if (gs.inputPausedAt != null) {
-        frame = requestAnimationFrame(
-          next => tick(gs, token, next)
-        );
-        return;
-      }
-
-      const elapsed = Math.max(0, now - gs.inputStartedAt);
-      const usableElapsed = Math.min(elapsed, roundLimitMs());
-
-      const remaining = Math.max(
-        0,
-        (roundLimitMs() - elapsed) / 1000
-      );
-
-      const timer = document.getElementById("turn-timer");
-
-      if (timer) {
-        timer.textContent = `TIME: ${remaining.toFixed(1)}s`;
-      }
-
-      for (const slot of SLOTS) {
-        if (gs.actions[slot]) continue;
-
-        if (!gs.matchConfig[`${slot}IsCPU`]) {
-          const input = inputFor(gs, slot);
-
-          renderCharge(
-            slot,
-            currentCharge(gs, slot, now),
-            input.direction,
-            false
-          );
-
-          continue;
-        }
-
-        const plan = gs.aiPlans[slot];
-
-        if (!plan) {
-          throw new Error(`Missing CPU plan for ${slot}.`);
-        }
-
-        const move = gs.core.moves[slot][plan.key];
-        const idle = plan.key === "DO_NOTHING";
-
-        const reactionMs = g.GAME_CONFIG.CPU_REACTION_MS;
-        const duration = idle
-          ? 0
-          : C.chargeMs(gs.core[slot], move.direction);
-
-        const activeMs = Math.max(0, usableElapsed - reactionMs);
-
-        const charge = idle
-          ? 0
-          : Math.min(plan.charge, 100 * activeMs / duration);
-
-        renderCharge(slot, charge, move.direction, false);
-
-        const requiredMs = reactionMs + (
-          idle ? 0 : duration * plan.charge / 100
+      if (gs.inputPausedAt == null) {
+        const elapsed = Math.min(
+          E.limit(),
+          Math.max(0, now - gs.inputStartedAt)
         );
 
-        if (usableElapsed >= requiredMs) {
-          if (!confirm(slot, plan)) {
-            throw new Error(`Could not lock the CPU action for ${slot}.`);
+        const e = gs.soulEnv;
+
+        while (!e.done && e.t + E.STEP <= elapsed) {
+          const inputs = { p1: [], p2: [] };
+
+          // Decisions are all selected before either is applied.
+          for (const slot of SLOTS) {
+            const actor = gs.soulActors[slot];
+
+            if (actor) {
+              inputs[slot].push(actor(e, slot));
+            }
           }
+
+          const remainingEvents = [];
+
+          for (const event of gs.soulQueue) {
+            if (event.at <= e.t) {
+              inputs[event.slot].push(event.key);
+            } else {
+              remainingEvents.push(event);
+            }
+          }
+
+          gs.soulQueue = remainingEvents;
+
+          const rejected = E.step(e, inputs);
+
+          for (const failure of rejected) {
+            if (!gs.matchConfig[failure.slot + "IsCPU"]) {
+              g.UI.showDamagePopup(
+                failure.slot + "-box",
+                "INVALID INPUT / LOW CHI",
+                "scratch"
+              );
+            } else {
+              throw new Error("CPU controller produced an illegal input.");
+            }
+          }
+        }
+
+        paint(gs);
+
+        if (e.done) {
+          void resolve(gs, token);
+          return;
         }
       }
 
-      if (remaining <= 0) {
-        for (const slot of SLOTS) {
-          if (!gs.actions[slot]) {
-            confirm(slot, { key: "DO_NOTHING", charge: 0 });
-          }
-        }
-      }
-
-      if (gs.actions.p1 && gs.actions.p2) {
-        void resolveRound(gs, token);
-        return;
-      }
-
-      frame = requestAnimationFrame(
-        next => tick(gs, token, next)
-      );
+      frame = requestAnimationFrame(t => tick(gs, token, t));
     } catch (error) {
-      if (ownsRound(gs, token)) {
-        g.GameView.fail(error);
-      }
+      if (owns(gs, token)) g.GameView.fail(error);
     }
   }
 
   async function begin() {
     const gs = g.gameState;
-
-    if (!gs || !gs.core || gs.core.winner) return;
+    if (!gs?.core || gs.core.winner) return;
 
     stop();
 
@@ -438,117 +276,109 @@
     gs.roundPhase = "PLANNING";
 
     try {
-      if (
-        !g.CombatPlayback ||
-        g.CombatPlayback.VERSION !== VERSION ||
-        typeof g.CombatPlayback.assertReady !== "function" ||
-        typeof g.CombatPlayback.playTurn !== "function"
-      ) {
-        throw new Error(
-          "Missing/outdated combat_engine.js. " +
-          "Both live files must be version live-ui-2."
-        );
-      }
-
       g.CombatPlayback.assertReady();
 
-      if (!g.AIService || typeof g.AIService.plan !== "function") {
-        throw new Error("The CPU planning service is not loaded.");
+      if (!g.AIService?.plan) {
+        throw new Error("AIService is missing.");
+      }
+
+      const wantsNeural = SLOTS.some(slot => neuralSlot(gs, slot));
+
+      // Freeze the active model for the entire live match.
+      if (wantsNeural && !gs.soulModelFrozen) {
+        const ready = await g.SoulAgent.ready();
+
+        if (!owns(gs, token)) return;
+
+        const checkpoint = g.SoulAgent.snapshot("active");
+
+        gs.soulSpec = ready.spec;
+        gs.soulNet = checkpoint
+          ? g.SoulNN.Network.fromJSON(checkpoint.net)
+          : null;
+
+        gs.soulModelFrozen = true;
       }
 
       gs.actions = { p1: null, p2: null };
+      gs.soulQueue = [];
+      gs.soulActors = {};
       gs.aiPlans = {};
       gs.aiDebug = {};
 
-      gs.input = freshInput();
-      gs.p2Input = freshInput();
-      gs.inputPausedAt = null;
-      gs.roundCounter = gs.core.round;
+      const history = gs.history || [];
+      const previous = history.length ? history[history.length - 1] : {};
+      gs.soulEnv = E.create(gs.core, previous);
 
       for (const slot of SLOTS) {
         gs[slot] = C.copyFighter(gs.core[slot]);
         gs[slot].activeChargePercent = 0;
 
-        renderCharge(slot, 0, null, false);
-
-        if (typeof g.updateCharacterMedia === "function") {
-          try {
-            g.updateCharacterMedia(slot, "IDLE");
-          } catch (error) {
-            console.warn("Idle media warning:", error);
-          }
+        if (g.updateCharacterMedia) {
+          g.updateCharacterMedia(slot, "IDLE");
         }
       }
 
       g.GameView.paint();
       g.UI.showActionBanner("");
-      g.UI.showBattleBanner("AI PLANNING… · LIVE UI 2");
+      g.UI.showBattleBanner("PREPARING CONTROLLERS…");
 
-      // Plan before human input opens.
-      // Both CPUs, when present, see the same pre-input snapshot.
-      const snapshot = C.copyState(gs.core);
+      const before = C.copyState(gs.core);
 
       await Promise.all(SLOTS.map(async slot => {
-        if (!gs.matchConfig[`${slot}IsCPU`]) return;
+        if (!gs.matchConfig[slot + "IsCPU"]) return;
+
+        if (neuralSlot(gs, slot)) {
+          const actor = g.SoulSim.reactor(
+            gs.soulSpec,
+            gs.soulNet,
+            K.rng(K.hash(gs.seed, "controller", gs.core.round, slot))
+          );
+
+          gs.soulActors[slot] =
+            e => actor.decide(e, slot)?.a ?? 0;
+
+          return;
+        }
 
         const decision = await g.AIService.plan({
-          state: snapshot,
+          state: before,
           slot,
-          difficulty: gs.matchConfig[`${slot}Difficulty`],
-          history: gs.history,
+          history,
+          difficulty: gs.matchConfig[slot + "Difficulty"],
           seed: K.hash(gs.seed, "decision", gs.core.round, slot)
         });
 
-        if (!ownsRound(gs, token)) return;
+        if (!owns(gs, token)) return;
 
-        if (
-          !decision ||
-          !C.isLegal(snapshot, slot, decision.action)
-        ) {
-          throw new Error(`CPU returned an invalid action for ${slot}.`);
+        if (!C.isLegal(before, slot, decision.action)) {
+          throw new Error("Invalid search AI action for " + slot);
         }
 
-        gs.aiPlans[slot] = C.normalizeAction(
-          snapshot,
-          slot,
-          decision.action
-        );
-
+        gs.aiPlans[slot] = decision.action;
         gs.aiDebug[slot] = decision.debug || {};
+        gs.soulActors[slot] = E.planned(decision.action);
       }));
 
-      if (!ownsRound(gs, token)) return;
+      if (!owns(gs, token)) return;
 
+      gs.roundCounter = gs.core.round;
       gs.roundPhase = "INPUT";
       gs.inputStartedAt = performance.now();
+      gs.inputPausedAt =
+        document.hidden || !focused ? gs.inputStartedAt : null;
 
-      if (document.hidden || !windowFocused) {
-        gs.inputPausedAt = gs.inputStartedAt;
+      paint(gs);
+
+      if (gs.inputPausedAt != null) {
         g.UI.showBattleBanner("PAUSED — return to the game.");
       } else {
-        showInputBanner(gs);
+        banner(gs);
       }
 
-      const timer = document.getElementById("turn-timer");
-
-      if (timer) {
-        timer.textContent =
-          `TIME: ${g.GAME_CONFIG.ROUND_TIME_LIMIT.toFixed(1)}s`;
-      }
-
-      for (const slot of SLOTS) {
-        if (gs.core[slot].isFainted) {
-          confirm(slot, { key: "DO_NOTHING", charge: 0 });
-        }
-      }
-
-      frame = requestAnimationFrame(
-        now => tick(gs, token, now)
-      );
+      frame = requestAnimationFrame(t => tick(gs, token, t));
     } catch (error) {
-      if (ownsRound(gs, token)) {
-        g.GameView.fail(error);
-      }
+      if (owns(gs, token)) g.GameView.fail(error);
     }
   }
 
@@ -556,215 +386,138 @@
     const gs = g.gameState;
 
     if (
-      !gs ||
-      gs.roundPhase !== "INPUT" ||
-      gs.inputPausedAt != null
+      gs?.roundPhase === "INPUT" &&
+      gs.inputPausedAt == null
     ) {
-      return;
+      gs.inputPausedAt = performance.now();
+      g.UI.showBattleBanner("PAUSED — return to the game.");
     }
-
-    gs.inputPausedAt = performance.now();
-
-    g.UI.showBattleBanner("PAUSED — return to the game.");
   }
 
   function resumeInput() {
     const gs = g.gameState;
 
     if (
-      !gs ||
-      gs.roundPhase !== "INPUT" ||
+      gs?.roundPhase !== "INPUT" ||
       gs.inputPausedAt == null ||
       document.hidden ||
-      !windowFocused
+      !focused
     ) {
       return;
     }
 
-    const pausedFor = performance.now() - gs.inputPausedAt;
-
-    // Pause both the round clock and any active charge clocks.
-    gs.inputStartedAt += pausedFor;
-
-    for (const slot of SLOTS) {
-      const input = inputFor(gs, slot);
-
-      if (input?.charging && input.direction) {
-        input.startedAt += pausedFor;
-      }
-    }
-
+    gs.inputStartedAt += performance.now() - gs.inputPausedAt;
     gs.inputPausedAt = null;
-    showInputBanner(gs);
+    banner(gs);
   }
 
-  const keyboard = {
-    w: ["p1", "W"],
-    a: ["p1", "A"],
-    s: ["p1", "S"],
-    d: ["p1", "D"],
-    i: ["p1", "I"],
-    j: ["p1", "J"],
-    k: ["p1", "K"],
-    l: ["p1", "L"],
+  const mapping = {
+    w: ["p1", "W"], a: ["p1", "A"],
+    s: ["p1", "S"], d: ["p1", "D"],
+    i: ["p1", "I"], j: ["p1", "J"],
+    k: ["p1", "K"], l: ["p1", "L"],
 
-    ArrowUp: ["p2", "W"],
-    ArrowLeft: ["p2", "A"],
-    ArrowDown: ["p2", "S"],
-    ArrowRight: ["p2", "D"],
-
-    "5": ["p2", "I"],
-    "1": ["p2", "J"],
-    "2": ["p2", "K"],
-    "3": ["p2", "L"]
+    ArrowUp: ["p2", "W"], ArrowLeft: ["p2", "A"],
+    ArrowDown: ["p2", "S"], ArrowRight: ["p2", "D"],
+    "5": ["p2", "I"], "1": ["p2", "J"],
+    "2": ["p2", "K"], "3": ["p2", "L"]
   };
 
-  function mappingFor(event) {
-    const key = String(event.key || "");
-    return keyboard[key] || keyboard[key.toLowerCase()];
-  }
-
-  function dispatchInput(slot, key) {
-    return DIRECTIONS.includes(key)
-      ? pressDirection(slot, key)
-      : pressAction(slot, key);
+  function mapped(event) {
+    return mapping[event.key] ||
+      mapping[String(event.key).toLowerCase()];
   }
 
   function bindInputs() {
-    if (inputsBound) return;
-    inputsBound = true;
+    if (bound) return;
+    bound = true;
 
     document.addEventListener("keydown", event => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
 
-      const target = event.target;
-
       if (
-        target instanceof Element &&
-        target.closest(
-          "input, select, textarea, [contenteditable='true']"
-        )
+        event.target instanceof Element &&
+        event.target.closest("input,select,textarea,[contenteditable='true']")
       ) {
         return;
       }
 
-      const mapping = mappingFor(event);
-      if (!mapping) return;
-
-      const [slot, key] = mapping;
-
-      if (!canHumanAct(g.gameState, slot)) return;
+      const pair = mapped(event);
+      if (!pair || !humanCanAct(g.gameState, pair[0])) return;
 
       event.preventDefault();
       if (event.repeat) return;
 
-      const button = buttonFor(slot, key);
-      if (button) button.classList.add("pressed");
-
-      dispatchInput(slot, key);
+      queueInput(...pair);
+      button(...pair)?.classList.add("pressed");
     });
 
     document.addEventListener("keyup", event => {
-      const mapping = mappingFor(event);
-      if (!mapping) return;
-
-      const [slot, key] = mapping;
-      const button = buttonFor(slot, key);
-
-      if (button) button.classList.remove("pressed");
-
-      // Deliberately do not stop charging on key release.
+      const pair = mapped(event);
+      if (pair) button(...pair)?.classList.remove("pressed");
     });
 
     for (const slot of SLOTS) {
       for (const key of KEYS) {
-        const button = buttonFor(slot, key);
-        if (!button) continue;
+        const b = button(slot, key);
+        if (!b) continue;
 
-        button.type = "button";
-        button.style.touchAction = "none";
-        button.style.userSelect = "none";
-        button.style.webkitUserSelect = "none";
+        b.type = "button";
+        b.style.touchAction = "none";
 
-        button.addEventListener("pointerdown", event => {
-          if (
-            event.pointerType === "mouse" &&
-            event.button !== 0
-          ) {
-            return;
-          }
+        b.addEventListener("pointerdown", event => {
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          if (!humanCanAct(g.gameState, slot)) return;
 
-          if (event.cancelable) event.preventDefault();
-
-          if (!canHumanAct(g.gameState, slot)) return;
-
-          button.classList.add("pressed");
+          event.preventDefault();
+          b.classList.add("pressed");
 
           try {
-            button.setPointerCapture(event.pointerId);
-          } catch (_) {
-            // Capture is only for reliable visual release.
-          }
+            b.setPointerCapture(event.pointerId);
+          } catch (_) {}
 
-          dispatchInput(slot, key);
+          queueInput(slot, key);
         });
 
-        const releaseVisual = () => {
-          button.classList.remove("pressed");
+        for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
+          b.addEventListener(name, () => b.classList.remove("pressed"));
+        }
 
-          // IMPORTANT:
-          // Pointer release/cancel does not clear the chosen direction
-          // and does not stop the automatic charge clock.
-        };
-
-        button.addEventListener("pointerup", releaseVisual);
-        button.addEventListener("pointercancel", releaseVisual);
-        button.addEventListener("lostpointercapture", releaseVisual);
-
-        button.addEventListener("contextmenu", event => {
+        b.addEventListener("click", event => {
           event.preventDefault();
+          if (event.detail === 0) queueInput(slot, key);
         });
 
-        button.addEventListener("click", event => {
-          event.preventDefault();
-
-          // Pointer input was already handled on pointerdown.
-          // detail === 0 supports keyboard/accessibility activation.
-          if (event.detail === 0) {
-            dispatchInput(slot, key);
-          }
-        });
+        b.addEventListener("contextmenu", event => event.preventDefault());
       }
     }
 
     g.addEventListener("blur", () => {
-      windowFocused = false;
+      focused = false;
       pauseInput();
 
       document.querySelectorAll(".pad-btn.pressed").forEach(
-        button => button.classList.remove("pressed")
+        b => b.classList.remove("pressed")
       );
     });
 
     g.addEventListener("focus", () => {
-      windowFocused = true;
+      focused = true;
       resumeInput();
     });
 
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        pauseInput();
-      } else {
-        resumeInput();
-      }
+      if (document.hidden) pauseInput();
+      else resumeInput();
     });
   }
 
   g.MatchManager = {
-    VERSION,
+    VERSION: "live-ui-2",
+    PATCH: "soul-reactive-1",
     begin,
     stop,
     confirm,
     bindInputs
   };
-})(window);  
+})(window);
