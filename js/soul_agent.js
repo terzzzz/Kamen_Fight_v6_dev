@@ -94,7 +94,8 @@
         warnings.push("Browser checkpoint load: " + error.message);
       }
 
-      if (!active) {
+     // Prefer the deployed checkpoint on each page load.
+      {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
 
