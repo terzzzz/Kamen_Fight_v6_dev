@@ -399,7 +399,7 @@
       try {
         worker = new Worker(
           new URL(
-            "js/training_worker.js?v=soul2",
+            "js/training_worker.js?v=soul3",
             document.baseURI
           )
         );
