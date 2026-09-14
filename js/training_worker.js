@@ -124,7 +124,7 @@ const taskBaseGames =
       steps: learner ? learner.steps : baseSteps,
       savedAt: new Date().toISOString(),
       seed,
-      evaluation: null
+      evaluation: null,
       trainingTask: {  key: taskKey,  games: taskBaseGames + games},
     
     };
