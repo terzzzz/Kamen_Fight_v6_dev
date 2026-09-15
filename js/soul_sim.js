@@ -179,27 +179,39 @@
 
       // Immediate damage-based reward: (damage dealt to opponent) - (damage taken),
       // normalized by max LP so scale is stable across riders.
-      const prevSelfLp = (typeof pendingObj.selfLp === 'number') ? pendingObj.selfLp : (pendingObj.prevState?.[learnerSlot]?.lp || 0);
-      const prevOppLp = (typeof pendingObj.oppLp === 'number') ? pendingObj.oppLp : (pendingObj.prevState?.[C.other(learnerSlot)]?.lp || 0);
+      const prevSelfLp = pendingObj.selfLp;
+const prevOppLp = pendingObj.oppLp;
 
-      const newSelfLp = (nextState[learnerSlot] && Number(nextState[learnerSlot].lp)) || 0;
-      const newOppLp = (nextState[C.other(learnerSlot)] && Number(nextState[C.other(learnerSlot)].lp)) || 0;
+const newSelfLp = nextState[learnerSlot].lp;
+const newOppLp = nextState[C.other(learnerSlot)].lp;
 
-      const damageToOpp = Math.max(0, prevOppLp - newOppLp);
-      const damageToSelf = Math.max(0, prevSelfLp - newSelfLp);
+const selfMaxLp = Math.max(1, pendingObj.selfMaxLp);
+const oppMaxLp = Math.max(1, pendingObj.oppMaxLp);
 
-      // Normalize by learner maxLp (fallback to 3000)
-      const norm = (nextState[learnerSlot] && nextState[learnerSlot].maxLp) || 3000;
-      const damageReward = (damageToOpp - damageToSelf) / norm;
+const damageDealt =
+  Math.max(0, prevOppLp - newOppLp) / oppMaxLp;
+
+const damageTaken =
+  Math.max(0, prevSelfLp - newSelfLp) / selfMaxLp;
+
+/*
+ * Intentional offensive bias:
+ * equal proportional damage gives a small positive reward,
+ * but reckless damage-taking is still punished.
+ */
+const damageReward =
+  0.20 * damageDealt -
+  0.10 * damageTaken;
 
       // Compose final reward:
       // - terminalReward scaled by roundDiscount (keeps your existing "deferred" terminal signal)
       // - shaping term (unchanged form, but nextPotential is now from post-resolution state)
       // - immediate damage reward (added). You can scale this term if you wish.
       const r =
-        roundDiscount * terminalReward +
-        SHAPING_SCALE * (discount * nextPotential - pendingObj.phi) +
-        (damageReward * 1.0);
+  terminalReward +
+  SHAPING_SCALE * (discount * nextPotential - pendingObj.phi) +
+  damageReward +
+  timePenalty;
 
       // Produce post-resolution observation s1 and mask m1 if possible.
       // Best-effort: construct an env representing nextState to compute observation & mask.
@@ -210,9 +222,14 @@
         const obsAfter = E.observe(envAfter, learnerSlot);
         s1 = E.vector(obsAfter, spec);
         m1 = E.mask(envAfter, learnerSlot);
-      } catch (err) {
-        // If we cannot construct the post-state observation, fallback remains zeroed s1/m1.
-      }
+      }catch (err) {
+  if (!terminal) {
+    throw new Error(
+      "Failed to build post-resolution learner state: " +
+      err.message
+    );
+  }
+}
 
       return {
         s: pendingObj.s,
@@ -373,24 +390,26 @@
         const opposingAction = opponentAct(e);
 
         if (ownDecision) {
-          if (pending) {
-            yield {
-              type: "transition",
-              transition: closeTransition(
-                ownDecision,
-                false
-              )
-            };
-          }
+  /*
+   * This trainer is designed for one learner decision per resolved round.
+   * Do not silently overwrite a previous learner decision.
+   */
+  if (pending) {
+    throw new Error(
+      "More than one learner decision occurred before round resolution."
+    );
+  }
 
-          pending = {
-  ...ownDecision,
-  phi: potential(state, learnerSlot),
-  completedRounds: rounds,
-  selfLp: state[learnerSlot].lp,
-  oppLp: state[C.other(learnerSlot)].lp
-};
-        }
+  pending = {
+    ...ownDecision,
+    phi: potential(state, learnerSlot),
+    completedRounds: rounds,
+    selfLp: state[learnerSlot].lp,
+    oppLp: state[C.other(learnerSlot)].lp,
+    selfMaxLp: state[learnerSlot].maxLp,
+    oppMaxLp: state[C.other(learnerSlot)].maxLp
+  };
+}
 
         const inputs = {
           [learnerSlot]: ownDecision?.a ?? 0,
@@ -428,35 +447,31 @@
         result.actions
       );
 
-      previousActions = result.actions;
-      state = result.state;
+previousActions = result.actions;
+state = result.state;
 
-// Close pending using the post-resolution state (one transition per resolved round)
+/*
+ * A combat round has now completed.
+ * Increment before closing so elapsedRounds is normally 1, not 0.
+ */
+rounds++;
+
+const terminal = Boolean(state.winner);
+
+// Close exactly once, using the actual post-resolution state.
 if (pending) {
-  try {
-    yield {
-      type: "transition",
-      transition: closeTransition(pending, state, false)
-    };
-  } catch (err) {
-    console.warn('[SoulSim] closeTransition failed', err);
-  }
+  yield {
+    type: "transition",
+    transition: closeTransition(pending, state, terminal)
+  };
+
   pending = null;
 }
-
-// Increment rounds and emit round event
-rounds++;
 
 yield { type: "round", rounds };
     }
 
-if (pending) {
-  yield {
-    type: "transition",
-    transition: closeTransition(pending, state, true)
-  };
-  pending = null;
-}
+
 
     yield {
       type: "end",
