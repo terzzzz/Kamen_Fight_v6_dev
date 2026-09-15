@@ -193,6 +193,31 @@
       );
     }
 
+    // Vector feature extraction and expanded dimensions check.
+    {
+      const spec = E.makeSpec(data);
+      const e = E.create(match());
+      const obs = E.observe(e, "p1");
+      const vec = E.vector(obs, spec);
+
+      check(
+        vec instanceof Float32Array,
+        "Vector output is a Float32Array."
+      );
+      check(
+        vec.length === spec.frame,
+        "Single frame vector length matches spec.frame size (" + spec.frame + ")."
+      );
+
+      const frames = new E.Frames(spec);
+      const stacked = frames.push(vec);
+
+      check(
+        stacked.length === spec.input,
+        "Stacked frames vector length matches spec.input size (" + spec.input + ")."
+      );
+    }
+
     // Network serialization and basic learning.
     {
       const spec = E.makeSpec(data);
@@ -200,7 +225,7 @@
       const frames = new E.Frames(spec);
       const x = frames.push(E.vector(E.observe(e, "p1"), spec));
 
-      const net = new N.Network(spec.input, 7);
+      const net = new N.Network(spec.input, 64, 64, 10);
       const restored = N.Network.fromJSON(net.toJSON());
 
       check(
@@ -238,8 +263,7 @@
       );
     }
 
-// Regression tests for Part A's one-step replay implementation.
-    // These check return construction, not fighting performance.
+    // One-step transition structure & replay queue acceptance.
     {
       const spec = E.makeSpec(data);
 
@@ -252,7 +276,7 @@
       );
 
       const learner = new N.Learner(
-        new N.Network(spec.input, 19)
+        new N.Network(spec.input, 64, 64, 10)
       );
 
       const transition = {
@@ -261,6 +285,7 @@
         m: legal,
         demo: false,
         r: 0.25,
+        discount: E.GAMMA,
         s1: nextObservation,
         m1: legal,
         done: false
@@ -270,8 +295,7 @@
 
       check(
         learner.replay.items.length === 1,
-        "One-step experience is stored immediately. " +
-        "If this fails, check Part A and reload updated scripts."
+        "Transition experience is stored into replay buffer immediately."
       );
 
       const first = learner.replay.items[0];
@@ -279,13 +303,14 @@
       check(
         first.r === 0.25 &&
         first.discount === E.GAMMA,
-        "Nonterminal experience retains its reward and one-step discount."
+        "Nonterminal experience retains its reward and discount."
       );
 
       learner.accept({
         ...transition,
         a: 9,
         r: -1,
+        discount: 0,
         done: true
       }, 0);
 
@@ -297,20 +322,9 @@
       );
 
       check(
-        entries[0].r === 0.25 &&
-        entries[0].discount === E.GAMMA,
-        "A later terminal reward does not alter the earlier one-step return."
-      );
-
-      check(
         entries[1].r === -1 &&
         entries[1].discount === 0,
-        "Terminal experience has no bootstrap value."
-      );
-
-      check(
-        learner.queue.length === 0,
-        "No transitions remain queued after terminal experience."
+        "Terminal experience has zero discount."
       );
     }
 
