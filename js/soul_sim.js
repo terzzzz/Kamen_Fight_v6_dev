@@ -210,8 +210,7 @@ const damageReward =
       const r =
   terminalReward +
   SHAPING_SCALE * (discount * nextPotential - pendingObj.phi) +
-  damageReward +
-  timePenalty;
+  damageReward  ;
 
       // Produce post-resolution observation s1 and mask m1 if possible.
       // Best-effort: construct an env representing nextState to compute observation & mask.
