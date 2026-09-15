@@ -142,75 +142,89 @@
     let rounds = 0;
     let ticks = 0;
 
-    function closeTransition(next, terminal) {
-      if (!pending) {
+        /**
+     * Close a pending transition using the post-resolution state.
+     *
+     * pendingObj: object previously stored when decision was made:
+     *   { s, a, m, demo, phi, completedRounds, selfLp, oppLp }
+     * nextState: the CombatCore state AFTER resolution (post C.resolve)
+     * terminal: boolean - true if this is the terminal transition (match ended)
+     *
+     * Returns a transition object compatible with your trainer pipeline.
+     */
+    function closeTransition(pendingObj, nextState, terminal) {
+      if (!pendingObj) {
         throw new Error("Cannot close an empty transition.");
       }
 
-      /*
-       * Count resolved combat rounds, not controller decisions.
-       *
-       * Repeated WAIT/direction inputs within one round therefore
-       * do not further discount an eventual loss.
-       *
-       * This also counts skipped decision opportunities when the
-       * learner is fainted, and counts the terminal resolution.
-       */
-      const elapsedRounds = rounds - pending.completedRounds;
+      // How many completed rounds have elapsed since the decision was recorded
+      const elapsedRounds = rounds - pendingObj.completedRounds;
 
-      if (
-        !Number.isSafeInteger(elapsedRounds) ||
-        elapsedRounds < 0
-      ) {
+      if (!Number.isSafeInteger(elapsedRounds) || elapsedRounds < 0) {
         throw new Error("Invalid completed-round transition.");
       }
 
-      const roundDiscount = Math.pow(
-        E.GAMMA,
-        elapsedRounds
-      );
-
+      // Round-based discount (unchanged)
+      const roundDiscount = Math.pow(E.GAMMA, elapsedRounds);
+      // For bootstrap/shaping we use discount; terminal transitions have no bootstrap (discount = 0)
       const discount = terminal ? 0 : roundDiscount;
 
-      const nextPotential = terminal
-        ? 0
-        : potential(state, learnerSlot);
+      // nextPotential should be computed from nextState (post-resolution)
+      const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
 
-      const terminalReward = !terminal
-        ? 0
-        : state.winner === "draw"
-          ? 0
-          : state.winner === learnerSlot
-            ? 1
-            : -1;
+      // Terminal outcome reward (1 / -1) - based on final winner in nextState
+      const terminalReward = terminal
+        ? (nextState.winner === "draw" ? 0 : (nextState.winner === learnerSlot ? 1 : -1))
+        : 0;
+
+      // Immediate damage-based reward: (damage dealt to opponent) - (damage taken),
+      // normalized by max LP so scale is stable across riders.
+      const prevSelfLp = (typeof pendingObj.selfLp === 'number') ? pendingObj.selfLp : (pendingObj.prevState?.[learnerSlot]?.lp || 0);
+      const prevOppLp = (typeof pendingObj.oppLp === 'number') ? pendingObj.oppLp : (pendingObj.prevState?.[C.other(learnerSlot)]?.lp || 0);
+
+      const newSelfLp = (nextState[learnerSlot] && Number(nextState[learnerSlot].lp)) || 0;
+      const newOppLp = (nextState[C.other(learnerSlot)] && Number(nextState[C.other(learnerSlot)].lp)) || 0;
+
+      const damageToOpp = Math.max(0, prevOppLp - newOppLp);
+      const damageToSelf = Math.max(0, prevSelfLp - newSelfLp);
+
+      // Normalize by learner maxLp (fallback to 3000)
+      const norm = (nextState[learnerSlot] && nextState[learnerSlot].maxLp) || 3000;
+      const damageReward = (damageToOpp - damageToSelf) / norm;
+
+      // Compose final reward:
+      // - terminalReward scaled by roundDiscount (keeps your existing "deferred" terminal signal)
+      // - shaping term (unchanged form, but nextPotential is now from post-resolution state)
+      // - immediate damage reward (added). You can scale this term if you wish.
+      const r =
+        roundDiscount * terminalReward +
+        SHAPING_SCALE * (discount * nextPotential - pendingObj.phi) +
+        (damageReward * 1.0);
+
+      // Produce post-resolution observation s1 and mask m1 if possible.
+      // Best-effort: construct an env representing nextState to compute observation & mask.
+      let s1 = new Float32Array(spec.input);
+      let m1 = Uint8Array.from([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+      try {
+        const envAfter = E.create(nextState, previousActions);
+        const obsAfter = E.observe(envAfter, learnerSlot);
+        s1 = E.vector(obsAfter, spec);
+        m1 = E.mask(envAfter, learnerSlot);
+      } catch (err) {
+        // If we cannot construct the post-state observation, fallback remains zeroed s1/m1.
+      }
 
       return {
-        s: pending.s,
-        a: pending.a,
-        m: pending.m,
-        demo: pending.demo,
+        s: pendingObj.s,
+        a: pendingObj.a,
+        m: pendingObj.m,
+        demo: pendingObj.demo,
 
-        /*
-         * Outcome and potential shaping use the same round clock.
-         * Terminal transitions have no bootstrap.
-         */
-        r:
-          roundDiscount * terminalReward +
-          SHAPING_SCALE * (
-            discount * nextPotential - pending.phi
-          ),
-
+        r,
         discount,
 
-        s1: next
-          ? next.s
-          : new Float32Array(spec.input),
-
-        m1: next
-          ? next.m
-          : Uint8Array.from([
-              1, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            ]),
+        s1,
+        m1,
 
         done: terminal
       };
@@ -370,10 +384,12 @@
           }
 
           pending = {
-            ...ownDecision,
-            phi: potential(state, learnerSlot),
-            completedRounds: rounds
-          };
+  ...ownDecision,
+  phi: potential(state, learnerSlot),
+  completedRounds: rounds,
+  selfLp: state[learnerSlot].lp,
+  oppLp: state[C.other(learnerSlot)].lp
+};
         }
 
         const inputs = {
@@ -415,23 +431,32 @@
       previousActions = result.actions;
       state = result.state;
 
-      /*
-       * Increment even when this resolution ends the match.
-       */
-      rounds++;
+// Close pending using the post-resolution state (one transition per resolved round)
+if (pending) {
+  try {
+    yield {
+      type: "transition",
+      transition: closeTransition(pending, state, false)
+    };
+  } catch (err) {
+    console.warn('[SoulSim] closeTransition failed', err);
+  }
+  pending = null;
+}
 
-      yield {
-        type: "round",
-        rounds
-      };
+// Increment rounds and emit round event
+rounds++;
+
+yield { type: "round", rounds };
     }
 
-    if (pending) {
-      yield {
-        type: "transition",
-        transition: closeTransition(null, true)
-      };
-    }
+if (pending) {
+  yield {
+    type: "transition",
+    transition: closeTransition(pending, state, true)
+  };
+  pending = null;
+}
 
     yield {
       type: "end",
