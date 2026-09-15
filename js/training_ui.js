@@ -213,6 +213,12 @@
         border-radius: 5px;
       }
 
+      .soul-tools button[data-action="promote"] {
+        background: #8b0000;
+        border: 1px solid #cc0000;
+        color: #ffffff;
+      }
+
       .soul-tools button:disabled {
         opacity: .4;
         cursor: not-allowed;
@@ -723,6 +729,9 @@
             break;
 
           case "promote":
+            if (!window.confirm("Are you sure you want to activate this candidate model for live matches?")) {
+              break;
+            }
             g.SoulAgent.promote();
             refresh();
 
