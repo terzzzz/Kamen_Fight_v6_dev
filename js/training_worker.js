@@ -7,7 +7,7 @@ const BUILD = "round-discount-master-guide-v4";
  * Keep the existing checkpoint format identifier.
  * The network architecture and observation schema are unchanged.
  */
-const VERSION = "kf-soul-ddqn-1";
+const VERSION = "kf-soul-ddqn-v2";
 
 const MIN_IMITATION = 0.02;
 const INITIAL_IMITATION = 0.05;
