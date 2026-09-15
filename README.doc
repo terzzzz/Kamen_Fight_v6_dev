@@ -84,5 +84,7 @@ Riders: Include all showga riders + shadow moon (portrait only)
 5/9/26: Fix bug where Aggressive and Master are easier to beat. 
 6/9/26: Revise codings, adding comments, spotting & fixing minor bugs. Verificaiton of game difficulty.
 7/9/26: Rider Amazon - design. 
+15/9/26: Confirm the deepmind neutral maching learning works. Training Ichigo as SOUL.
+
 
 
