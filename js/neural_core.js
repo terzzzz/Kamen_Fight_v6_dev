@@ -9,7 +9,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3";
+  const BUILD = "round-discount-master-guide-v4";
   const K = g.KF;
 
   function argmax(q, mask) {
