@@ -1,7 +1,7 @@
 /* js/training_worker.js */
 "use strict";
 
-const BUILD = "round-discount-master-guide-v3";
+const BUILD = "round-discount-master-guide-v4";
 
 /*
  * Keep the existing checkpoint format identifier.
