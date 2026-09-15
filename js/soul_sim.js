@@ -9,7 +9,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3";
+  const BUILD = "round-discount-master-guide-v4";
   const TEACHER_DIFFICULTY = "master";
   const SHAPING_SCALE = 0.2;
 
@@ -138,7 +138,12 @@
 
     let history = [];
     let previousActions = {};
-    let pending = null;
+    /*
+ * A combat round may contain multiple learner input decisions before
+ * CombatCore resolves the selected actions. Preserve each decision so
+ * no learner action is silently discarded.
+ */
+let pending = []; 
     let rounds = 0;
     let ticks = 0;
 
@@ -388,26 +393,27 @@ const damageReward =
         const ownDecision = learner.decide(e, learnerSlot);
         const opposingAction = opponentAct(e);
 
-        if (ownDecision) {
+       if (ownDecision) {
   /*
-   * This trainer is designed for one learner decision per resolved round.
-   * Do not silently overwrite a previous learner decision.
+   * The input phase can request multiple learner decisions before the
+   * selected actions are resolved into one combat round. Queue every
+   * learner decision rather than overwriting or discarding earlier ones.
    */
-  if (pending) {
-    throw new Error(
-      "More than one learner decision occurred before round resolution."
-    );
-  }
-
-  pending = {
+  pending.push({
     ...ownDecision,
+
+    /*
+     * Combat state does not change until C.resolve(...), so these values
+     * describe the pre-resolution state shared by decisions in this round.
+     */
     phi: potential(state, learnerSlot),
     completedRounds: rounds,
+
     selfLp: state[learnerSlot].lp,
     oppLp: state[C.other(learnerSlot)].lp,
     selfMaxLp: state[learnerSlot].maxLp,
     oppMaxLp: state[C.other(learnerSlot)].maxLp
-  };
+  });
 }
 
         const inputs = {
@@ -457,15 +463,23 @@ rounds++;
 
 const terminal = Boolean(state.winner);
 
-// Close exactly once, using the actual post-resolution state.
-if (pending) {
+/*
+ * Close every learner decision made during the input phase using the
+ * resulting post-resolution combat state. This preserves all actions
+ * selected before the round was resolved.
+ */
+for (const pendingDecision of pending) {
   yield {
     type: "transition",
-    transition: closeTransition(pending, state, terminal)
+    transition: closeTransition(
+      pendingDecision,
+      state,
+      terminal
+    )
   };
-
-  pending = null;
 }
+
+pending = [];
 
 yield { type: "round", rounds };
     }
