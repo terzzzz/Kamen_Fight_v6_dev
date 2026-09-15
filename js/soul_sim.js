@@ -5,10 +5,14 @@
  * - Opponent difficulty remains independent of teacher difficulty.
  * - Rewards and bootstrapping use completed-round discounts.
  * - Evaluation remains unguided when guideProbability is zero.
+ * - Every learner decision is preserved until round resolution.
+ * - Both current and next observations use E.Frames.
+ * - Observation and mask sizes are validated before replay.
  */
 (function (g) {
   "use strict";
 
+  // Kept unchanged for compatibility with existing build checks.
   const BUILD = "round-discount-master-guide-v3";
   const TEACHER_DIFFICULTY = "master";
   const SHAPING_SCALE = 0.2;
@@ -18,7 +22,68 @@
   const C = g.CombatCore;
   const K = g.KF;
 
+  function assertObservationSize(spec, name, vector) {
+    if (!(vector instanceof Float32Array)) {
+      throw new Error(
+        name + " is not a Float32Array: " +
+        Object.prototype.toString.call(vector)
+      );
+    }
+
+    if (vector.length !== spec.input) {
+      throw new Error(
+        name + " size mismatch: got " + vector.length +
+        ", expected " + spec.input + "."
+      );
+    }
+
+    return vector;
+  }
+
+  function assertMask(name, mask, expectedLength) {
+    if (!mask || mask.length !== expectedLength) {
+      throw new Error(
+        name + " size mismatch: got " +
+        (mask ? mask.length : "missing") +
+        ", expected " + expectedLength + "."
+      );
+    }
+
+    let hasLegalAction = false;
+
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i] !== 0 && mask[i] !== 1) {
+        throw new Error(
+          name + " contains an invalid value at action " + i + "."
+        );
+      }
+
+      if (mask[i]) hasLegalAction = true;
+    }
+
+    if (!hasLegalAction) {
+      throw new Error(name + " contains no legal actions.");
+    }
+
+    return mask;
+  }
+
+  function assertNetworkSize(spec, net, name) {
+    if (!net) return;
+
+    // Network.sizes is also used by SoulAgent.validate().
+    if (!net.sizes || net.sizes[0] !== spec.input) {
+      throw new Error(
+        name + " observation size mismatch: network expects " +
+        (net.sizes ? net.sizes[0] : "an unknown input size") +
+        ", environment expects " + spec.input + "."
+      );
+    }
+  }
+
   function reactor(spec, net, rng, options = {}) {
+    assertNetworkSize(spec, net, "Controller network");
+
     const frames = new E.Frames(spec);
     const scriptedTeacher = E.scripted(
       rng,
@@ -32,8 +97,19 @@
         }
 
         const observation = E.observe(e, slot);
-        const s = frames.push(E.vector(observation, spec));
-        const m = E.mask(e, slot);
+
+        const stacked = assertObservationSize(
+          spec,
+          "Controller observation for " + slot,
+          frames.push(E.vector(observation, spec))
+        );
+
+        // Snapshot the arrays so later controller updates cannot
+        // change an observation already queued for training.
+        const s = new Float32Array(stacked);
+        const m = Uint8Array.from(E.mask(e, slot));
+
+        assertMask("Controller mask for " + slot, m, m.length);
 
         let a;
         const guided = !net || Boolean(options.guide);
@@ -117,6 +193,17 @@
       guideProbability = 0
     } = options;
 
+    if (!Number.isSafeInteger(spec.input) || spec.input < 1) {
+      throw new Error("Invalid neural observation input size.");
+    }
+
+    if (learnerSlot !== "p1" && learnerSlot !== "p2") {
+      throw new Error("Invalid learner slot: " + learnerSlot);
+    }
+
+    assertNetworkSize(spec, net, "Learner network");
+    assertNetworkSize(spec, opponentNet, "Opponent network");
+
     const ichigo = data.riders.find(
       rider => rider.id === "ichigo"
     );
@@ -138,102 +225,166 @@
 
     let history = [];
     let previousActions = {};
-    /*
- * A combat round may contain multiple learner input decisions before
- * CombatCore resolves the selected actions. Preserve each decision so
- * no learner action is silently discarded.
- */
-let pending = []; 
+
+    // Preserve every learner decision made before round resolution.
+    let pending = [];
+
     let rounds = 0;
     let ticks = 0;
 
-        /**
-     * Close a pending transition using the post-resolution state.
+    /*
+     * Build the first observation of the next input round.
      *
-     * pendingObj: object previously stored when decision was made:
-     *   { s, a, m, demo, phi, completedRounds, selfLp, oppLp }
-     * nextState: the CombatCore state AFTER resolution (post C.resolve)
-     * terminal: boolean - true if this is the terminal transition (match ended)
-     *
-     * Returns a transition object compatible with your trainer pipeline.
+     * reactor() creates a fresh frame stack each round. Bootstrap
+     * observations must follow that same initialization convention,
+     * rather than passing an unstacked E.vector() to the network.
      */
-    function closeTransition(pendingObj, nextState, terminal) {
+    function buildNextInput(nextState, terminal, actionCount) {
+      if (terminal) {
+        const s1 = new Float32Array(spec.input);
+        const m1 = new Uint8Array(actionCount);
+
+        // Terminal transitions have discount zero. Keep a valid
+        // wait-only mask defensively for generic replay code.
+        if (actionCount > 0) m1[0] = 1;
+
+        assertMask("Terminal next-action mask", m1, actionCount);
+
+        return { s1, m1 };
+      }
+
+      try {
+        const envAfter = E.create(nextState, previousActions);
+        const obsAfter = E.observe(envAfter, learnerSlot);
+        const nextFrames = new E.Frames(spec);
+
+        const stacked = assertObservationSize(
+          spec,
+          "Post-resolution s1",
+          nextFrames.push(E.vector(obsAfter, spec))
+        );
+
+        const m1 = Uint8Array.from(
+          E.mask(envAfter, learnerSlot)
+        );
+
+        assertMask(
+          "Post-resolution next-action mask",
+          m1,
+          actionCount
+        );
+
+        return {
+          s1: new Float32Array(stacked),
+          m1
+        };
+
+      } catch (err) {
+        throw new Error(
+          "Failed to build post-resolution learner input: " +
+          (err instanceof Error ? err.message : String(err)) +
+          " Completed rounds=" + rounds +
+          ", state.round=" + nextState.round + "."
+        );
+      }
+    }
+
+    /*
+     * Close one queued decision using the post-resolution state.
+     * nextInput is shared as a source, but each transition receives
+     * its own copies of the bootstrap arrays.
+     */
+    function closeTransition(
+      pendingObj,
+      nextState,
+      terminal,
+      nextInput
+    ) {
       if (!pendingObj) {
         throw new Error("Cannot close an empty transition.");
       }
 
-      // How many completed rounds have elapsed since the decision was recorded
+      assertObservationSize(spec, "Pending s", pendingObj.s);
+      assertObservationSize(spec, "Next s1", nextInput.s1);
+
+      assertMask(
+        "Pending action mask",
+        pendingObj.m,
+        nextInput.m1.length
+      );
+
+      assertMask(
+        "Next-action mask",
+        nextInput.m1,
+        pendingObj.m.length
+      );
+
       const elapsedRounds = rounds - pendingObj.completedRounds;
 
-      if (!Number.isSafeInteger(elapsedRounds) || elapsedRounds < 0) {
-        throw new Error("Invalid completed-round transition.");
+      if (
+        !Number.isSafeInteger(elapsedRounds) ||
+        elapsedRounds < 1
+      ) {
+        throw new Error(
+          "Invalid completed-round transition: elapsedRounds=" +
+          elapsedRounds + "."
+        );
       }
 
-      // Round-based discount (unchanged)
       const roundDiscount = Math.pow(E.GAMMA, elapsedRounds);
-      // For bootstrap/shaping we use discount; terminal transitions have no bootstrap (discount = 0)
       const discount = terminal ? 0 : roundDiscount;
 
-      // nextPotential should be computed from nextState (post-resolution)
-      const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
+      const nextPotential = terminal
+        ? 0
+        : potential(nextState, learnerSlot);
 
-      // Terminal outcome reward (1 / -1) - based on final winner in nextState
       const terminalReward = terminal
-        ? (nextState.winner === "draw" ? 0 : (nextState.winner === learnerSlot ? 1 : -1))
+        ? (
+          nextState.winner === "draw"
+            ? 0
+            : nextState.winner === learnerSlot
+              ? 1
+              : -1
+        )
         : 0;
 
-      // Immediate damage-based reward: (damage dealt to opponent) - (damage taken),
-      // normalized by max LP so scale is stable across riders.
-      const prevSelfLp = pendingObj.selfLp;
-const prevOppLp = pendingObj.oppLp;
+      const selfMaxLp = Math.max(1, pendingObj.selfMaxLp);
+      const oppMaxLp = Math.max(1, pendingObj.oppMaxLp);
 
-const newSelfLp = nextState[learnerSlot].lp;
-const newOppLp = nextState[C.other(learnerSlot)].lp;
+      const damageDealt =
+        Math.max(
+          0,
+          pendingObj.oppLp - nextState[enemySlot].lp
+        ) / oppMaxLp;
 
-const selfMaxLp = Math.max(1, pendingObj.selfMaxLp);
-const oppMaxLp = Math.max(1, pendingObj.oppMaxLp);
+      const damageTaken =
+        Math.max(
+          0,
+          pendingObj.selfLp - nextState[learnerSlot].lp
+        ) / selfMaxLp;
 
-const damageDealt =
-  Math.max(0, prevOppLp - newOppLp) / oppMaxLp;
+      /*
+       * Intentional offensive bias:
+       * equal proportional damage gives a small positive reward.
+       */
+      const damageReward =
+        0.20 * damageDealt -
+        0.10 * damageTaken;
 
-const damageTaken =
-  Math.max(0, prevSelfLp - newSelfLp) / selfMaxLp;
-
-/*
- * Intentional offensive bias:
- * equal proportional damage gives a small positive reward,
- * but reckless damage-taking is still punished.
- */
-const damageReward =
-  0.20 * damageDealt -
-  0.10 * damageTaken;
-
-      // Compose final reward:
-      // - terminalReward scaled by roundDiscount (keeps your existing "deferred" terminal signal)
-      // - shaping term (unchanged form, but nextPotential is now from post-resolution state)
-      // - immediate damage reward (added). You can scale this term if you wish.
+      // Immediate terminal reward, completed-round potential shaping,
+      // and immediate proportional damage reward.
       const r =
-  terminalReward +
-  SHAPING_SCALE * (discount * nextPotential - pendingObj.phi) +
-  damageReward  ;
+        terminalReward +
+        SHAPING_SCALE * (
+          discount * nextPotential - pendingObj.phi
+        ) +
+        damageReward;
 
-      // Produce post-resolution observation s1 and mask m1 if possible.
-      // Best-effort: construct an env representing nextState to compute observation & mask.
-      let s1 = new Float32Array(spec.input);
-      let m1 = Uint8Array.from([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-      try {
-        const envAfter = E.create(nextState, previousActions);
-        const obsAfter = E.observe(envAfter, learnerSlot);
-        s1 = E.vector(obsAfter, spec);
-        m1 = E.mask(envAfter, learnerSlot);
-      }catch (err) {
-  if (!terminal) {
-    throw new Error(
-      "Failed to build post-resolution learner state: " +
-      err.message
-    );
-  }
-}
+      if (!Number.isFinite(r) || !Number.isFinite(discount)) {
+        throw new Error(
+          "Non-finite transition reward or discount."
+        );
+      }
 
       return {
         s: pendingObj.s,
@@ -244,8 +395,8 @@ const damageReward =
         r,
         discount,
 
-        s1,
-        m1,
+        s1: new Float32Array(nextInput.s1),
+        m1: new Uint8Array(nextInput.m1),
 
         done: terminal
       };
@@ -364,9 +515,7 @@ const damageReward =
           throw new Error("Search AI modules are not loaded.");
         }
 
-        /*
-         * Only this opponent call uses the selected difficulty.
-         */
+        // Only the opponent uses the selected difficulty.
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
@@ -387,34 +536,24 @@ const damageReward =
       }
 
       while (!e.done) {
-        /*
-         * Both controllers observe the same pre-input state.
-         */
+        // Both controllers observe the same pre-input state.
         const ownDecision = learner.decide(e, learnerSlot);
         const opposingAction = opponentAct(e);
 
-       if (ownDecision) {
-  /*
-   * The input phase can request multiple learner decisions before the
-   * selected actions are resolved into one combat round. Queue every
-   * learner decision rather than overwriting or discarding earlier ones.
-   */
-  pending.push({
-    ...ownDecision,
+        if (ownDecision) {
+          pending.push({
+            ...ownDecision,
 
-    /*
-     * Combat state does not change until C.resolve(...), so these values
-     * describe the pre-resolution state shared by decisions in this round.
-     */
-    phi: potential(state, learnerSlot),
-    completedRounds: rounds,
+            // Combat state changes only when C.resolve() runs.
+            phi: potential(state, learnerSlot),
+            completedRounds: rounds,
 
-    selfLp: state[learnerSlot].lp,
-    oppLp: state[C.other(learnerSlot)].lp,
-    selfMaxLp: state[learnerSlot].maxLp,
-    oppMaxLp: state[C.other(learnerSlot)].maxLp
-  });
-}
+            selfLp: state[learnerSlot].lp,
+            oppLp: state[enemySlot].lp,
+            selfMaxLp: state[learnerSlot].maxLp,
+            oppMaxLp: state[enemySlot].maxLp
+          });
+        }
 
         const inputs = {
           [learnerSlot]: ownDecision?.a ?? 0,
@@ -446,45 +585,44 @@ const damageReward =
         false
       );
 
-      history = remember(
-        history,
-        state,
-        result.actions
-      );
+      history = remember(history, state, result.actions);
 
-previousActions = result.actions;
-state = result.state;
+      previousActions = result.actions;
+      state = result.state;
 
-/*
- * A combat round has now completed.
- * Increment before closing so elapsedRounds is normally 1, not 0.
- */
-rounds++;
+      // Increment before closing transitions.
+      rounds++;
 
-const terminal = Boolean(state.winner);
+      const terminal = Boolean(state.winner);
 
-/*
- * Close every learner decision made during the input phase using the
- * resulting post-resolution combat state. This preserves all actions
- * selected before the round was resolved.
- */
-for (const pendingDecision of pending) {
-  yield {
-    type: "transition",
-    transition: closeTransition(
-      pendingDecision,
-      state,
-      terminal
-    )
-  };
-}
+      if (pending.length > 0) {
+        // Derive action count from the actual environment mask,
+        // rather than assuming spec.output exists.
+        const actionCount = pending[0].m.length;
 
-pending = [];
+        const nextInput = buildNextInput(
+          state,
+          terminal,
+          actionCount
+        );
 
-yield { type: "round", rounds };
+        for (const pendingDecision of pending) {
+          yield {
+            type: "transition",
+            transition: closeTransition(
+              pendingDecision,
+              state,
+              terminal,
+              nextInput
+            )
+          };
+        }
+      }
+
+      pending = [];
+
+      yield { type: "round", rounds };
     }
-
-
 
     yield {
       type: "end",
