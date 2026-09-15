@@ -9,7 +9,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v4";
+  const BUILD = "round-discount-master-guide-v3";
   const TEACHER_DIFFICULTY = "master";
   const SHAPING_SCALE = 0.2;
 
