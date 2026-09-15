@@ -1,19 +1,8 @@
-/* js/soul_sim.js
- *
- * Revised:
- * - MASTER is the guided-round teacher in every opponent mode.
- * - Opponent difficulty remains independent of teacher difficulty.
- * - Rewards and bootstrapping use completed-round discounts.
- * - Evaluation remains unguided when guideProbability is zero.
- * - Every learner decision is preserved until round resolution.
- * - Both current and next observations use E.Frames.
- * - Observation and mask sizes are validated before replay.
- */
+/* js/soul_sim.js */
 (function (g) {
   "use strict";
 
-  // Kept unchanged for compatibility with existing build checks.
-  const BUILD = "round-discount-master-guide-v3";
+  const BUILD = "round-discount-master-guide-v4";
   const TEACHER_DIFFICULTY = "master";
   const SHAPING_SCALE = 0.2;
 
@@ -71,7 +60,6 @@
   function assertNetworkSize(spec, net, name) {
     if (!net) return;
 
-    // Network.sizes is also used by SoulAgent.validate().
     if (!net.sizes || net.sizes[0] !== spec.input) {
       throw new Error(
         name + " observation size mismatch: network expects " +
@@ -104,8 +92,6 @@
           frames.push(E.vector(observation, spec))
         );
 
-        // Snapshot the arrays so later controller updates cannot
-        // change an observation already queued for training.
         const s = new Float32Array(stacked);
         const m = Uint8Array.from(E.mask(e, slot));
 
@@ -175,10 +161,6 @@
     ].slice(-24);
   }
 
-  /*
-   * Yields controller transitions and periodic clock events.
-   * No wall-clock delay occurs inside this generator.
-   */
   function* episode(options) {
     const {
       data,
@@ -225,27 +207,16 @@
 
     let history = [];
     let previousActions = {};
-
-    // Preserve every learner decision made before round resolution.
     let pending = [];
 
     let rounds = 0;
     let ticks = 0;
 
-    /*
-     * Build the first observation of the next input round.
-     *
-     * reactor() creates a fresh frame stack each round. Bootstrap
-     * observations must follow that same initialization convention,
-     * rather than passing an unstacked E.vector() to the network.
-     */
     function buildNextInput(nextState, terminal, actionCount) {
       if (terminal) {
         const s1 = new Float32Array(spec.input);
         const m1 = new Uint8Array(actionCount);
 
-        // Terminal transitions have discount zero. Keep a valid
-        // wait-only mask defensively for generic replay code.
         if (actionCount > 0) m1[0] = 1;
 
         assertMask("Terminal next-action mask", m1, actionCount);
@@ -289,11 +260,6 @@
       }
     }
 
-    /*
-     * Close one queued decision using the post-resolution state.
-     * nextInput is shared as a source, but each transition receives
-     * its own copies of the bootstrap arrays.
-     */
     function closeTransition(
       pendingObj,
       nextState,
@@ -363,16 +329,10 @@
           pendingObj.selfLp - nextState[learnerSlot].lp
         ) / selfMaxLp;
 
-      /*
-       * Intentional offensive bias:
-       * equal proportional damage gives a small positive reward.
-       */
       const damageReward =
         0.20 * damageDealt -
         0.10 * damageTaken;
 
-      // Immediate terminal reward, completed-round potential shaping,
-      // and immediate proportional damage reward.
       const r =
         terminalReward +
         SHAPING_SCALE * (
@@ -414,10 +374,6 @@
 
       let trainingTeacher = null;
 
-      /*
-       * Teacher selection is independent of opponentMode.
-       * Scripted/NOVICE opponents do not downgrade the teacher.
-       */
       if (guidedRound) {
         if (!g.KF_AI?.choose) {
           throw new Error(
@@ -515,7 +471,6 @@
           throw new Error("Search AI modules are not loaded.");
         }
 
-        // Only the opponent uses the selected difficulty.
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
@@ -536,7 +491,6 @@
       }
 
       while (!e.done) {
-        // Both controllers observe the same pre-input state.
         const ownDecision = learner.decide(e, learnerSlot);
         const opposingAction = opponentAct(e);
 
@@ -544,7 +498,6 @@
           pending.push({
             ...ownDecision,
 
-            // Combat state changes only when C.resolve() runs.
             phi: potential(state, learnerSlot),
             completedRounds: rounds,
 
@@ -590,14 +543,11 @@
       previousActions = result.actions;
       state = result.state;
 
-      // Increment before closing transitions.
       rounds++;
 
       const terminal = Boolean(state.winner);
 
       if (pending.length > 0) {
-        // Derive action count from the actual environment mask,
-        // rather than assuming spec.output exists.
         const actionCount = pending[0].m.length;
 
         const nextInput = buildNextInput(
