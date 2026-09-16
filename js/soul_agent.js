@@ -264,6 +264,27 @@
     };
   }
 
+  /**
+   * Evaluates a game state using the loaded neural network matrix.
+   * Returns max Q-value as the scalar position value.
+   */
+  function evaluateState(state, slot, which = "candidate") {
+    const model = (which === "candidate" ? candidate : active) || active;
+    if (!model || !spec) return null;
+
+    // Convert game state into feature observation vector
+    const obs = g.SoulEnv.extractFeatures
+      ? g.SoulEnv.extractFeatures(state, slot)
+      : g.SoulEnv.extract(state, slot);
+
+    const net = g.SoulNN.Network.fromJSON(model.net);
+    const qValues = net.forward(obs);
+
+    // Return maximum predicted Q-value as positional strength
+    return Math.max(...qValues);
+  }
+
+  // Add to g.SoulAgent export object:
   g.SoulAgent = {
     VERSION,
     ready,
@@ -275,6 +296,8 @@
     promote,
     importCandidate,
     download,
-    status
+    status,
+    evaluateState // Exported hook for search engine
   };
+
 })(window);
