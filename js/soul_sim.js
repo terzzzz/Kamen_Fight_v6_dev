@@ -370,9 +370,9 @@
       const e = E.create(state, previousActions);
       const guidedRound = choices() < guideProbability;
 
-    let trainingTeacher = null;
+      let trainingTeacher = null;
 
-    // High-throughput leaf evaluators: reuse single buffers to avoid GC overhead
+      // High-throughput leaf evaluators: reuse single buffers to avoid GC overhead
       const leafBuffer = new Float32Array(spec.input);
       const oppLeafBuffer = new Float32Array(spec.input);
 
@@ -408,6 +408,7 @@
           difficulty: TEACHER_DIFFICULTY,
           disableAgent: true,
           evaluator: neuralEval,
+          isTraining: true,
           seed: K.hash(
             seed,
             "training-teacher",
@@ -498,6 +499,7 @@
           history,
           difficulty: K.difficulty(opponentMode),
           disableAgent: true,
+          isTraining: true,
           evaluator: opponentNet ? (simState, simSlot) => {
             try {
               const envSim = E.create(simState, previousActions);
