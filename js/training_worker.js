@@ -9,7 +9,7 @@ const BUILD = "round-discount-master-guide-v4";
  */
 const VERSION = "kf-soul-ddqn-v2";
 
-const MIN_IMITATION = 0.02;
+const MIN_IMITATION = 0.01;
 const INITIAL_IMITATION = 0.05;
 
 importScripts(
@@ -139,14 +139,6 @@ async function run(job) {
     throw new Error("Worker network input mismatch.");
   }
 
-  /*
-   * Retain the incoming checkpoint fingerprint for SoulAgent's
-   * evaluation association check.
-   *
-   * Also report the reconstructed inference network fingerprint.
-   * These may differ for externally authored JSON containing
-   * numbers that need Float32 rounding.
-   */
   const weightsID = training
     ? null
     : KF.hash(JSON.stringify(old.net));
@@ -166,10 +158,6 @@ async function run(job) {
   const baseGames = old?.games || 0;
   const baseSteps = old?.steps || 0;
 
-  /*
-   * New training-task identity prevents reusing the old
-   * guidance-decay counter after this trainer revision.
-   */
   const taskKey = JSON.stringify([
     BUILD,
     job.opponent,
@@ -297,9 +285,6 @@ async function run(job) {
     const learnerSlot = i % 2 === 0 ? "p1" : "p2";
     const opponent = opponents[pair % opponents.length];
 
-    /*
-     * Keep separate training/evaluation seed families.
-     */
     const matchSeed = KF.hash(
       seed,
       training ? "training" : "evaluation",
@@ -312,12 +297,14 @@ async function run(job) {
 
     let opponentNet = null;
 
+    /*
+     * Neural Self-Play across all roster opponents:
+     * 50% chance to select a frozen candidate snapshot from the pool.
+     */
     if (
       training &&
-      job.mode === "mixed" &&
-      opponent.id === "ichigo" &&
       pool.length &&
-      chooser() < 0.35
+      chooser() < 0.50
     ) {
       opponentNet = pool[
         Math.floor(chooser() * pool.length)
@@ -327,33 +314,37 @@ async function run(job) {
     const learnedGames = taskBaseGames + games;
 
     /*
- * Accelerated Transition to Self-Play
- * - Drops guide probability to ~5% within 85 matches.
- * - Reaches 2% floor by 120 matches, handing full control to neural self-play.
- */
-const guideProbability = !training
-  ? 0
-  : learnedGames < 5
-    ? 1
-    : Math.max(
-        0.02, // Lower floor lets neural network discover original tactics
-        0.50 * Math.exp(-learnedGames / 35) // Steeper exponential decay
-      );
+     * Guide probability decays to 2% floor to hand control to neural self-play.
+     */
+    const guideProbability = !training
+      ? 0
+      : learnedGames < 5
+        ? 1
+        : Math.max(
+            0.02,
+            0.50 * Math.exp(-learnedGames / 35)
+          );
 
-const epsilon = training
-  ? Math.max(
-      0.03, // Low exploration floor to prevent suicidal turns against Master
-      0.15 * Math.exp(-learnedGames / 50)
-    )
-  : 0;
+    /*
+     * Decision-boundary exploration noise:
+     * Decays to a healthy 5% floor to allow active action sampling without mid-charge breaking.
+     */
+    const epsilon = training
+      ? Math.max(
+          0.05,
+          0.15 * Math.exp(-learnedGames / 50)
+        )
+      : 0;
 
-const imitation = training
-  ? Math.max(
-      0.01,
-      INITIAL_IMITATION * Math.exp(-learnedGames / 50)
-    )
-  : 0;
-
+    /*
+     * Imitation decays smoothly to 1% floor so Master hints don't hold back superior AI discovery.
+     */
+    const imitation = training
+      ? Math.max(
+          MIN_IMITATION,
+          INITIAL_IMITATION * Math.exp(-learnedGames / 50)
+        )
+      : 0;
 
     currentGuideProbability = guideProbability;
     currentImitation = imitation;
@@ -401,9 +392,6 @@ const imitation = training
         lastProgress = now;
       }
 
-      /*
-       * Allow STOP messages and browser scheduling to run.
-       */
       if (now - lastYield >= 20) {
         await pause();
         lastYield = performance.now();
@@ -444,6 +432,7 @@ const imitation = training
     row.games++;
     row[outcome]++;
 
+    // Push checkpoint into self-play pool every 25 games (max capacity 8 snapshots)
     if (training && games % 25 === 0) {
       send("checkpoint", {
         checkpoint: checkpoint()
@@ -451,7 +440,7 @@ const imitation = training
 
       pool.push(net.clone());
 
-      if (pool.length > 4) {
+      if (pool.length > 8) {
         pool.shift();
       }
     }
