@@ -3,7 +3,7 @@
  *
  * Revised:
  * - Supports transition-specific discounts.
- * - Preserves the existing checkpoint architecture.
+ * - Dynamic layer architecture support (flexible hidden sizes).
  * - Exposes a build identifier for cache/version checks.
  */
 (function (g) {
@@ -49,20 +49,20 @@
   }
 
   class Network {
-    constructor(input, seed = 1) {
-      if (
-        !Number.isInteger(input) ||
-        input < 1 ||
-        input > 4096
-      ) {
-        throw new Error("Invalid neural input size.");
+    constructor(...sizes) {
+      if (sizes.length === 1 && Array.isArray(sizes[0])) {
+        sizes = sizes[0];
       }
 
-      this.sizes = [input, 64, 64, 10];
+      if (!sizes.length || sizes.length < 2) {
+        throw new Error("Invalid neural input or layer configuration.");
+      }
+
+      this.sizes = [...sizes];
       this.layers = [];
       this.adamStep = 0;
 
-      const rng = K.rng(seed);
+      const rng = K.rng(1);
 
       for (let l = 0; l < this.sizes.length - 1; l++) {
         const n = this.sizes[l];
@@ -137,19 +137,16 @@
 
       if (
         !Array.isArray(sizes) ||
-        sizes.length !== 4 ||
-        sizes[1] !== 64 ||
-        sizes[2] !== 64 ||
-        sizes[3] !== 10 ||
+        sizes.length < 2 ||
         !Array.isArray(json.layers) ||
-        json.layers.length !== 3
+        json.layers.length !== sizes.length - 1
       ) {
         throw new Error(
           "Unsupported neural checkpoint architecture."
         );
       }
 
-      const net = new Network(sizes[0], 1);
+      const net = new Network(sizes);
 
       json.layers.forEach((source, index) => {
         const target = net.layers[index];
@@ -182,12 +179,6 @@
       return Network.fromJSON(this.toJSON());
     }
 
-    /*
-     * rows: { s, a, y, m, demo }
-     *
-     * Huber TD loss plus optional teacher imitation.
-     * The returned diagnostic is the mean TD loss.
-     */
     train(rows, learningRate = 0.0003, imitation = 0) {
       if (!rows.length) return 0;
 
@@ -237,7 +228,7 @@
             if (!row.m[a]) continue;
 
             delta[a] += imitation * (
-              probabilities[a] / total -
+              probabilities[a] / (total || 1) -
               Number(a === row.a)
             );
           }
@@ -332,7 +323,7 @@
   }
 
   class Replay {
-    constructor(capacity = 20000) {
+    constructor(capacity = 50000) {
       this.capacity = capacity;
       this.items = [];
       this.cursor = 0;
@@ -363,24 +354,18 @@
       this.net = net;
       this.target = net.clone();
       this.rng = K.rng(seed);
-      this.replay = new Replay();
+      this.replay = new Replay(50000);
       this.queue = [];
       this.steps = previousSteps;
       this.updates = 0;
       this.loss = 0;
-      this.gamma = g.SoulEnv.GAMMA;
+      this.gamma = g.SoulEnv ? g.SoulEnv.GAMMA : 0.999;
     }
 
     fold() {
       const transition = this.queue.shift();
       if (!transition) return;
 
-      /*
-       * SoulSim supplies a discount based on completed rounds.
-       *
-       * Keep a fallback for older callers and existing component
-       * tests that construct transitions without a discount.
-       */
       const discount = transition.done
         ? 0
         : (transition.discount ?? this.gamma);
@@ -432,11 +417,6 @@
         let target = t.r;
 
         if (t.discount > 0) {
-          /*
-           * Double DQN:
-           * Select with the online network.
-           * Evaluate with the target network.
-           */
           const nextAction = argmax(
             this.net.predict(t.s1),
             t.m1
@@ -473,6 +453,7 @@
     BUILD,
     Network,
     Learner,
+    Replay,
     argmax,
     randomAction
   };
