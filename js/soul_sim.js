@@ -329,9 +329,7 @@
           pendingObj.selfLp - nextState[learnerSlot].lp
         ) / selfMaxLp;
 
-      const damageReward =
-        0.20 * damageDealt -
-        0.10 * damageTaken;
+      const damageReward = 0.10 * (damageDealt - damageTaken);
 
       const r =
         terminalReward +
@@ -372,13 +370,27 @@
       const e = E.create(state, previousActions);
       const guidedRound = choices() < guideProbability;
 
-      let trainingTeacher = null;
+    let trainingTeacher = null;
+
+      // Fast inline neural evaluator for headless worker simulations
+      const neuralEval = net ? (simState, simSlot) => {
+        try {
+          const envSim = E.create(simState, previousActions);
+          const obsSim = E.observe(envSim, simSlot);
+          const stackedSim = assertObservationSize(
+            spec,
+            "Search Leaf Obs",
+            (new E.Frames(spec)).push(E.vector(obsSim, spec))
+          );
+          return Math.max(...net.predict(stackedSim));
+        } catch (_) {
+          return 0;
+        }
+      } : null;
 
       if (guidedRound) {
         if (!g.KF_AI?.choose) {
-          throw new Error(
-            "MASTER guidance requires the search AI modules."
-          );
+          throw new Error("MASTER guidance requires the search AI modules.");
         }
 
         const demonstration = g.KF_AI.choose({
@@ -387,6 +399,7 @@
           history,
           difficulty: TEACHER_DIFFICULTY,
           disableAgent: true,
+          evaluator: neuralEval, // Injected Neural Evaluator
           seed: K.hash(
             seed,
             "training-teacher",
@@ -471,12 +484,22 @@
           throw new Error("Search AI modules are not loaded.");
         }
 
-        const decision = g.KF_AI.choose({
+     const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
           history,
           difficulty: K.difficulty(opponentMode),
           disableAgent: true,
+          evaluator: opponentNet ? (simState, simSlot) => {
+            try {
+              const envSim = E.create(simState, previousActions);
+              const obsSim = E.observe(envSim, simSlot);
+              const stackedSim = (new E.Frames(spec)).push(E.vector(obsSim, spec));
+              return Math.max(...opponentNet.predict(stackedSim));
+            } catch (_) {
+              return 0;
+            }
+          } : neuralEval,
           seed: K.hash(
             seed,
             "decision",
