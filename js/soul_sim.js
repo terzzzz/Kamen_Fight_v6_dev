@@ -372,17 +372,25 @@
 
     let trainingTeacher = null;
 
-      // Fast inline neural evaluator for headless worker simulations
+    // High-throughput leaf evaluator: reuses a single buffer to avoid GC overhead
+      const leafBuffer = new Float32Array(spec.input);
+
       const neuralEval = net ? (simState, simSlot) => {
         try {
           const envSim = E.create(simState, previousActions);
           const obsSim = E.observe(envSim, simSlot);
-          const stackedSim = assertObservationSize(
-            spec,
-            "Search Leaf Obs",
-            (new E.Frames(spec)).push(E.vector(obsSim, spec))
-          );
-          return Math.max(...net.predict(stackedSim));
+          const vec = E.vector(obsSim, spec);
+          
+          // Fast zero-fill and vector alignment without instantiating E.Frames
+          leafBuffer.fill(0);
+          leafBuffer.set(vec, spec.input - vec.length);
+          
+          const q = net.predict(leafBuffer);
+          let maxQ = -Infinity;
+          for (let i = 0; i < q.length; i++) {
+            if (q[i] > maxQ) maxQ = q[i];
+          }
+          return maxQ;
         } catch (_) {
           return 0;
         }
