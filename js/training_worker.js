@@ -130,7 +130,9 @@ async function run(job) {
     ? SoulNN.Network.fromJSON(old.net)
     : new SoulNN.Network(
         spec.input,
-        KF.hash(seed, "initial-network")
+        128,
+        128,
+        10
       );
 
   if (net.sizes[0] !== spec.input) {
@@ -432,12 +434,12 @@ async function run(job) {
       (opponentNet ? "frozen-self" : job.mode) +
       " / learner " + learnerSlot;
 
-    const row = breakdown[label] ||= {
+    const row = (breakdown[label] = breakdown[label] || {
       games: 0,
       wins: 0,
       losses: 0,
       draws: 0
-    };
+    });
 
     row.games++;
     row[outcome]++;
