@@ -498,16 +498,26 @@
           history,
           difficulty: K.difficulty(opponentMode),
           disableAgent: true,
-          evaluator: opponentNet ? (simState, simSlot) => {
-            try {
-              const envSim = E.create(simState, previousActions);
-              const obsSim = E.observe(envSim, simSlot);
-              const stackedSim = (new E.Frames(spec)).push(E.vector(obsSim, spec));
-              return Math.max(...opponentNet.predict(stackedSim));
-            } catch (_) {
-              return 0;
-            }
-          } : neuralEval,
+         // High-throughput opponentNet evaluator:
+const oppLeafBuffer = new Float32Array(spec.input);
+
+evaluator: opponentNet ? (simState, simSlot) => {
+  try {
+    const envSim = E.create(simState, previousActions);
+    const obsSim = E.observe(envSim, simSlot);
+    const vec = E.vector(obsSim, spec);
+    oppLeafBuffer.fill(0);
+    oppLeafBuffer.set(vec, spec.input - vec.length);
+    const q = opponentNet.predict(oppLeafBuffer);
+    let maxQ = -Infinity;
+    for (let i = 0; i < q.length; i++) {
+      if (q[i] > maxQ) maxQ = q[i];
+    }
+    return maxQ;
+  } catch (_) {
+    return 0;
+  }
+} : neuralEval,
           seed: K.hash(
             seed,
             "decision",
