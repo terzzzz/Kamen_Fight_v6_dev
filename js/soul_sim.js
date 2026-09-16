@@ -372,8 +372,9 @@
 
     let trainingTeacher = null;
 
-    // High-throughput leaf evaluator: reuses a single buffer to avoid GC overhead
+    // High-throughput leaf evaluators: reuse single buffers to avoid GC overhead
       const leafBuffer = new Float32Array(spec.input);
+      const oppLeafBuffer = new Float32Array(spec.input);
 
       const neuralEval = net ? (simState, simSlot) => {
         try {
@@ -381,7 +382,6 @@
           const obsSim = E.observe(envSim, simSlot);
           const vec = E.vector(obsSim, spec);
           
-          // Fast zero-fill and vector alignment without instantiating E.Frames
           leafBuffer.fill(0);
           leafBuffer.set(vec, spec.input - vec.length);
           
@@ -407,7 +407,7 @@
           history,
           difficulty: TEACHER_DIFFICULTY,
           disableAgent: true,
-          evaluator: neuralEval, // Injected Neural Evaluator
+          evaluator: neuralEval,
           seed: K.hash(
             seed,
             "training-teacher",
@@ -492,32 +492,29 @@
           throw new Error("Search AI modules are not loaded.");
         }
 
-     const decision = g.KF_AI.choose({
+        const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
           history,
           difficulty: K.difficulty(opponentMode),
           disableAgent: true,
-         // High-throughput opponentNet evaluator:
-const oppLeafBuffer = new Float32Array(spec.input);
-
-evaluator: opponentNet ? (simState, simSlot) => {
-  try {
-    const envSim = E.create(simState, previousActions);
-    const obsSim = E.observe(envSim, simSlot);
-    const vec = E.vector(obsSim, spec);
-    oppLeafBuffer.fill(0);
-    oppLeafBuffer.set(vec, spec.input - vec.length);
-    const q = opponentNet.predict(oppLeafBuffer);
-    let maxQ = -Infinity;
-    for (let i = 0; i < q.length; i++) {
-      if (q[i] > maxQ) maxQ = q[i];
-    }
-    return maxQ;
-  } catch (_) {
-    return 0;
-  }
-} : neuralEval,
+          evaluator: opponentNet ? (simState, simSlot) => {
+            try {
+              const envSim = E.create(simState, previousActions);
+              const obsSim = E.observe(envSim, simSlot);
+              const vec = E.vector(obsSim, spec);
+              oppLeafBuffer.fill(0);
+              oppLeafBuffer.set(vec, spec.input - vec.length);
+              const q = opponentNet.predict(oppLeafBuffer);
+              let maxQ = -Infinity;
+              for (let i = 0; i < q.length; i++) {
+                if (q[i] > maxQ) maxQ = q[i];
+              }
+              return maxQ;
+            } catch (_) {
+              return 0;
+            }
+          } : neuralEval,
           seed: K.hash(
             seed,
             "decision",
