@@ -326,34 +326,34 @@ async function run(job) {
 
     const learnedGames = taskBaseGames + games;
 
-    const guideProbability = !training
-      ? 0
-      : learnedGames < 10
-        ? 1
-        : Math.max(
-            0.05,
-            0.6 * Math.exp(-learnedGames / 100)
-          );
-
-    const epsilon = training
-      ? Math.max(
-          0.05,
-          0.20 * Math.exp(-learnedGames / 200)
-        )
-      : 0;
-
     /*
-     * Imitation applies only to demonstration-tagged samples.
-     * The floor is a configurable training choice, not a
-     * guarantee of performance preservation.
-     */
-    const imitation = training
-      ? Math.max(
-          MIN_IMITATION,
-          INITIAL_IMITATION *
-            Math.exp(-learnedGames / 200)
-        )
-      : 0;
+ * Accelerated Transition to Self-Play
+ * - Drops guide probability to ~5% within 85 matches.
+ * - Reaches 2% floor by 120 matches, handing full control to neural self-play.
+ */
+const guideProbability = !training
+  ? 0
+  : learnedGames < 5
+    ? 1
+    : Math.max(
+        0.02, // Lower floor lets neural network discover original tactics
+        0.50 * Math.exp(-learnedGames / 35) // Steeper exponential decay
+      );
+
+const epsilon = training
+  ? Math.max(
+      0.03, // Low exploration floor to prevent suicidal turns against Master
+      0.15 * Math.exp(-learnedGames / 50)
+    )
+  : 0;
+
+const imitation = training
+  ? Math.max(
+      0.01,
+      INITIAL_IMITATION * Math.exp(-learnedGames / 50)
+    )
+  : 0;
+
 
     currentGuideProbability = guideProbability;
     currentImitation = imitation;
