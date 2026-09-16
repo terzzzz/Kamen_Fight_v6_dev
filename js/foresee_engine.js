@@ -177,7 +177,7 @@
    * Performs Expectimax tree evaluation at depth 1, then executes multi-turn Monte Carlo
    * horizon rollouts for top finalist moves using either neural Q-evaluation or fallback heuristics.
    *
-   * @param {Object} context - Match state, acting slot, difficulty, history, seed, and optional evaluator.
+   * @param {Object} context - Match state, acting slot, difficulty, history, seed, evaluator, and isTraining flag.
    * @returns {Object} Evaluated candidate move rows sorted by score, plus debug metadata.
    */
   function search(context) {
@@ -186,7 +186,8 @@
       slot,
       history = [],
       seed = 1,
-      evaluator = null
+      evaluator = null,
+      isTraining = false
     } = context;
 
     const evalFn = typeof evaluator === "function"
@@ -194,7 +195,14 @@
       : (s, sl) => B.evaluate(s, sl);
 
     const difficulty = K.difficulty(context.difficulty);
-    const settings = K.levels[difficulty];
+    
+    // Copy levels configuration and apply speed caps ONLY during training runs
+    const settings = { ...K.levels[difficulty] };
+    if (isTraining) {
+      settings.rollouts = Math.min(settings.rollouts, 4);
+      settings.finalists = Math.min(settings.finalists, 2);
+    }
+
     const opponentSlot = C.other(slot);
 
     const chargeChoices = [...settings.charges];
@@ -351,6 +359,7 @@
         completedHorizon,
         rolloutsPerFinalist: settings.rollouts,
         usingNeuralEvaluator: typeof evaluator === "function",
+        isTraining,
         finalists: finalists.slice(0, 6).map(row => ({
           key: row.action.key,
           charge: row.action.charge,
