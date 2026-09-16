@@ -1,3 +1,5 @@
+import argparse
+import json
 import time
 import torch
 import torch.nn as nn
@@ -19,32 +21,60 @@ class SoulNN(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+def export_weights(model, template_path="data/ichigo_nn.json", output_path="data/ichigo_nn.json"):
+    with open(template_path, 'r') as f:
+        data = json.load(f)
+
+    with torch.no_grad():
+        layers = [
+            {"w": model.net[0].weight.cpu().numpy().flatten().tolist(), "b": model.net[0].bias.cpu().numpy().tolist()},
+            {"w": model.net[2].weight.cpu().numpy().flatten().tolist(), "b": model.net[2].bias.cpu().numpy().tolist()},
+            {"w": model.net[4].weight.cpu().numpy().flatten().tolist(), "b": model.net[4].bias.cpu().numpy().tolist()}
+        ]
+
+    data["net"]["layers"] = layers
+    with open(output_path, 'w') as f:
+        json.dump(data, f)
+    print(f"\n[Export] Successfully updated {output_path} with trained weights!")
+
 def train():
+    parser = argparse.ArgumentParser(description="Kamen Fight Pure RL Trainer")
+    parser.add_argument("--games", type=int, default=1000, help="Number of battles to train")
+    parser.add_argument("--opponents", type=str, default="all", help="'all' or specific rider ID (e.g. nigo, v3, amazon)")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    args = parser.parse_args()
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    env = PureKamenFightEnv()
-    model = SoulNN().to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    roster = ["nigo", "v3", "riderman", "x", "amazon"] if args.opponents == "all" else [args.opponents]
     
-    total_fights = 1000
+    env = PureKamenFightEnv(p1="ichigo", p2=roster[0])
+    model = SoulNN().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+    total_fights = args.games
     fights_completed = 0
     total_steps = 0
-    wins = 0
+    recent_wins = []
     
     start_time = time.time()
     last_print = time.time()
-    
-    print(f"=== Starting Kamen Fight Pure Python RL Trainer on [{device}] ===")
+
+    print(f"=== Kamen Fight RL Trainer ===")
+    print(f"Device: {device} | Games: {total_fights} | Roster Pool: {roster}")
+    print("------------------------------------------------------------")
 
     for fight in range(1, total_fights + 1):
+        # Rotate opponents across rounds if set to 'all'
+        opp_id = roster[fight % len(roster)]
+        env.p2_id = opp_id
+        
         obs, _ = env.reset()
         done = False
         fight_reward = 0
-        
+
         while not done:
             total_steps += 1
-            
-            # Epsilon-greedy action policy selection
-            if np.random.rand() < 0.1:
+            if np.random.rand() < max(0.05, 1.0 - fight / (total_fights * 0.8)):
                 action = env.action_space.sample()
             else:
                 state_t = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
@@ -56,25 +86,28 @@ def train():
             obs = next_obs
 
         fights_completed += 1
-        if fight_reward > 0:
-            wins += 1
+        won = 1 if fight_reward > 0 else 0
+        recent_wins.append(won)
+        if len(recent_wins) > 50:
+            recent_wins.pop(0)
 
-        # Print screen telemetry per second
+        # Live telemetry updates
         now = time.time()
         if now - last_print >= 1.0 or fight == total_fights:
             elapsed = now - start_time
             sps = int(total_steps / elapsed)
-            win_rate = (wins / fights_completed) * 100
-            
-            print(f"Fights: {fights_completed}/{total_fights} | "
-                  f"Win Rate: {win_rate:.1f}% | "
-                  f"Speed: {sps:,} steps/sec | "
-                  f"Total Steps: {total_steps:,} | "
+            mpm = int((fights_completed / elapsed) * 60)
+            win_rate = (sum(recent_wins) / len(recent_wins)) * 100
+
+            print(f"Battles: {fights_completed}/{total_fights} | "
+                  f"Vs: {opp_id:<8} | "
+                  f"Win Rate (Last 50): {win_rate:5.1f}% | "
+                  f"Speed: {sps:,} steps/s ({mpm} fights/min) | "
                   f"Elapsed: {elapsed:.1f}s")
-            
             last_print = now
 
-    print("\nTraining Finished Successfully!")
+    torch.save(model.state_dict(), "soul_ichigo.pth")
+    export_weights(model)
 
 if __name__ == "__main__":
     train()
