@@ -34,7 +34,7 @@ for i in range(min(len(layers), len(pt_weights))):
     layers[i].pop("bias", None)
 
 # 6. Save updated JSON
-with open("data/wt_ichigo_nn.json", "w") as f:
+with open("data/wt_ichigo_can_nn.json", "w") as f:
     json.dump(data, f)
 
 print(f"SUCCESS: Flattened {len(layers)} layers into 1D arrays for js/neural_core.js!")
