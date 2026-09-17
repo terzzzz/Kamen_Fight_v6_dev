@@ -25,6 +25,14 @@ importScripts(
   ].map(file => file + "?v=" + BUILD)
 );
 
+/*
+ * BYPASS: Override tree-search lookahead to execute raw Neural Network policy decisions 
+ * at maximum evaluation speed (~1000+ matches/min).
+ */
+if (typeof ForeseeEngine !== "undefined") {
+  ForeseeEngine.search = function() { return null; };
+}
+
 let busy = false;
 let cancelled = false;
 
@@ -297,10 +305,6 @@ async function run(job) {
 
     let opponentNet = null;
 
-    /*
-     * Neural Self-Play across all roster opponents:
-     * 50% chance to select a frozen candidate snapshot from the pool.
-     */
     if (
       training &&
       pool.length &&
@@ -313,9 +317,6 @@ async function run(job) {
 
     const learnedGames = taskBaseGames + games;
 
-    /*
-     * Guide probability decays to 2% floor to hand control to neural self-play.
-     */
     const guideProbability = !training
       ? 0
       : learnedGames < 5
@@ -325,10 +326,6 @@ async function run(job) {
             0.50 * Math.exp(-learnedGames / 35)
           );
 
-    /*
-     * Decision-boundary exploration noise:
-     * Decays to a healthy 5% floor to allow active action sampling without mid-charge breaking.
-     */
     const epsilon = training
       ? Math.max(
           0.05,
@@ -336,9 +333,6 @@ async function run(job) {
         )
       : 0;
 
-    /*
-     * Imitation decays smoothly to 1% floor so Master hints don't hold back superior AI discovery.
-     */
     const imitation = training
       ? Math.max(
           MIN_IMITATION,
@@ -432,7 +426,6 @@ async function run(job) {
     row.games++;
     row[outcome]++;
 
-    // Push checkpoint into self-play pool every 25 games (max capacity 8 snapshots)
     if (training && games % 25 === 0) {
       send("checkpoint", {
         checkpoint: checkpoint()
