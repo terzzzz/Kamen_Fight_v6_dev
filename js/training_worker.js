@@ -209,6 +209,7 @@ async function run(job) {
   let losses = 0;
   let draws = 0;
   let totalRounds = 0;
+  let latestAvgQ = 0;
 
   let currentGuideProbability = 0;
   let currentImitation = 0;
@@ -361,7 +362,7 @@ async function run(job) {
 
     let result = null;
 
-    for (const event of generator) {
+   for (const event of generator) {
       if (cancelled) break;
 
       if (event.type === "transition") {
@@ -373,9 +374,11 @@ async function run(job) {
             imitation
           );
         }
-
+      } else if (event.type === "round") {
+        latestAvgQ = event.avgQ;
       } else if (event.type === "end") {
         result = event.result;
+        latestAvgQ = event.result.avgQ;
       }
 
       const now = performance.now();
