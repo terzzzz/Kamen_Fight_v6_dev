@@ -113,11 +113,11 @@
           a = N.randomAction(m, rng);
 
         } else {
-            const qValues = net.predict(s);
-            a = N.argmax(qValues, m);
-            if (options.onQ) {
-                options.onQ(qValues[a]);
-            }
+          const qValues = net.predict(s);
+          a = N.argmax(qValues, m);
+          if (options.onQ) {
+            options.onQ(qValues[a]);
+          }
         }
 
         if (!Number.isInteger(a) || !m[a]) {
@@ -315,7 +315,6 @@
         ? 0
         : potential(nextState, learnerSlot);
 
-      // Terminal outcomes: Draw = Defeat (-1.0). Destroys stalling incentive.
       const terminalReward = terminal
         ? (
           nextState.winner === "draw"
@@ -343,13 +342,11 @@
 
       const damageReward = 0.10 * (damageDealt - damageTaken);
 
-      // CHI generation reward (rewarding D-attack hit/guard meter gain)
       const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 100);
       const nextChi = nextState[learnerSlot].chi || 0;
       const chiGained = Math.max(0, nextChi - pendingObj.selfChi);
       const chiReward = 0.04 * (chiGained / selfMaxChi);
 
-      // Voluntary Idle Penalty: Correctly checks for INPUTS[9] ("IDLE") instead of INPUTS[0] ("WAIT")
       const isVoluntaryIdle = E.INPUTS[pendingObj.a] === "IDLE" && !pendingObj.selfFainted;
       const idlePenalty = isVoluntaryIdle ? -0.05 : 0;
 
@@ -393,6 +390,10 @@
           "Headless match exceeded the round limit."
         );
       }
+
+      // Reset per-round Q accumulator
+      stepQSum = 0;
+      stepQCount = 0;
 
       const e = E.create(state, previousActions);
       const guidedRound = choices() < guideProbability;
@@ -458,12 +459,12 @@
           )
         ),
         {
-         epsilon,
-    guide: guidedRound,
-    teacher: trainingTeacher,
-    style: "reactive",
-    frames: learnerFrames,
-    onQ: onStepQ
+          epsilon,
+          guide: guidedRound,
+          teacher: trainingTeacher,
+          style: "reactive",
+          frames: learnerFrames,
+          onQ: onStepQ
         }
       );
 
@@ -644,19 +645,19 @@
 
       pending = [];
 
-        const avgQ = stepQCount > 0 ? stepQSum / stepQCount : 0;
-        yield { type: "round", rounds, avgQ };
+      const avgQ = stepQCount > 0 ? stepQSum / stepQCount : 0;
+      yield { type: "round", rounds, avgQ };
     }
 
- yield {
-  type: "end",
-  result: {
-    state,
-    rounds,
-    ticks,
-    avgQ: stepQCount > 0 ? stepQSum / stepQCount : 0
-  }
-};
+    yield {
+      type: "end",
+      result: {
+        state,
+        rounds,
+        ticks,
+        avgQ: stepQCount > 0 ? stepQSum / stepQCount : 0
+      }
+    };
   }
 
   g.SoulSim = {
