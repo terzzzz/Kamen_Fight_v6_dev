@@ -25,15 +25,6 @@ importScripts(
   ].map(file => file + "?v=" + BUILD)
 );
 
-/*
- * BYPASS: Override tree-search lookahead to execute raw Neural Network policy decisions 
- * at maximum evaluation speed (~1000+ matches/min).
-
-if (typeof ForeseeEngine !== "undefined") {
-  ForeseeEngine.search = function() { return null; };
-}
- */
-
 let busy = false;
 let cancelled = false;
 
@@ -90,7 +81,8 @@ function validateJob(job) {
       "easy",
       "balanced",
       "master",
-      "soul"
+      "soul",
+      "net"
     ].includes(job.mode)
   ) {
     throw new Error("Unknown opponent mode.");
@@ -104,6 +96,9 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
   const old = job.checkpoint || null;
+
+  const learnerId = job.learner || "ichigo";
+  const isSelfPlay = job.opponent === "self";
 
   if (
     old &&
@@ -169,6 +164,7 @@ async function run(job) {
 
   const taskKey = JSON.stringify([
     BUILD,
+    learnerId,
     job.opponent,
     job.mode
   ]);
@@ -182,11 +178,18 @@ async function run(job) {
       ? previousTask.games
       : 0;
 
-  const opponents = job.opponent === "*"
-    ? data.riders
-    : data.riders.filter(
-        rider => rider.id === job.opponent
-      );
+  const learnerRider = data.riders.find(r => r.id === learnerId);
+  if (!learnerRider) {
+    throw new Error(`Learner rider '${learnerId}' not found in dataset.`);
+  }
+
+  const opponents = isSelfPlay
+    ? [learnerRider]
+    : job.opponent === "*"
+      ? data.riders
+      : data.riders.filter(
+          rider => rider.id === job.opponent
+        );
 
   if (!opponents.length) {
     throw new Error("Opponent not found.");
@@ -194,7 +197,7 @@ async function run(job) {
 
   const pool = [];
 
-  if (training && baseGames > 0) {
+  if (training && baseGames > 0 && !isSelfPlay) {
     pool.push(net.clone());
   }
 
@@ -228,6 +231,7 @@ async function run(job) {
       seed,
       evaluation: null,
       trainerBuild: BUILD,
+      learnerId,
       trainingTask: {
         key: taskKey,
         games: taskBaseGames + games
@@ -265,7 +269,7 @@ async function run(job) {
 
       loss: learner?.loss || 0,
       replaySize: learner?.replay.items.length || 0,
-      updateStats: learner?.updateStats || null, // <-- ADD THIS LINE
+      updateStats: learner?.updateStats || null,
       avgQ: latestAvgQ,
 
       totalTrainingGames: training
@@ -275,14 +279,15 @@ async function run(job) {
       weightsID,
       loadedWeightsID,
 
-      teacher: training ? "master" : null,
+      teacher: training ? (isSelfPlay ? "none (tabula rasa)" : "master") : null,
       guideProbability: currentGuideProbability,
       imitationCoefficient: currentImitation,
       epsilon: currentEpsilon,
 
       seed,
+      learner: learnerId,
       opponent: job.opponent,
-      mode: job.mode,
+      mode: isSelfPlay ? "net" : job.mode,
       cancelled,
       breakdown
     };
@@ -309,7 +314,9 @@ async function run(job) {
 
     let opponentNet = null;
 
-    if (
+    if (isSelfPlay) {
+      opponentNet = net; // P2 shares candidate Q-network during self-play
+    } else if (
       training &&
       pool.length &&
       chooser() < 0.50
@@ -321,7 +328,8 @@ async function run(job) {
 
     const learnedGames = taskBaseGames + games;
 
-    const guideProbability = !training
+    // Force 0% teacher guidance during self-play for pure Tabula Rasa emergence
+    const guideProbability = (!training || isSelfPlay)
       ? 0
       : learnedGames < 5
         ? 1
@@ -337,7 +345,7 @@ async function run(job) {
         )
       : 0;
 
-    const imitation = training
+    const imitation = (training && !isSelfPlay)
       ? Math.max(
           MIN_IMITATION,
           INITIAL_IMITATION * Math.exp(-learnedGames / 50)
@@ -353,8 +361,9 @@ async function run(job) {
       spec,
       net,
       learnerSlot,
+      learnerId,
       opponent,
-      opponentMode: job.mode,
+      opponentMode: isSelfPlay ? "net" : job.mode,
       opponentNet,
       seed: matchSeed,
       epsilon,
@@ -363,7 +372,7 @@ async function run(job) {
 
     let result = null;
 
-   for (const event of generator) {
+    for (const event of generator) {
       if (cancelled) break;
 
       if (event.type === "transition") {
@@ -419,7 +428,7 @@ async function run(job) {
 
     const label =
       opponent.id + " / " +
-      (opponentNet ? "frozen-self" : job.mode) +
+      (isSelfPlay ? "self-play" : (opponentNet ? "frozen-self" : job.mode)) +
       " / learner " + learnerSlot;
 
     const row = (breakdown[label] = breakdown[label] || {
@@ -432,7 +441,7 @@ async function run(job) {
     row.games++;
     row[outcome]++;
 
-    if (training && games % 25 === 0) {
+    if (training && games % 25 === 0 && !isSelfPlay) {
       send("checkpoint", {
         checkpoint: checkpoint()
       });
