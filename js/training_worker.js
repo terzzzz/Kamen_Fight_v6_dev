@@ -98,7 +98,6 @@ async function run(job) {
   const old = job.checkpoint || null;
 
   const learnerId = job.learner || "ichigo";
-  const isSelfPlay = job.opponent === "self";
 
   if (
     old &&
@@ -183,13 +182,11 @@ async function run(job) {
     throw new Error(`Learner rider '${learnerId}' not found in dataset.`);
   }
 
-  const opponents = isSelfPlay
-    ? [learnerRider]
-    : job.opponent === "*"
-      ? data.riders
-      : data.riders.filter(
-          rider => rider.id === job.opponent
-        );
+  const opponents = job.opponent === "*"
+    ? data.riders
+    : data.riders.filter(
+        rider => rider.id === job.opponent
+      );
 
   if (!opponents.length) {
     throw new Error("Opponent not found.");
@@ -197,7 +194,7 @@ async function run(job) {
 
   const pool = [];
 
-  if (training && baseGames > 0 && !isSelfPlay) {
+  if (training && baseGames > 0) {
     pool.push(net.clone());
   }
 
@@ -279,7 +276,7 @@ async function run(job) {
       weightsID,
       loadedWeightsID,
 
-      teacher: training ? (isSelfPlay ? "none (tabula rasa)" : "master") : null,
+      teacher: training ? "master" : null,
       guideProbability: currentGuideProbability,
       imitationCoefficient: currentImitation,
       epsilon: currentEpsilon,
@@ -287,7 +284,7 @@ async function run(job) {
       seed,
       learner: learnerId,
       opponent: job.opponent,
-      mode: isSelfPlay ? "net" : job.mode,
+      mode: job.mode,
       cancelled,
       breakdown
     };
@@ -314,9 +311,7 @@ async function run(job) {
 
     let opponentNet = null;
 
-    if (isSelfPlay) {
-      opponentNet = net; // P2 shares candidate Q-network during self-play
-    } else if (
+    if (
       training &&
       pool.length &&
       chooser() < 0.50
@@ -327,28 +322,29 @@ async function run(job) {
     }
 
     const learnedGames = taskBaseGames + games;
+    const rosterFactor = Math.max(1, opponents.length);
 
-    // Force 0% teacher guidance during self-play for pure Tabula Rasa emergence
-    const guideProbability = (!training || isSelfPlay)
+    // Guide probability decay scaled by roster size N
+    const guideProbability = !training
       ? 0
-      : learnedGames < 5
+      : learnedGames < (5 * rosterFactor)
         ? 1
         : Math.max(
             0.02,
-            0.50 * Math.exp(-learnedGames / 35)
+            0.50 * Math.exp(-learnedGames / (35 * rosterFactor))
           );
 
     const epsilon = training
       ? Math.max(
           0.05,
-          0.15 * Math.exp(-learnedGames / 50)
+          0.15 * Math.exp(-learnedGames / (50 * rosterFactor))
         )
       : 0;
 
-    const imitation = (training && !isSelfPlay)
+    const imitation = training
       ? Math.max(
           MIN_IMITATION,
-          INITIAL_IMITATION * Math.exp(-learnedGames / 50)
+          INITIAL_IMITATION * Math.exp(-learnedGames / (50 * rosterFactor))
         )
       : 0;
 
@@ -363,7 +359,7 @@ async function run(job) {
       learnerSlot,
       learnerId,
       opponent,
-      opponentMode: isSelfPlay ? "net" : job.mode,
+      opponentMode: job.mode,
       opponentNet,
       seed: matchSeed,
       epsilon,
@@ -428,7 +424,7 @@ async function run(job) {
 
     const label =
       opponent.id + " / " +
-      (isSelfPlay ? "self-play" : (opponentNet ? "frozen-self" : job.mode)) +
+      (opponentNet ? "frozen-self" : job.mode) +
       " / learner " + learnerSlot;
 
     const row = (breakdown[label] = breakdown[label] || {
@@ -441,7 +437,7 @@ async function run(job) {
     row.games++;
     row[outcome]++;
 
-    if (training && games % 25 === 0 && !isSelfPlay) {
+    if (training && games % 25 === 0) {
       send("checkpoint", {
         checkpoint: checkpoint()
       });
