@@ -1,10 +1,5 @@
 /* js/neural_core.js
- * CPU neural network + Adam + one-transition Double DQN.
- *
- * Revised:
- * - Supports transition-specific discounts.
- * - Dynamic layer architecture support (flexible hidden sizes).
- * - Exposes a build identifier for cache/version checks.
+ * CPU neural network + Adam + Double DQN with asymmetric weighting & update stats.
  */
 (function (g) {
   "use strict";
@@ -360,6 +355,7 @@
       this.updates = 0;
       this.loss = 0;
       this.gamma = g.SoulEnv ? g.SoulEnv.GAMMA : 0.999;
+      this.updateStats = { win: 0, damage: 0, loss: 0, neutral: 0 };
     }
 
     fold() {
@@ -427,13 +423,19 @@
             this.target.predict(t.s1)[nextAction];
         }
 
+        const scale = t.weightScale || 1.0;
+        if (scale === 2.0) this.updateStats.win++;
+        else if (scale === 1.5) this.updateStats.damage++;
+        else if (scale === 0.5) this.updateStats.loss++;
+        else this.updateStats.neutral++;
+
         return {
           s: t.s,
           a: t.a,
           m: t.m,
           demo: t.demo,
           y: target,
-          weightScale: t.weightScale || 1.0
+          weightScale: scale
         };
       });
 
