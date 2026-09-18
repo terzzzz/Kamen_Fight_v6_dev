@@ -268,20 +268,28 @@
    * Evaluates a game state using the loaded neural network matrix.
    * Returns max Q-value as the scalar position value.
    */
-  function evaluateState(state, slot, which = "candidate") {
+function evaluateState(state, slot, which = "candidate") {
     const model = (which === "candidate" ? candidate : active) || active;
     if (!model || !spec) return null;
 
-    // Convert game state into feature observation vector
-    const obs = g.SoulEnv.extractFeatures
-      ? g.SoulEnv.extractFeatures(state, slot)
-      : g.SoulEnv.extract(state, slot);
+    try {
+      const env = g.SoulEnv.create(state);
+      const obs = g.SoulEnv.observe(env, slot);
+      const frames = new g.SoulEnv.Frames(spec);
+      const vec = g.SoulEnv.vector(obs, spec);
+      const stacked = frames.push(vec);
 
-    const net = g.SoulNN.Network.fromJSON(model.net);
-    const qValues = net.forward(obs);
+      const net = g.SoulNN.Network.fromJSON(model.net);
+      const qValues = net.predict(stacked);
 
-    // Return maximum predicted Q-value as positional strength
-    return Math.max(...qValues);
+      let maxQ = -Infinity;
+      for (let i = 0; i < qValues.length; i++) {
+        if (qValues[i] > maxQ) maxQ = qValues[i];
+      }
+      return maxQ;
+    } catch (_) {
+      return null;
+    }
   }
 
   // Add to g.SoulAgent export object:
