@@ -261,22 +261,18 @@
     };
   }
 
-  /**
-   * Encodes combat states including explicit absolute readings and opponent threat metrics.
-   */
   function vector(o, spec) {
     const values = [];
 
     function fighter(f) {
       const mods = C.modifiers(f);
 
-      // Relative + Absolute metrics
       values.push(
         f.lp / Math.max(1, f.maxLp),
-        f.lp / 3500, // Explicit absolute LP
+        f.lp / 3500,
         f.maxLp / 5000,
         f.chi / Math.max(1, f.maxChi),
-        f.chi / 16, // Explicit absolute CHI
+        f.chi / 16,
         f.faintMeter / 100,
         Number(f.isFainted),
         f.airborneTicks / 8,
