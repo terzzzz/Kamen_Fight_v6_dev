@@ -28,10 +28,11 @@ importScripts(
 /*
  * BYPASS: Override tree-search lookahead to execute raw Neural Network policy decisions 
  * at maximum evaluation speed (~1000+ matches/min).
- */
+
 if (typeof ForeseeEngine !== "undefined") {
   ForeseeEngine.search = function() { return null; };
 }
+ */
 
 let busy = false;
 let cancelled = false;
