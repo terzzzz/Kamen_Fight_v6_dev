@@ -387,11 +387,14 @@
           r.decisionsPerSecond.toFixed(1)
       );
 
-      if (training) {
-        lines.push(
-          "Replay entries: " + r.replaySize,
-          "Latest TD loss: " + r.loss.toFixed(5)
-        );
+   if (training) {
+  lines.push(
+    "Replay entries: " + r.replaySize,
+    "Latest TD loss: " + r.loss.toFixed(5)
+  );
+  if (r.avgQ !== undefined) {
+    lines.push("Avg Q-Value (Recent): " + r.avgQ.toFixed(4));
+  }
         // Render Matrix Updates breakdown
         if (r.updateStats) {
           lines.push(
