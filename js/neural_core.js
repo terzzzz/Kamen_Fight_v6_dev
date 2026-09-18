@@ -203,7 +203,7 @@
           : Math.abs(error) - 0.5;
 
         let delta = new Float32Array(10);
-        delta[row.a] = K.clamp(error, -1, 1);
+        delta[row.a] = K.clamp(error, -1, 1) * (row.weightScale || 1.0);
 
         if (row.demo && imitation > 0) {
           let maximum = -Infinity;
@@ -389,6 +389,7 @@
         demo: transition.demo,
         r: transition.r,
         discount,
+        weightScale: transition.weightScale || 1.0,
         s1: transition.s1,
         m1: transition.m1
       });
@@ -431,7 +432,8 @@
           a: t.a,
           m: t.m,
           demo: t.demo,
-          y: target
+          y: target,
+          weightScale: t.weightScale || 1.0
         };
       });
 
