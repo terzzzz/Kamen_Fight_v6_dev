@@ -179,7 +179,7 @@
       epsilon = 0,
       guideProbability = 0,
       damageDealtWeight = 1.0,
-      damageTakenWeight = 0.9,
+      damageTakenWeight = 1.0,
       drawPenalty = -1.0,
       initialStateOverride = null
     } = options;
