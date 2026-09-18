@@ -113,7 +113,11 @@
           a = N.randomAction(m, rng);
 
         } else {
-          a = N.argmax(net.predict(s), m);
+            const qValues = net.predict(s);
+            a = N.argmax(qValues, m);
+            if (options.onQ) {
+                options.onQ(qValues[a]);
+            }
         }
 
         if (!Number.isInteger(a) || !m[a]) {
@@ -213,6 +217,12 @@
 
     let rounds = 0;
     let ticks = 0;
+    let stepQSum = 0;
+    let stepQCount = 0;
+    const onStepQ = val => {
+      stepQSum += val;
+      stepQCount++;
+    };
 
     function buildNextInput(nextState, terminal, actionCount) {
       if (terminal) {
@@ -448,11 +458,12 @@
           )
         ),
         {
-          epsilon,
-          guide: guidedRound,
-          teacher: trainingTeacher,
-          style: "reactive",
-          frames: learnerFrames
+         epsilon,
+    guide: guidedRound,
+    teacher: trainingTeacher,
+    style: "reactive",
+    frames: learnerFrames,
+    onQ: onStepQ
         }
       );
 
@@ -633,17 +644,19 @@
 
       pending = [];
 
-      yield { type: "round", rounds };
+        const avgQ = stepQCount > 0 ? stepQSum / stepQCount : 0;
+        yield { type: "round", rounds, avgQ };
     }
 
-    yield {
-      type: "end",
-      result: {
-        state,
-        rounds,
-        ticks
-      }
-    };
+ yield {
+  type: "end",
+  result: {
+    state,
+    rounds,
+    ticks,
+    avgQ: stepQCount > 0 ? stepQSum / stepQCount : 0
+  }
+};
   }
 
   g.SoulSim = {
