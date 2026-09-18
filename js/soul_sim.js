@@ -304,13 +304,14 @@
         ? 0
         : potential(nextState, learnerSlot);
 
+      // Terminal Reward with 50% discount on loss penalty
       const terminalReward = terminal
         ? (
           nextState.winner === "draw"
             ? 0
             : nextState.winner === learnerSlot
-              ? 1
-              : -1
+              ? 1.0
+              : -0.5
         )
         : 0;
 
@@ -329,20 +330,47 @@
           pendingObj.selfLp - nextState[learnerSlot].lp
         ) / selfMaxLp;
 
-      const damageReward = 0.10 * (damageDealt - damageTaken);
+      // Damage Reward with 50% discount on taking damage
+      const damageReward = 0.10 * damageDealt - 0.05 * damageTaken;
+
+      // Conditional CHI Reward Logic
+      const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 100);
+      const nextChi = nextState[learnerSlot].chi || 0;
+      const chiGained = Math.max(0, nextChi - pendingObj.selfChi);
+      const chiSpent = Math.max(0, pendingObj.selfChi - nextChi);
+
+      let chiReward = 0;
+
+      if (chiGained > 0 && (damageDealt > 0 || damageTaken > 0)) {
+        chiReward += 0.02 * (chiGained / selfMaxChi);
+      }
+
+      if (chiSpent > 0) {
+        if (damageDealt > 0) {
+          chiReward += 0.05 * (chiSpent / selfMaxChi);
+        } else {
+          chiReward -= 0.02 * (chiSpent / selfMaxChi);
+        }
+      }
 
       const r =
         terminalReward +
         SHAPING_SCALE * (
           discount * nextPotential - pendingObj.phi
         ) +
-        damageReward;
+        damageReward +
+        chiReward;
 
       if (!Number.isFinite(r) || !Number.isFinite(discount)) {
         throw new Error(
           "Non-finite transition reward or discount."
         );
       }
+
+      // Asymmetric Backpropagation Weight Scaling
+      const isWin = terminal && nextState.winner === learnerSlot;
+      const isLoss = terminal && nextState.winner && nextState.winner !== learnerSlot;
+      const weightScale = isWin ? 2.0 : (damageDealt > 0 ? 1.5 : (isLoss ? 0.5 : 1.0));
 
       return {
         s: pendingObj.s,
@@ -352,6 +380,7 @@
 
         r,
         discount,
+        weightScale,
 
         s1: new Float32Array(nextInput.s1),
         m1: new Uint8Array(nextInput.m1),
@@ -372,7 +401,6 @@
 
       let trainingTeacher = null;
 
-      // High-throughput leaf evaluators: reuse single buffers to avoid GC overhead
       const leafBuffer = new Float32Array(spec.input);
       const oppLeafBuffer = new Float32Array(spec.input);
 
@@ -544,7 +572,11 @@
             selfLp: state[learnerSlot].lp,
             oppLp: state[enemySlot].lp,
             selfMaxLp: state[learnerSlot].maxLp,
-            oppMaxLp: state[enemySlot].maxLp
+            oppMaxLp: state[enemySlot].maxLp,
+
+            selfChi: state[learnerSlot].chi || 0,
+            oppChi: state[enemySlot].chi || 0,
+            selfMaxChi: state[learnerSlot].maxChi || 100
           });
         }
 
