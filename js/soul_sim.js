@@ -205,7 +205,7 @@
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
 
-    // Persistent frame history buffer for the learner
+    // Continuous frame history for the learner across decisions and transitions
     const learnerFrames = new E.Frames(spec);
 
     let history = [];
@@ -231,7 +231,6 @@
         const envAfter = E.create(nextState, previousActions);
         const obsAfter = E.observe(envAfter, learnerSlot);
 
-        // Uses continuous learnerFrames history rather than re-instantiating empty frames
         const stacked = assertObservationSize(
           spec,
           "Post-resolution s1",
@@ -307,7 +306,7 @@
         ? 0
         : potential(nextState, learnerSlot);
 
-      // Standard terminal rewards (-1.0 on loss, +1.0 on win)
+      // Objective terminal outcomes (-1.0 loss, +1.0 win)
       const terminalReward = terminal
         ? (
           nextState.winner === "draw"
@@ -335,25 +334,11 @@
 
       const damageReward = 0.10 * (damageDealt - damageTaken);
 
-      // Conditional CHI Reward Logic
+      // Neutral CHI accounting (evaluates resource changes without penalizing utility moves)
       const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 100);
       const nextChi = nextState[learnerSlot].chi || 0;
-      const chiGained = Math.max(0, nextChi - pendingObj.selfChi);
-      const chiSpent = Math.max(0, pendingObj.selfChi - nextChi);
-
-      let chiReward = 0;
-
-      if (chiGained > 0 && (damageDealt > 0 || damageTaken > 0)) {
-        chiReward += 0.02 * (chiGained / selfMaxChi);
-      }
-
-      if (chiSpent > 0) {
-        if (damageDealt > 0) {
-          chiReward += 0.05 * (chiSpent / selfMaxChi);
-        } else {
-          chiReward -= 0.02 * (chiSpent / selfMaxChi);
-        }
-      }
+      const chiDelta = (nextChi - pendingObj.selfChi) / selfMaxChi;
+      const chiReward = 0.01 * chiDelta;
 
       const r =
         terminalReward +
@@ -369,9 +354,8 @@
         );
       }
 
-      // Asymmetric Backpropagation Weight Scaling: Boost Wins (2.0x) & Offense (1.5x), Standard Losses (1.0x)
-      const isWin = terminal && nextState.winner === learnerSlot;
-      const weightScale = isWin ? 2.0 : (damageDealt > 0 ? 1.5 : 1.0);
+      // Neutral weight scaling across all transitions (weightScale = 1.0)
+      const weightScale = 1.0;
 
       return {
         s: pendingObj.s,
