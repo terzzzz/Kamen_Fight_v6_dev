@@ -33,10 +33,8 @@
 
       <p>
         <strong>Trainer build:</strong> ${BUILD}<br>
-        <strong>Guided-round teacher:</strong>
-        MASTER (disabled during Tabula Rasa Self-Play).<br>
-        <strong>Reward discount clock:</strong>
-        completed combat rounds.
+        <strong>Guided-round teacher:</strong> MASTER.<br>
+        <strong>Reward discount clock:</strong> completed combat rounds.
       </p>
 
       <div class="soul-fields">
@@ -48,8 +46,7 @@
         <label>
           Opponent
           <select data-field="opponent">
-            <option value="self" selected>Self-Play (Tabula Rasa)</option>
-            <option value="*">All active riders</option>
+            <option value="*" selected>All active riders</option>
           </select>
         </label>
 
@@ -62,7 +59,7 @@
             <option value="easy">
               Existing NOVICE search
             </option>
-            <option value="balanced">
+            <option value="balanced" selected>
               Existing BALANCED search
             </option>
             <option value="master">
@@ -82,7 +79,7 @@
             min="2"
             max="100000"
             step="1"
-            value="300"
+            value="3000"
           >
         </label>
 
@@ -258,7 +255,7 @@
       balanced: "Existing BALANCED search",
       master: "Existing MASTER search",
       soul: "Existing SOUL search",
-      net: "Self-Play (Shared Candidate Network)"
+      net: "Frozen Candidate Network"
     };
 
     function output(text) {
@@ -314,23 +311,18 @@
 
     function formatReport(r) {
       const training = r.kind === "train";
-      const isSelfPlay = r.opponent === "self";
 
       const heading = training
-        ? (isSelfPlay ? "TRAINING RESULTS — Tabula Rasa Self-Play" : "TRAINING RESULTS — include exploration / guided play")
+        ? "TRAINING RESULTS — include exploration / guided play"
         : "EVALUATION — no exploration or learning";
 
       const learnerName = String(r.learner ?? "Unknown");
 
-      const opponent = isSelfPlay
-        ? "Self-Play (Tabula Rasa)"
-        : r.opponent === "*"
-          ? "All active riders"
-          : String(r.opponent ?? "Unknown");
+      const opponent = r.opponent === "*"
+        ? "All active riders"
+        : String(r.opponent ?? "Unknown");
 
-      const controller = isSelfPlay
-        ? "Shared Candidate Network (Self-Play)"
-        : (modeLabels[r.mode] || String(r.mode ?? "Unknown"));
+      const controller = modeLabels[r.mode] || String(r.mode ?? "Unknown");
 
       const lines = [
         heading,
@@ -442,9 +434,7 @@
       if (training) {
         lines.push(
           "",
-          isSelfPlay
-            ? "Tabula Rasa self-play operates without external teacher guidance."
-            : "Training win rate includes assistance and exploration."
+          "Training win rate includes assistance and exploration."
         );
       }
 
@@ -934,7 +924,7 @@
         "Ready.\n" +
         "Trainer build: " + BUILD + "\n\n" +
 
-        "Guided-round teacher: MASTER (0% during Tabula Rasa Self-Play).\n" +
+        "Guided-round teacher: MASTER.\n" +
         "Evaluation: no guidance, exploration, or learning.\n" +
         "Minimum demonstration imitation coefficient: 0.02.\n" +
         "Discounting: once per completed combat round.\n\n" +
