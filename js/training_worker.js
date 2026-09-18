@@ -266,6 +266,7 @@ async function run(job) {
       loss: learner?.loss || 0,
       replaySize: learner?.replay.items.length || 0,
       updateStats: learner?.updateStats || null, // <-- ADD THIS LINE
+      avgQ: latestAvgQ,
 
       totalTrainingGames: training
         ? baseGames + games
