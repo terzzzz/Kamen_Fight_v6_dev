@@ -225,6 +225,8 @@
       throw new Error("No " + which + " checkpoint is available.");
     }
 
+    const learner = checkpoint.learnerId || "ichigo";
+
     const blob = new Blob(
       [JSON.stringify(checkpoint)],
       { type: "application/json" }
@@ -235,8 +237,8 @@
 
     anchor.href = url;
     anchor.download = which === "active"
-      ? "wt_ichigo_nn.json"
-      : "wt_ichigo_nn_candidate.json";
+      ? `wt_${learner}_nn.json`
+      : `wt_${learner}_nn_candidate.json`;
 
     document.body.appendChild(anchor);
     anchor.click();
@@ -268,7 +270,7 @@
    * Evaluates a game state using the loaded neural network matrix.
    * Returns max Q-value as the scalar position value.
    */
-function evaluateState(state, slot, which = "candidate") {
+  function evaluateState(state, slot, which = "candidate") {
     const model = (which === "candidate" ? candidate : active) || active;
     if (!model || !spec) return null;
 
@@ -305,7 +307,7 @@ function evaluateState(state, slot, which = "candidate") {
     importCandidate,
     download,
     status,
-    evaluateState // Exported hook for search engine
+    evaluateState
   };
 
 })(window);
