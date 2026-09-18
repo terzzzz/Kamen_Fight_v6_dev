@@ -205,7 +205,6 @@
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
 
-    // Continuous frame history for the learner across decisions and transitions
     const learnerFrames = new E.Frames(spec);
 
     let history = [];
@@ -340,8 +339,8 @@
       const chiGained = Math.max(0, nextChi - pendingObj.selfChi);
       const chiReward = 0.04 * (chiGained / selfMaxChi);
 
-      // Voluntary Idle Penalty (penalizes action 0 when unfainted)
-      const isVoluntaryIdle = pendingObj.a === 0 && !pendingObj.selfFainted;
+      // Voluntary Idle Penalty: Correctly checks for INPUTS[9] ("IDLE") instead of INPUTS[0] ("WAIT")
+      const isVoluntaryIdle = E.INPUTS[pendingObj.a] === "IDLE" && !pendingObj.selfFainted;
       const idlePenalty = isVoluntaryIdle ? -0.05 : 0;
 
       const r =
