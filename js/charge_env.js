@@ -1,19 +1,11 @@
-/* js/charge_env.js
- * Shared, deterministic controller-time environment.
- *
- * Controller actions:
- * 0 WAIT, 1 W, 2 A, 3 S, 4 D,
- * 5 I, 6 J, 7 K, 8 L, 9 IDLE.
- *
- * Combat damage/resolution remains in CombatCore.
- */
+/* js/charge_env.js */
 (function (g) {
   "use strict";
 
   const C = g.CombatCore;
   const K = g.KF;
 
-  const TAG = "kf-charge-v1";
+  const TAG = "kf-charge-v2";
   const STEP = 50;
   const DECISION = 100;
   const REACTION = 250;
@@ -153,10 +145,6 @@
     return false;
   }
 
-  /*
-   * Both players' inputs must be selected BEFORE calling step().
-   * An array allows two human events in the same logical tick.
-   */
   function step(e, inputs = {}) {
     if (e.done) return [];
 
@@ -174,7 +162,6 @@
       }
     }
 
-    // Only public controls enter the observation history.
     e.past.push({
       t: e.t,
       p1: publicControl(e.cells.p1),
@@ -184,7 +171,6 @@
     e.t = Math.min(limit(), e.t + STEP);
     refresh(e);
 
-    // Keep the latest sample at or before the delay boundary.
     while (
       e.past.length > 2 &&
       e.past[1].t <= e.t - DELAY
@@ -214,7 +200,6 @@
       else break;
     }
 
-    // Deliberately excludes current action buttons, plans and RNG state.
     return {
       round: e.state.round,
       time: e.t,
@@ -224,6 +209,7 @@
       own: publicControl(e.cells[slot]),
       opp: { ...delayed[opponent] },
       moves: e.state.moves[slot],
+      enemyMoves: e.state.moves[opponent],
       lastOwn: { ...(e.previousActions[slot] || idle()) },
       lastOpp: { ...(e.previousActions[opponent] || idle()) }
     };
@@ -244,7 +230,6 @@
     }
 
     DIRS.forEach((d, i) => {
-      // Repeated direction is equivalent to WAIT; omit the duplicate.
       m[i + 1] = Number(d !== c.direction);
     });
 
@@ -284,8 +269,10 @@
 
       values.push(
         f.lp / Math.max(1, f.maxLp),
+        f.lp / 3500,
         f.maxLp / 5000,
         f.chi / Math.max(1, f.maxChi),
+        f.chi / 16,
         f.faintMeter / 100,
         Number(f.isFainted),
         f.airborneTicks / 8,
@@ -312,6 +299,50 @@
       }
     }
 
+    function opponentCapabilities(enemy, moves) {
+      let maxAffordableDmg = 0;
+      let maxAffordableFaint = 0;
+      let canOmniGuard = 0;
+      let canHeal = 0;
+      let canLightSpecial = 0;
+      let canHeavySpecial = 0;
+      let canFinisher = 0;
+
+      if (moves && !enemy.isFainted) {
+        for (const move of Object.values(moves)) {
+          if (move.chiCost <= enemy.chi) {
+            if (move.baseDamage > maxAffordableDmg) {
+              maxAffordableDmg = move.baseDamage;
+            }
+            if ((move.baseFaintDamage || 0) > maxAffordableFaint) {
+              maxAffordableFaint = move.baseFaintDamage;
+            }
+            if (move.guardKind === "omni") {
+              canOmniGuard = 1;
+            }
+            if (move.lpRecovery > 0 || move.buff?.id === "inca_blessing") {
+              canHeal = 1;
+            }
+            if (move.type === "SPECIAL") {
+              if (move.chiCost >= 3 && move.chiCost <= 4) canLightSpecial = 1;
+              if (move.chiCost >= 5 && move.chiCost <= 8) canHeavySpecial = 1;
+              if (move.chiCost >= 10) canFinisher = 1;
+            }
+          }
+        }
+      }
+
+      values.push(
+        maxAffordableDmg / 1200,
+        maxAffordableFaint / 100,
+        canOmniGuard,
+        canHeal,
+        canLightSpecial,
+        canHeavySpecial,
+        canFinisher
+      );
+    }
+
     function control(c) {
       for (const d of DIRS) {
         values.push(Number(c.direction === d));
@@ -328,6 +359,7 @@
 
     fighter(o.self);
     fighter(o.enemy);
+    opponentCapabilities(o.enemy, o.enemyMoves);
     control(o.own);
     control(o.opp);
     previous(o.lastOwn);
@@ -407,43 +439,33 @@
     }
   }
 
-  /*
-   * Adapter for the existing pre-round search planners.
-   * It still has to earn its charge through this environment.
-   */
-function planned(action) {
-  const plan = { ...action };
+  function planned(action) {
+    const plan = { ...action };
 
-  return function (e, slot) {
-    const c = e.cells[slot];
+    return function (e, slot) {
+      const c = e.cells[slot];
 
-    // Match the neural/scripted controller's decision schedule.
-    if (c.locked || !isDecision(e)) return 0;
+      if (c.locked || !isDecision(e)) return 0;
 
-    if (plan.key === "DO_NOTHING") return 9;
+      if (plan.key === "DO_NOTHING") return 9;
 
-    const [direction, button] = plan.key.split("+");
+      const [direction, button] = plan.key.split("+");
 
-    if (c.direction !== direction) {
-      return INPUTS.indexOf(direction);
-    }
+      if (c.direction !== direction) {
+        return INPUTS.indexOf(direction);
+      }
 
-    // There will be no further decision before the deadline.
-    const lastDecision = e.t + DECISION >= limit();
+      const lastDecision = e.t + DECISION >= limit();
 
-    if (c.charge >= plan.charge || lastDecision) {
-      const a = INPUTS.indexOf(button);
-      return mask(e, slot)[a] ? a : 9;
-    }
+      if (c.charge >= plan.charge || lastDecision) {
+        const a = INPUTS.indexOf(button);
+        return mask(e, slot)[a] ? a : 9;
+      }
 
-    return 0;
-  };
-}
+      return 0;
+    };
+  }
 
-  /*
-   * Lightweight public-information opponent / warm-start teacher.
-   * This is explicitly a heuristic, NOT a trained neural policy.
-   */
   function scripted(rng, style = "reactive") {
     let goal = null;
     let target = 100;

@@ -1,5 +1,5 @@
-// foresee_engine.js
-// Kamen Fight — Expectimax & Monte Carlo Horizon Lookahead Search Engine
+/* js/foresee_engine.js */
+// Kamen Fight — Neural-Guided Expectimax & Monte Carlo Horizon Lookahead Search Engine
 
 (function (g) {
   "use strict";
@@ -157,15 +157,17 @@
   }
 
   /**
-   * Computes expected utility value of a single move exchange by enumerating all
-   * stochastic outcomes via CombatCore.distribution().
+   * Computes expected utility value of a single move exchange using an optional neural evaluator.
    */
-  function pairValue(state, slot, ownAction, opponentAction) {
+  function pairValue(state, slot, ownAction, opponentAction, evaluator = null) {
     const [a1, a2] = orderedActions(slot, ownAction, opponentAction);
+    const evalFn = typeof evaluator === "function"
+      ? evaluator
+      : (s, sl) => B.evaluate(s, sl);
 
     return C.distribution(state, a1, a2).reduce(
       (sum, result) =>
-        sum + result.probability * B.evaluate(result.state, slot),
+        sum + result.probability * evalFn(result.state, slot),
       0
     );
   }
@@ -173,9 +175,9 @@
   /**
    * Main AI Search Entry Point.
    * Performs Expectimax tree evaluation at depth 1, then executes multi-turn Monte Carlo
-   * horizon rollouts for top finalist moves on higher difficulties.
+   * horizon rollouts for top finalist moves using either neural Q-evaluation or fallback heuristics.
    *
-   * @param {Object} context - Match state, acting slot, difficulty, history, and seed.
+   * @param {Object} context - Match state, acting slot, difficulty, history, seed, evaluator, and isTraining flag.
    * @returns {Object} Evaluated candidate move rows sorted by score, plus debug metadata.
    */
   function search(context) {
@@ -183,11 +185,24 @@
       state,
       slot,
       history = [],
-      seed = 1
+      seed = 1,
+      evaluator = null,
+      isTraining = false
     } = context;
 
+    const evalFn = typeof evaluator === "function"
+      ? evaluator
+      : (s, sl) => B.evaluate(s, sl);
+
     const difficulty = K.difficulty(context.difficulty);
-    const settings = K.levels[difficulty];
+    
+    // Copy levels configuration and apply speed caps ONLY during training runs
+    const settings = { ...K.levels[difficulty] };
+    if (isTraining) {
+      settings.rollouts = Math.min(settings.rollouts, 4);
+      settings.finalists = Math.min(settings.finalists, 2);
+    }
+
     const opponentSlot = C.other(slot);
 
     const chargeChoices = [...settings.charges];
@@ -228,7 +243,8 @@
           state,
           slot,
           action,
-          opponent.action
+          opponent.action,
+          evalFn
         );
 
         expected += opponent.probability * value;
@@ -288,7 +304,7 @@
             false
           ).state;
 
-          const firstValue = B.evaluate(future, slot);
+          const firstValue = evalFn(future, slot);
 
           for (let depth = 1;
             depth < settings.horizon && !future.winner;
@@ -323,8 +339,7 @@
             ).state;
           }
 
-          continuationDelta +=
-            B.evaluate(future, slot) - firstValue;
+          continuationDelta += evalFn(future, slot) - firstValue;
         }
 
         row.score += continuationDelta / settings.rollouts;
@@ -343,6 +358,8 @@
         opponentActions: opponentPolicy.length,
         completedHorizon,
         rolloutsPerFinalist: settings.rollouts,
+        usingNeuralEvaluator: typeof evaluator === "function",
+        isTraining,
         finalists: finalists.slice(0, 6).map(row => ({
           key: row.action.key,
           charge: row.action.charge,

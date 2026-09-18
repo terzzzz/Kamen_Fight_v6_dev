@@ -7,9 +7,9 @@ const BUILD = "round-discount-master-guide-v4";
  * Keep the existing checkpoint format identifier.
  * The network architecture and observation schema are unchanged.
  */
-const VERSION = "kf-soul-ddqn-1";
+const VERSION = "kf-soul-ddqn-v2";
 
-const MIN_IMITATION = 0.02;
+const MIN_IMITATION = 0.01;
 const INITIAL_IMITATION = 0.05;
 
 importScripts(
@@ -81,7 +81,8 @@ function validateJob(job) {
       "easy",
       "balanced",
       "master",
-      "soul"
+      "soul",
+      "net"
     ].includes(job.mode)
   ) {
     throw new Error("Unknown opponent mode.");
@@ -95,6 +96,9 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
   const old = job.checkpoint || null;
+
+  const learnerId = job.learner || "ichigo";
+  const isSelfPlay = job.opponent === "self";
 
   if (
     old &&
@@ -130,21 +134,15 @@ async function run(job) {
     ? SoulNN.Network.fromJSON(old.net)
     : new SoulNN.Network(
         spec.input,
-        KF.hash(seed, "initial-network")
+        128,
+        128,
+        10
       );
 
   if (net.sizes[0] !== spec.input) {
     throw new Error("Worker network input mismatch.");
   }
 
-  /*
-   * Retain the incoming checkpoint fingerprint for SoulAgent's
-   * evaluation association check.
-   *
-   * Also report the reconstructed inference network fingerprint.
-   * These may differ for externally authored JSON containing
-   * numbers that need Float32 rounding.
-   */
   const weightsID = training
     ? null
     : KF.hash(JSON.stringify(old.net));
@@ -164,12 +162,9 @@ async function run(job) {
   const baseGames = old?.games || 0;
   const baseSteps = old?.steps || 0;
 
-  /*
-   * New training-task identity prevents reusing the old
-   * guidance-decay counter after this trainer revision.
-   */
   const taskKey = JSON.stringify([
     BUILD,
+    learnerId,
     job.opponent,
     job.mode
   ]);
@@ -183,11 +178,18 @@ async function run(job) {
       ? previousTask.games
       : 0;
 
-  const opponents = job.opponent === "*"
-    ? data.riders
-    : data.riders.filter(
-        rider => rider.id === job.opponent
-      );
+  const learnerRider = data.riders.find(r => r.id === learnerId);
+  if (!learnerRider) {
+    throw new Error(`Learner rider '${learnerId}' not found in dataset.`);
+  }
+
+  const opponents = isSelfPlay
+    ? [learnerRider]
+    : job.opponent === "*"
+      ? data.riders
+      : data.riders.filter(
+          rider => rider.id === job.opponent
+        );
 
   if (!opponents.length) {
     throw new Error("Opponent not found.");
@@ -195,7 +197,7 @@ async function run(job) {
 
   const pool = [];
 
-  if (training && baseGames > 0) {
+  if (training && baseGames > 0 && !isSelfPlay) {
     pool.push(net.clone());
   }
 
@@ -210,6 +212,7 @@ async function run(job) {
   let losses = 0;
   let draws = 0;
   let totalRounds = 0;
+  let latestAvgQ = 0;
 
   let currentGuideProbability = 0;
   let currentImitation = 0;
@@ -228,6 +231,7 @@ async function run(job) {
       seed,
       evaluation: null,
       trainerBuild: BUILD,
+      learnerId,
       trainingTask: {
         key: taskKey,
         games: taskBaseGames + games
@@ -265,6 +269,8 @@ async function run(job) {
 
       loss: learner?.loss || 0,
       replaySize: learner?.replay.items.length || 0,
+      updateStats: learner?.updateStats || null,
+      avgQ: latestAvgQ,
 
       totalTrainingGames: training
         ? baseGames + games
@@ -273,14 +279,15 @@ async function run(job) {
       weightsID,
       loadedWeightsID,
 
-      teacher: training ? "master" : null,
+      teacher: training ? (isSelfPlay ? "none (tabula rasa)" : "master") : null,
       guideProbability: currentGuideProbability,
       imitationCoefficient: currentImitation,
       epsilon: currentEpsilon,
 
       seed,
+      learner: learnerId,
       opponent: job.opponent,
-      mode: job.mode,
+      mode: isSelfPlay ? "net" : job.mode,
       cancelled,
       breakdown
     };
@@ -295,9 +302,6 @@ async function run(job) {
     const learnerSlot = i % 2 === 0 ? "p1" : "p2";
     const opponent = opponents[pair % opponents.length];
 
-    /*
-     * Keep separate training/evaluation seed families.
-     */
     const matchSeed = KF.hash(
       seed,
       training ? "training" : "evaluation",
@@ -310,12 +314,12 @@ async function run(job) {
 
     let opponentNet = null;
 
-    if (
+    if (isSelfPlay) {
+      opponentNet = net; // P2 shares candidate Q-network during self-play
+    } else if (
       training &&
-      job.mode === "mixed" &&
-      opponent.id === "ichigo" &&
       pool.length &&
-      chooser() < 0.35
+      chooser() < 0.50
     ) {
       opponentNet = pool[
         Math.floor(chooser() * pool.length)
@@ -324,32 +328,27 @@ async function run(job) {
 
     const learnedGames = taskBaseGames + games;
 
-    const guideProbability = !training
+    // Force 0% teacher guidance during self-play for pure Tabula Rasa emergence
+    const guideProbability = (!training || isSelfPlay)
       ? 0
-      : learnedGames < 10
+      : learnedGames < 5
         ? 1
         : Math.max(
-            0.05,
-            0.6 * Math.exp(-learnedGames / 100)
+            0.02,
+            0.50 * Math.exp(-learnedGames / 35)
           );
 
     const epsilon = training
       ? Math.max(
           0.05,
-          0.20 * Math.exp(-learnedGames / 200)
+          0.15 * Math.exp(-learnedGames / 50)
         )
       : 0;
 
-    /*
-     * Imitation applies only to demonstration-tagged samples.
-     * The floor is a configurable training choice, not a
-     * guarantee of performance preservation.
-     */
-    const imitation = training
+    const imitation = (training && !isSelfPlay)
       ? Math.max(
           MIN_IMITATION,
-          INITIAL_IMITATION *
-            Math.exp(-learnedGames / 200)
+          INITIAL_IMITATION * Math.exp(-learnedGames / 50)
         )
       : 0;
 
@@ -362,8 +361,9 @@ async function run(job) {
       spec,
       net,
       learnerSlot,
+      learnerId,
       opponent,
-      opponentMode: job.mode,
+      opponentMode: isSelfPlay ? "net" : job.mode,
       opponentNet,
       seed: matchSeed,
       epsilon,
@@ -384,9 +384,11 @@ async function run(job) {
             imitation
           );
         }
-
+      } else if (event.type === "round") {
+        latestAvgQ = event.avgQ;
       } else if (event.type === "end") {
         result = event.result;
+        latestAvgQ = event.result.avgQ;
       }
 
       const now = performance.now();
@@ -399,9 +401,6 @@ async function run(job) {
         lastProgress = now;
       }
 
-      /*
-       * Allow STOP messages and browser scheduling to run.
-       */
       if (now - lastYield >= 20) {
         await pause();
         lastYield = performance.now();
@@ -429,27 +428,27 @@ async function run(job) {
 
     const label =
       opponent.id + " / " +
-      (opponentNet ? "frozen-self" : job.mode) +
+      (isSelfPlay ? "self-play" : (opponentNet ? "frozen-self" : job.mode)) +
       " / learner " + learnerSlot;
 
-    const row = breakdown[label] ||= {
+    const row = (breakdown[label] = breakdown[label] || {
       games: 0,
       wins: 0,
       losses: 0,
       draws: 0
-    };
+    });
 
     row.games++;
     row[outcome]++;
 
-    if (training && games % 25 === 0) {
+    if (training && games % 25 === 0 && !isSelfPlay) {
       send("checkpoint", {
         checkpoint: checkpoint()
       });
 
       pool.push(net.clone());
 
-      if (pool.length > 4) {
+      if (pool.length > 8) {
         pool.shift();
       }
     }
