@@ -23,7 +23,7 @@
     host.classList.add("soul-tools");
 
     host.innerHTML = `
-      <h2>ICHIGO — NEURAL SOUL</h2>
+      <h2>KAMEN FIGHT — NEURAL SOUL TRAINER</h2>
 
       <p>
         Training is headless. ACTIVE is not changed by training.
@@ -34,15 +34,21 @@
       <p>
         <strong>Trainer build:</strong> ${BUILD}<br>
         <strong>Guided-round teacher:</strong>
-        MASTER, independent of the opponent controller.<br>
+        MASTER (disabled during Tabula Rasa Self-Play).<br>
         <strong>Reward discount clock:</strong>
         completed combat rounds.
       </p>
 
       <div class="soul-fields">
         <label>
+          Learner Rider
+          <select data-field="learner"></select>
+        </label>
+
+        <label>
           Opponent
           <select data-field="opponent">
+            <option value="self" selected>Self-Play (Tabula Rasa)</option>
             <option value="*">All active riders</option>
           </select>
         </label>
@@ -53,7 +59,7 @@
             <option value="mixed">
               Scripted warm-up — not difficulty AI
             </option>
-            <option value="easy" selected>
+            <option value="easy">
               Existing NOVICE search
             </option>
             <option value="balanced">
@@ -76,7 +82,7 @@
             min="2"
             max="100000"
             step="1"
-            value="500"
+            value="300"
           >
         </label>
 
@@ -251,7 +257,8 @@
       easy: "Existing NOVICE search",
       balanced: "Existing BALANCED search",
       master: "Existing MASTER search",
-      soul: "Existing SOUL search"
+      soul: "Existing SOUL search",
+      net: "Self-Play (Shared Candidate Network)"
     };
 
     function output(text) {
@@ -307,21 +314,27 @@
 
     function formatReport(r) {
       const training = r.kind === "train";
+      const isSelfPlay = r.opponent === "self";
 
       const heading = training
-        ? "TRAINING RESULTS — include exploration / guided play"
+        ? (isSelfPlay ? "TRAINING RESULTS — Tabula Rasa Self-Play" : "TRAINING RESULTS — include exploration / guided play")
         : "EVALUATION — no exploration or learning";
 
-      const opponent = r.opponent === "*"
-        ? "All active riders"
-        : String(r.opponent ?? "Unknown");
+      const learnerName = String(r.learner ?? "Unknown");
 
-      const controller =
-        modeLabels[r.mode] ||
-        String(r.mode ?? "Unknown");
+      const opponent = isSelfPlay
+        ? "Self-Play (Tabula Rasa)"
+        : r.opponent === "*"
+          ? "All active riders"
+          : String(r.opponent ?? "Unknown");
+
+      const controller = isSelfPlay
+        ? "Shared Candidate Network (Self-Play)"
+        : (modeLabels[r.mode] || String(r.mode ?? "Unknown"));
 
       const lines = [
         heading,
+        "Learner Rider: " + learnerName,
         "Trainer build: " + (r.build || "Unavailable"),
         ""
       ];
@@ -352,7 +365,7 @@
 
       if (training) {
         lines.push(
-          "Teacher: MASTER — guided rounds only",
+          "Teacher: " + (r.teacher || "none"),
           "Guided-round probability: " +
             (100 * r.guideProbability).toFixed(1) + "%",
 
@@ -387,15 +400,14 @@
           r.decisionsPerSecond.toFixed(1)
       );
 
-   if (training) {
-  lines.push(
-    "Replay entries: " + r.replaySize,
-    "Latest TD loss: " + r.loss.toFixed(5)
-  );
-  if (r.avgQ !== undefined) {
-    lines.push("Avg Q-Value (Recent): " + r.avgQ.toFixed(4));
-  }
-        // Render Matrix Updates breakdown
+      if (training) {
+        lines.push(
+          "Replay entries: " + r.replaySize,
+          "Latest TD loss: " + r.loss.toFixed(5)
+        );
+        if (r.avgQ !== undefined) {
+          lines.push("Avg Q-Value (Recent): " + r.avgQ.toFixed(4));
+        }
         if (r.updateStats) {
           lines.push(
             "Matrix updates (Win/Dmg/Loss/Neu): " +
@@ -430,8 +442,9 @@
       if (training) {
         lines.push(
           "",
-          "Training win rate includes assistance and exploration.",
-          "It is not the network's unassisted evaluation score."
+          isSelfPlay
+            ? "Tabula Rasa self-play operates without external teacher guidance."
+            : "Training win rate includes assistance and exploration."
         );
       }
 
@@ -485,9 +498,6 @@
 
       const ready = await g.SoulAgent.ready();
 
-      /*
-       * Another click may have started a job during ready().
-       */
       if (busy) return;
 
       const training = kind === "train";
@@ -514,9 +524,6 @@
         100000
       );
 
-      /*
-       * Evaluation alternates paired P1/P2 games.
-       */
       if (!training && count % 2 !== 0) {
         count++;
         field("eval-count").value = count;
@@ -604,10 +611,6 @@
                 report.games >= 2 &&
                 report.games === report.requested;
 
-              /*
-               * Partial evaluations must not replace a
-               * previously completed evaluation.
-               */
               if (
                 evaluationTarget &&
                 completeEvaluation
@@ -639,9 +642,6 @@
                   "controller, seed, and match count.";
               }
 
-              /*
-               * Render before finishWorker clears the target.
-               */
               output(
                 formatReport(report) + ending
               );
@@ -676,6 +676,7 @@
             checkpoint,
             matches: count,
             seed,
+            learner: field("learner").value,
             opponent: field("opponent").value,
             mode: field("mode").value
           }
@@ -867,10 +868,6 @@
       }
     );
 
-    /*
-     * Capture phase prevents legacy handlers from also starting
-     * older training or simulation paths.
-     */
     document.addEventListener("click", event => {
       const target = event.target?.closest?.(
         "#ichigo-train-btn, #policy-sim-btn, " +
@@ -900,10 +897,6 @@
     g.handleSimulateMatches = openTools;
 
     try {
-      /*
-       * Prevent a new UI from silently using old page modules.
-       * Worker dependencies are checked separately in the worker.
-       */
       if (
         g.SoulNN?.BUILD !== BUILD ||
         g.SoulSim?.BUILD !== BUILD
@@ -922,20 +915,26 @@
 
       const readyData = await g.SoulAgent.ready();
 
+      const learnerSelect = field("learner");
+      const opponentSelect = field("opponent");
+
       for (const rider of readyData.data.riders) {
-        const option = document.createElement("option");
+        const lOption = document.createElement("option");
+        lOption.value = rider.id;
+        lOption.textContent = rider.name;
+        learnerSelect.appendChild(lOption);
 
-        option.value = rider.id;
-        option.textContent = rider.name;
-
-        field("opponent").appendChild(option);
+        const oOption = document.createElement("option");
+        oOption.value = rider.id;
+        oOption.textContent = rider.name;
+        opponentSelect.appendChild(oOption);
       }
 
       output(
         "Ready.\n" +
         "Trainer build: " + BUILD + "\n\n" +
 
-        "Guided-round teacher: MASTER in every opponent mode.\n" +
+        "Guided-round teacher: MASTER (0% during Tabula Rasa Self-Play).\n" +
         "Evaluation: no guidance, exploration, or learning.\n" +
         "Minimum demonstration imitation coefficient: 0.02.\n" +
         "Discounting: once per completed combat round.\n\n" +
@@ -949,9 +948,6 @@
 
         "Resuming preserves network weights and counters. " +
         "Replay memory and Adam state still restart.\n\n" +
-
-        "Scripted warm-up describes the opponent, not the teacher. " +
-        "It is not mixed-difficulty search training.\n\n" +
 
         "Keep your best exported checkpoint. " +
         "This revision does not automatically roll back " +
