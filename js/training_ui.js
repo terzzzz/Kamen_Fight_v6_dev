@@ -392,6 +392,16 @@
           "Replay entries: " + r.replaySize,
           "Latest TD loss: " + r.loss.toFixed(5)
         );
+        // Render Matrix Updates breakdown
+        if (r.updateStats) {
+          lines.push(
+            "Matrix updates (Win/Dmg/Loss/Neu): " +
+            r.updateStats.win + " / " +
+            r.updateStats.damage + " / " +
+            r.updateStats.loss + " / " +
+            r.updateStats.neutral
+          );
+        }
       }
 
       lines.push(
