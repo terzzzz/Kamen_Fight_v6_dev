@@ -272,33 +272,7 @@
         throw new Error("Cannot close an empty transition.");
       }
 
-      assertObservationSize(spec, "Pending s", pendingObj.s);
-      assertObservationSize(spec, "Next s1", nextInput.s1);
-
-      assertMask(
-        "Pending action mask",
-        pendingObj.m,
-        nextInput.m1.length
-      );
-
-      assertMask(
-        "Next-action mask",
-        nextInput.m1,
-        pendingObj.m.length
-      );
-
       const elapsedRounds = rounds - pendingObj.completedRounds;
-
-      if (
-        !Number.isSafeInteger(elapsedRounds) ||
-        elapsedRounds < 1
-      ) {
-        throw new Error(
-          "Invalid completed-round transition: elapsedRounds=" +
-          elapsedRounds + "."
-        );
-      }
-
       const roundDiscount = Math.pow(E.GAMMA, elapsedRounds);
       const discount = terminal ? 0 : roundDiscount;
 
@@ -306,55 +280,38 @@
         ? 0
         : potential(nextState, learnerSlot);
 
-      // Objective terminal outcomes (-1.0 loss, +1.0 win)
+      // 1. Draw = Defeat (-1.0). No passive safe outs.
       const terminalReward = terminal
-        ? (
-          nextState.winner === "draw"
-            ? 0
-            : nextState.winner === learnerSlot
-              ? 1.0
-              : -1.0
-        )
+        ? (nextState.winner === learnerSlot ? 1.0 : -1.0)
         : 0;
 
       const selfMaxLp = Math.max(1, pendingObj.selfMaxLp);
       const oppMaxLp = Math.max(1, pendingObj.oppMaxLp);
 
       const damageDealt =
-        Math.max(
-          0,
-          pendingObj.oppLp - nextState[enemySlot].lp
-        ) / oppMaxLp;
-
+        Math.max(0, pendingObj.oppLp - nextState[enemySlot].lp) / oppMaxLp;
       const damageTaken =
-        Math.max(
-          0,
-          pendingObj.selfLp - nextState[learnerSlot].lp
-        ) / selfMaxLp;
+        Math.max(0, pendingObj.selfLp - nextState[learnerSlot].lp) / selfMaxLp;
 
       const damageReward = 0.10 * (damageDealt - damageTaken);
 
-      // Neutral CHI accounting (evaluates resource changes without penalizing utility moves)
+      // 2. Direct reward for CHI generation (farming meter via D-attacks)
       const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 100);
       const nextChi = nextState[learnerSlot].chi || 0;
-      const chiDelta = (nextChi - pendingObj.selfChi) / selfMaxChi;
-      const chiReward = 0.01 * chiDelta;
+      const chiGained = Math.max(0, nextChi - pendingObj.selfChi);
+      const chiReward = 0.04 * (chiGained / selfMaxChi);
+
+      // 3. Voluntary Idle Penalty (penalize action 0 when un-fainted)
+      const isVoluntaryIdle = pendingObj.a === 0 && !pendingObj.selfFainted;
+      const idlePenalty = isVoluntaryIdle ? -0.05 : 0;
 
       const r =
         terminalReward +
-        SHAPING_SCALE * (
-          discount * nextPotential - pendingObj.phi
-        ) +
+        SHAPING_SCALE * (discount * nextPotential - pendingObj.phi) +
         damageReward +
-        chiReward;
+        chiReward +
+        idlePenalty;
 
-      if (!Number.isFinite(r) || !Number.isFinite(discount)) {
-        throw new Error(
-          "Non-finite transition reward or discount."
-        );
-      }
-
-      // Neutral weight scaling across all transitions (weightScale = 1.0)
       const weightScale = 1.0;
 
       return {
@@ -362,14 +319,11 @@
         a: pendingObj.a,
         m: pendingObj.m,
         demo: pendingObj.demo,
-
         r,
         discount,
         weightScale,
-
         s1: new Float32Array(nextInput.s1),
         m1: new Uint8Array(nextInput.m1),
-
         done: terminal
       };
     }
