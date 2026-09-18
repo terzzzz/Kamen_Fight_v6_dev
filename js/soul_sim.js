@@ -72,7 +72,7 @@
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
 
-    const frames = new E.Frames(spec);
+    const frames = options.frames || new E.Frames(spec);
     const scriptedTeacher = E.scripted(
       rng,
       options.style || "reactive"
@@ -205,6 +205,9 @@
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
 
+    // Persistent frame history buffer for the learner
+    const learnerFrames = new E.Frames(spec);
+
     let history = [];
     let previousActions = {};
     let pending = [];
@@ -227,12 +230,12 @@
       try {
         const envAfter = E.create(nextState, previousActions);
         const obsAfter = E.observe(envAfter, learnerSlot);
-        const nextFrames = new E.Frames(spec);
 
+        // Uses continuous learnerFrames history rather than re-instantiating empty frames
         const stacked = assertObservationSize(
           spec,
           "Post-resolution s1",
-          nextFrames.push(E.vector(obsAfter, spec))
+          learnerFrames.push(E.vector(obsAfter, spec))
         );
 
         const m1 = Uint8Array.from(
@@ -304,14 +307,14 @@
         ? 0
         : potential(nextState, learnerSlot);
 
-      // Terminal Reward with 50% discount on loss penalty
+      // Standard terminal rewards (-1.0 on loss, +1.0 on win)
       const terminalReward = terminal
         ? (
           nextState.winner === "draw"
             ? 0
             : nextState.winner === learnerSlot
               ? 1.0
-              : -0.5
+              : -1.0
         )
         : 0;
 
@@ -330,8 +333,7 @@
           pendingObj.selfLp - nextState[learnerSlot].lp
         ) / selfMaxLp;
 
-      // Damage Reward with 50% discount on taking damage
-      const damageReward = 0.10 * damageDealt - 0.05 * damageTaken;
+      const damageReward = 0.10 * (damageDealt - damageTaken);
 
       // Conditional CHI Reward Logic
       const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 100);
@@ -367,10 +369,9 @@
         );
       }
 
-      // Asymmetric Backpropagation Weight Scaling
+      // Asymmetric Backpropagation Weight Scaling: Boost Wins (2.0x) & Offense (1.5x), Standard Losses (1.0x)
       const isWin = terminal && nextState.winner === learnerSlot;
-      const isLoss = terminal && nextState.winner && nextState.winner !== learnerSlot;
-      const weightScale = isWin ? 2.0 : (damageDealt > 0 ? 1.5 : (isLoss ? 0.5 : 1.0));
+      const weightScale = isWin ? 2.0 : (damageDealt > 0 ? 1.5 : 1.0);
 
       return {
         s: pendingObj.s,
@@ -463,7 +464,8 @@
           epsilon,
           guide: guidedRound,
           teacher: trainingTeacher,
-          style: "reactive"
+          style: "reactive",
+          frames: learnerFrames
         }
       );
 
