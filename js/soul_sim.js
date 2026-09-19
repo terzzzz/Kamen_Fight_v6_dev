@@ -342,30 +342,7 @@
         nextInput.m1,
         pendingObj.m.length
       );
-/* Inside js/soul_sim.js -> closeTransition() */
 
-const actionKey = E.INPUTS[pendingObj.a];
-let transitionDir = "IDLE";
-
-if (["W", "A", "S", "D"].includes(actionKey)) {
-  transitionDir = actionKey;
-} else if (["I", "J", "K", "L"].includes(actionKey)) {
-  transitionDir = pendingObj.selfDir || "IDLE";
-}
-
-return {
-  s: pendingObj.s,
-  a: pendingObj.a,
-  m: pendingObj.m,
-  demo: pendingObj.demo,
-  direction: transitionDir, // <-- Pass directional stance to worker
-  r,
-  discount,
-  weightScale,
-  s1: new Float32Array(nextInput.s1),
-  m1: new Uint8Array(nextInput.m1),
-  done: terminal
-};
       const elapsedRounds = rounds - pendingObj.completedRounds;
 
       if (
@@ -469,19 +446,24 @@ return {
       // Replay gradient scale prioritizes comeback victories in Adam updates
       const weightScale = (terminal && nextState.winner === learnerSlot) ? matchRewardMultiplier : 1.0;
 
+      let transitionDir = "IDLE";
+      if (["W", "A", "S", "D"].includes(actionKey)) {
+        transitionDir = actionKey;
+      } else if (["I", "J", "K", "L"].includes(actionKey)) {
+        transitionDir = pendingObj.selfDir || "IDLE";
+      }
+
       return {
         s: pendingObj.s,
         a: pendingObj.a,
         m: pendingObj.m,
         demo: pendingObj.demo,
-
+        direction: transitionDir,
         r,
         discount,
         weightScale,
-
         s1: new Float32Array(nextInput.s1),
         m1: new Uint8Array(nextInput.m1),
-
         done: terminal
       };
     }
@@ -665,8 +647,12 @@ return {
         const opposingAction = opponentAct(e);
 
         if (ownDecision) {
+          const inputName = E.INPUTS[ownDecision.a];
+          const currentStance = e.cells[learnerSlot].direction || (["W", "A", "S", "D"].includes(inputName) ? inputName : null);
+
           pending.push({
             ...ownDecision,
+            selfDir: currentStance,
 
             phi: potential(state, learnerSlot),
             completedRounds: rounds,
