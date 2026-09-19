@@ -455,7 +455,7 @@
           `A (Back / Guard)    : ${r.wasdRatio.A.padStart(6)} (${r.wasdRatio.counts.A.toLocaleString()})  <-- Defense & Omni-Guards`,
           `S (Down / Heavy)    : ${r.wasdRatio.S.padStart(6)} (${r.wasdRatio.counts.S.toLocaleString()})`,
           `D (Forward / Light) : ${r.wasdRatio.D.padStart(6)} (${r.wasdRatio.counts.D.toLocaleString()})`,
-          `IDLE / Wait         : ${r.wasdRatio.IDLE.padStart(6)} (${r.wasdRatio.counts.IDLE.toLocaleString()})`
+        //  `IDLE / Wait         : ${r.wasdRatio.IDLE.padStart(6)} (${r.wasdRatio.counts.IDLE.toLocaleString()})`
         );
       }
 
