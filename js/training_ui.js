@@ -108,6 +108,9 @@
         <button type="button" data-action="train">
           TRAIN / RESUME CANDIDATE
         </button>
+        <button type="button" data-action="distill-matrix">
+          WARM-START FROM SEARCH
+        </button>
         <button type="button" data-action="eval-candidate">
           EVALUATE CANDIDATE
         </button>
@@ -278,67 +281,64 @@
       return rows.join("\n");
     }
 
-    /* Inside js/training_ui.js -> refresh() function */
+    function refresh() {
+      const state = g.SoulAgent.status();
+      const learnerVal = field("learner")?.value || "ichigo";
+      const oppVal = field("opponent")?.value || "*";
 
-function refresh() {
-  const state = g.SoulAgent.status();
-  const learnerVal = field("learner")?.value || "ichigo";
-  const oppVal = field("opponent")?.value || "*";
+      const pairKey = oppVal !== "*"
+        ? g.SoulAgent.getCanonicalKey(learnerVal, oppVal)
+        : null;
 
-  const pairKey = oppVal !== "*"
-    ? g.SoulAgent.getCanonicalKey(learnerVal, oppVal)
-    : null;
+      const candSection = oppVal !== "*"
+        ? g.SoulAgent.getSection(learnerVal, oppVal, "candidate")
+        : null;
 
-  const candSection = oppVal !== "*"
-    ? g.SoulAgent.getSection(learnerVal, oppVal, "candidate")
-    : null;
+      const actSection = oppVal !== "*"
+        ? g.SoulAgent.getSection(learnerVal, oppVal, "active")
+        : null;
 
-  const actSection = oppVal !== "*"
-    ? g.SoulAgent.getSection(learnerVal, oppVal, "active")
-    : null;
+      const breakdown = typeof g.SoulAgent.getMatchupBreakdown === "function"
+        ? g.SoulAgent.getMatchupBreakdown("candidate")
+        : {};
 
-  // Safe check for getMatchupBreakdown
-  const breakdown = typeof g.SoulAgent.getMatchupBreakdown === "function"
-    ? g.SoulAgent.getMatchupBreakdown("candidate")
-    : {};
+      const lines = [
+        `ACTIVE MATCHUP KEY: ${pairKey ? pairKey : "ALL RIDER ROSTER"}`,
+        oppVal !== "*"
+          ? `SELECTED 1v1 MATCHUP (${learnerVal} -> ${oppVal}):\n  Candidate: ${candSection ? candSection.games + " games (" + candSection.steps + " steps)" : "0 games"}\n  Active:    ${actSection ? actSection.games + " games (" + actSection.steps + " steps)" : "0 games"}`
+          : "SELECTED MATCHUP: Global Roster Mode",
+        "",
+        typeof g.SoulAgent.getMatchupBreakdown === "function"
+          ? renderMatrixTable(breakdown)
+          : "[Warning: Reloading Master Matrix script…]",
+        "",
+        state.storageWarning,
+        ...(state.warnings || [])
+      ].filter(Boolean);
 
-  const lines = [
-    `ACTIVE MATCHUP KEY: ${pairKey ? pairKey : "ALL RIDER ROSTER"}`,
-    oppVal !== "*"
-      ? `SELECTED 1v1 MATCHUP (${learnerVal} -> ${oppVal}):\n  Candidate: ${candSection ? candSection.games + " games (" + candSection.steps + " steps)" : "0 games"}\n  Active:    ${actSection ? actSection.games + " games (" + actSection.steps + " steps)" : "0 games"}`
-      : "SELECTED MATCHUP: Global Roster Mode",
-    "",
-    typeof g.SoulAgent.getMatchupBreakdown === "function"
-      ? renderMatrixTable(breakdown)
-      : "[Warning: Reloading Master Matrix script…]",
-    "",
-    state.storageWarning,
-    ...(state.warnings || [])
-  ].filter(Boolean);
+      field("status").textContent = lines.join("\n");
 
-  field("status").textContent = lines.join("\n");
+      host.querySelectorAll("button").forEach(button => {
+        button.disabled = busy;
+      });
 
-  host.querySelectorAll("button").forEach(button => {
-    button.disabled = busy;
-  });
+      host.querySelectorAll("select, input:not([type=file])").forEach(element => {
+        element.disabled = busy;
+      });
 
-  host.querySelectorAll("select, input:not([type=file])").forEach(element => {
-    element.disabled = busy;
-  });
+      action("stop").disabled = !busy;
 
-  action("stop").disabled = !busy;
+      if (!busy) {
+        action("eval-candidate").disabled = !state.candidate && !candSection;
+        action("export-candidate").disabled = !state.candidate;
 
-  if (!busy) {
-    action("eval-candidate").disabled = !state.candidate && !candSection;
-    action("export-candidate").disabled = !state.candidate;
+        action("promote").disabled =
+          !state.candidate ||
+          !state.candidate.evaluated;
 
-    action("promote").disabled =
-      !state.candidate ||
-      !state.candidate.evaluated;
-
-    action("eval-active").disabled = !state.active && !actSection;
-  }
-}
+        action("eval-active").disabled = !state.active && !actSection;
+      }
+    }
 
     function formatReport(r) {
       const training = r.kind === "train";
@@ -447,7 +447,20 @@ function refresh() {
         }
       }
 
+      if (r.wasdRatio) {
+        lines.push(
+          "",
+          "--- WASD STANCE & SKILL USAGE RATIO ---",
+          `W (Up / Special)    : ${r.wasdRatio.W.padStart(6)} (${r.wasdRatio.counts.W.toLocaleString()})`,
+          `A (Back / Guard)    : ${r.wasdRatio.A.padStart(6)} (${r.wasdRatio.counts.A.toLocaleString()})  <-- Defense & Omni-Guards`,
+          `S (Down / Heavy)    : ${r.wasdRatio.S.padStart(6)} (${r.wasdRatio.counts.S.toLocaleString()})`,
+          `D (Forward / Light) : ${r.wasdRatio.D.padStart(6)} (${r.wasdRatio.counts.D.toLocaleString()})`,
+          `IDLE / Wait         : ${r.wasdRatio.IDLE.padStart(6)} (${r.wasdRatio.counts.IDLE.toLocaleString()})`
+        );
+      }
+
       lines.push(
+        "",
         "Elapsed: " + r.seconds.toFixed(1) + "s",
         "Seed: " + r.seed
       );
@@ -533,7 +546,6 @@ function refresh() {
       let checkpoint;
 
       if (training) {
-        // Robust 1v1 resolution: Candidate Matchup -> Active Matchup -> Candidate Snapshot -> Active Snapshot
         checkpoint =
           g.SoulAgent.getSection(learnerVal, opponentVal, "candidate") ||
           g.SoulAgent.getSection(learnerVal, opponentVal, "active") ||
@@ -735,6 +747,34 @@ function refresh() {
           case "train":
             await start("train");
             break;
+
+          case "distill-matrix": {
+            const readyData = await g.SoulAgent.ready();
+            const learnerVal = field("learner").value;
+            const opponentVal = field("opponent").value;
+            const searchMode = field("mode").value;
+
+            if (searchMode !== "master" && searchMode !== "soul") {
+              output("ERROR\nSelect 'Existing MASTER search' or 'Existing SOUL search' in Opponent Controller first.");
+              break;
+            }
+
+            output(`Distilling ${searchMode.toUpperCase()} search algorithm into ${learnerVal} -> ${opponentVal} matrix...`);
+
+            const opponentsToDistill = opponentVal === "*"
+              ? readyData.data.riders.map(r => r.id)
+              : [opponentVal];
+
+            let count = 0;
+            for (const oppId of opponentsToDistill) {
+              g.SoulAgent.seedFromSearchEngine(learnerVal, oppId, searchMode, 50);
+              count++;
+            }
+
+            refresh();
+            output(`SUCCESS\nConverted ${searchMode.toUpperCase()} search algorithm directly into ${count} candidate matrix partition(s)!`);
+            break;
+          }
 
           case "eval-candidate":
             await start("evaluate", "candidate");
