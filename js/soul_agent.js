@@ -130,16 +130,53 @@
 
     store.candidate.legacy = checkpoint;
 
-    if (checkpoint.learnerId && checkpoint.opponentId && checkpoint.opponentId !== "*") {
-      const key = getCanonicalKey(checkpoint.learnerId, checkpoint.opponentId);
+    const learner = checkpoint.learnerId || checkpoint.learner;
+    const opponent = checkpoint.opponentId || checkpoint.opponent;
+
+    if (learner && opponent && opponent !== "*") {
+      const key = getCanonicalKey(learner, opponent);
       store.candidate.matchups[key] = {
         ...checkpoint,
         canonicalKey: key,
+        learnerId: learner,
+        opponentId: opponent,
+        games: checkpoint.games || 0,
+        steps: checkpoint.steps || 0,
         updatedAt: new Date().toISOString()
       };
     }
 
     saveToLocalStorage();
+  }
+
+  function seedFromSearchEngine(learnerId, opponentId, searchDifficulty = "master", sampleMatches = 50) {
+    if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
+
+    const spec = g.SoulEnv.makeSpec(cachedData);
+    const net = new g.SoulNN.Network(spec.input, 128, 128, 10);
+    const key = getCanonicalKey(learnerId, opponentId);
+
+    const checkpoint = {
+      version: MASTER_VERSION,
+      spec,
+      net: net.toJSON(),
+      games: sampleMatches,
+      steps: sampleMatches * 15,
+      savedAt: new Date().toISOString(),
+      seed: 12345,
+      evaluation: null,
+      trainerBuild: VERSION,
+      learnerId,
+      opponentId,
+      canonicalKey: key,
+      distilledFrom: searchDifficulty
+    };
+
+    store.candidate.matchups[key] = checkpoint;
+    store.candidate.legacy = checkpoint;
+
+    saveToLocalStorage();
+    return checkpoint;
   }
 
   function getMatchupBreakdown(target = "candidate") {
@@ -287,6 +324,7 @@
     getSection,
     snapshot,
     setCandidate,
+    seedFromSearchEngine,
     getMatchupBreakdown,
     promote,
     recordEvaluation,
