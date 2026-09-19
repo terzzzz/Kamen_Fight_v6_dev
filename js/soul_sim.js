@@ -86,6 +86,9 @@
 
       // 4. 5% chance player starts in a fainted recovery state
       player.isFainted = rng() < 0.05;
+      if (player.isFainted) {
+        player.faintRounds = 1;
+      }
     }
   }
 
@@ -241,10 +244,10 @@
       applyRandomizedStartState(state, setupRng);
     }
 
-    // Capture initial HP for Symmetrical Comeback/Advantage Multiplier
-    const initialSelfLp = state[learnerSlot].lp;
-    const initialOppLp = state[enemySlot].lp;
-    const initialLpRatio = initialSelfLp / Math.max(1, initialOppLp);
+    // Capture initial HP percentages for Symmetrical Comeback/Advantage Multiplier
+    const initialSelfLpPct = state[learnerSlot].lp / Math.max(1, state[learnerSlot].maxLp);
+    const initialOppLpPct = state[enemySlot].lp / Math.max(1, state[enemySlot].maxLp);
+    const initialLpRatio = initialSelfLpPct / Math.max(0.01, initialOppLpPct);
     
     // Clamp multiplier between 0.3x (heavy advantage discount) and 2.5x (comeback bonus)
     const matchRewardMultiplier = K.clamp(Math.pow(initialLpRatio, -0.8), 0.3, 2.5);
@@ -390,17 +393,17 @@
       // Anti-stalling penalty
       const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
 
-      const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 100);
+      const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 20);
       const nextChi = nextState[learnerSlot].chi || 0;
       const chiGained = Math.max(0, nextChi - pendingObj.selfChi);
       const chiReward = 0.04 * (chiGained / selfMaxChi);
 
-      const isVoluntaryIdle = E.INPUTS[pendingObj.a] === "IDLE" && !pendingObj.selfFainted;
+      const actionKey = E.INPUTS[pendingObj.a];
+      const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
       const idlePenalty = isVoluntaryIdle ? -0.05 : 0;
 
       // Human-like Action Shaping Penalties/Bonuses
       let humanShaping = 0;
-      const actionKey = E.INPUTS[pendingObj.a];
 
       // 1. Anti-Spam Penalty (3 consecutive identical moves)
       if (pendingObj.prevAction1 === pendingObj.a && pendingObj.prevAction2 === pendingObj.a) {
@@ -440,7 +443,7 @@
         );
       }
 
-      // Replay gradient scale prioritize comeback victories in Adam updates
+      // Replay gradient scale prioritizes comeback victories in Adam updates
       const weightScale = (terminal && nextState.winner === learnerSlot) ? matchRewardMultiplier : 1.0;
 
       return {
@@ -652,7 +655,7 @@
 
             selfChi: state[learnerSlot].chi || 0,
             oppChi: state[enemySlot].chi || 0,
-            selfMaxChi: state[learnerSlot].maxChi || 100,
+            selfMaxChi: state[learnerSlot].maxChi || 20,
             selfFainted: Boolean(state[learnerSlot].isFainted),
             oppFainted: Boolean(state[enemySlot].isFainted),
 
