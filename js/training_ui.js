@@ -28,7 +28,6 @@
       <p>
         Training is headless. ACTIVE is not changed by training.
         Evaluate a candidate before activating it.
-        Mechanical tests do not prove improved fighting performance.
       </p>
 
       <p>
@@ -79,7 +78,7 @@
             min="2"
             max="100000"
             step="1"
-            value="3000"
+            value="400"
           >
         </label>
 
@@ -130,11 +129,11 @@
         <button type="button" data-action="export-candidate">
           EXPORT CANDIDATE
         </button>
-        <button type="button" data-action="export-active">
-          EXPORT ACTIVE
+        <button type="button" data-action="export-master">
+          EXPORT MASTER BUNDLE
         </button>
         <button type="button" data-action="import">
-          IMPORT AS CANDIDATE
+          IMPORT CHECKPOINT / MASTER BUNDLE
         </button>
         <button type="button" data-action="tests">
           RUN MECHANICAL TESTS
@@ -155,12 +154,6 @@
 
       <pre data-field="status"></pre>
       <pre data-field="output" aria-live="polite">Loading…</pre>
-
-      <p>
-        Checkpoints must match this game's data and controller schema.
-        Keep an exported backup of your best model.
-        Training resumes CANDIDATE first, not ACTIVE.
-      </p>
     `;
 
     const style = document.createElement("style");
@@ -264,22 +257,21 @@
 
     function refresh() {
       const state = g.SoulAgent.status();
+      const learnerVal = field("learner")?.value || "ichigo";
+      const oppVal = field("opponent")?.value || "*";
+
+      const pairKey = oppVal !== "*"
+        ? g.SoulAgent.getCanonicalKey(learnerVal, oppVal)
+        : null;
 
       field("status").textContent = [
+        `ACTIVE MATCHUP KEY: ${pairKey ? pairKey : "ALL"}`,
         state.active
-          ? "ACTIVE: " +
-            state.active.games +
-            " training matches; model " +
-            state.active.id
-          : "ACTIVE: scripted fallback — no neural checkpoint activated.",
-
+          ? "ACTIVE: " + state.active.games + " games; model " + state.active.id
+          : "ACTIVE: fallback / unassigned.",
         state.candidate
-          ? "CANDIDATE: " +
-            state.candidate.games +
-            " training matches; model " +
-            state.candidate.id
+          ? "CANDIDATE: " + state.candidate.games + " games; model " + state.candidate.id
           : "CANDIDATE: none.",
-
         state.storageWarning,
         ...(state.warnings || [])
       ].filter(Boolean).join("\n");
@@ -288,9 +280,7 @@
         button.disabled = busy;
       });
 
-      host.querySelectorAll(
-        "select, input:not([type=file])"
-      ).forEach(element => {
+      host.querySelectorAll("select, input:not([type=file])").forEach(element => {
         element.disabled = busy;
       });
 
@@ -305,7 +295,6 @@
           !state.candidate.evaluated;
 
         action("eval-active").disabled = !state.active;
-        action("export-active").disabled = !state.active;
       }
     }
 
@@ -322,10 +311,15 @@
         ? "All active riders"
         : String(r.opponent ?? "Unknown");
 
+      const pairKey = r.opponent !== "*"
+        ? g.SoulAgent.getCanonicalKey(r.learner, r.opponent)
+        : "ALL";
+
       const controller = modeLabels[r.mode] || String(r.mode ?? "Unknown");
 
       const lines = [
         heading,
+        "Matchup Code: " + pairKey,
         "Learner Rider: " + learnerName,
         "Trainer build: " + (r.build || "Unavailable"),
         ""
@@ -490,20 +484,27 @@
 
       if (busy) return;
 
+      const learnerVal = field("learner").value;
+      const opponentVal = field("opponent").value;
       const training = kind === "train";
+
       let checkpoint;
 
       if (training) {
         checkpoint =
+          g.SoulAgent.getSection(learnerVal, opponentVal, "candidate") ||
           g.SoulAgent.snapshot("candidate") ||
+          g.SoulAgent.getSection(learnerVal, opponentVal, "active") ||
           g.SoulAgent.snapshot("active");
 
       } else {
-        checkpoint = g.SoulAgent.snapshot(target);
+        checkpoint =
+          g.SoulAgent.getSection(learnerVal, opponentVal, target) ||
+          g.SoulAgent.snapshot(target);
 
         if (!checkpoint) {
           throw new Error(
-            "No " + target + " checkpoint exists."
+            "No " + target + " checkpoint exists for this matchup."
           );
         }
       }
@@ -611,26 +612,11 @@
                 );
               }
 
-              let ending;
-
-              if (training) {
-                ending =
-                  "\n\nCandidate saved in memory/browser storage. " +
-                  "ACTIVE was not changed by this training job. " +
-                  "Evaluate before activation.";
-
-              } else if (!completeEvaluation) {
-                ending =
-                  "\n\nEvaluation incomplete. " +
-                  "This partial result was not saved as " +
-                  "a completed evaluation.";
-
-              } else {
-                ending =
-                  "\n\nEvaluation finished. " +
-                  "Compare checkpoints using the same opponent, " +
-                  "controller, seed, and match count.";
-              }
+              let ending = training
+                ? "\n\nCandidate saved in memory/browser storage & Master Bundle."
+                : completeEvaluation
+                  ? "\n\nEvaluation finished."
+                  : "\n\nEvaluation incomplete.";
 
               output(
                 formatReport(report) + ending
@@ -666,8 +652,8 @@
             checkpoint,
             matches: count,
             seed,
-            learner: field("learner").value,
-            opponent: field("opponent").value,
+            learner: learnerVal,
+            opponent: opponentVal,
             mode: field("mode").value
           }
         });
@@ -682,15 +668,6 @@
       if (!dedicated && !host.open) {
         host.showModal();
       }
-
-      const selectedCount = document.getElementById(
-        "sim-count-select"
-      );
-
-      if (selectedCount && !busy) {
-        field("eval-count").value = selectedCount.value;
-      }
-
       refresh();
     }
 
@@ -699,6 +676,9 @@
         event.preventDefault();
       }
     });
+
+    host.querySelector('[data-field="learner"]').addEventListener("change", refresh);
+    host.querySelector('[data-field="opponent"]').addEventListener("change", refresh);
 
     host.addEventListener("click", async event => {
       const button = event.target?.closest?.(
@@ -725,32 +705,21 @@
             worker?.postMessage({
               type: "stop"
             });
-
-            output(
-              field("output").textContent +
-              "\n\nStop requested. Waiting for the worker to yield…"
-            );
             break;
 
           case "promote":
-            if (!window.confirm("Are you sure you want to activate this candidate model for live matches?")) {
-              break;
-            }
+            if (!window.confirm("Activate this candidate model for live matches?")) break;
             g.SoulAgent.promote();
             refresh();
-
-            output(
-              "Candidate activated. " +
-              "It will be used from the next live match."
-            );
+            output("Candidate activated.");
             break;
 
           case "export-candidate":
             g.SoulAgent.download("candidate");
             break;
 
-          case "export-active":
-            g.SoulAgent.download("active");
+          case "export-master":
+            g.SoulAgent.downloadMasterBundle("candidate");
             break;
 
           case "import":
@@ -760,32 +729,13 @@
           case "tests":
             busy = true;
             refresh();
-
-            output(
-              "Running mechanical and learning-component tests…"
-            );
-
+            output("Running mechanical tests…");
             try {
               if (typeof g.runSoulTests !== "function") {
-                throw new Error(
-                  "The soul_tests.js module is not loaded."
-                );
+                throw new Error("soul_tests.js not loaded.");
               }
-
               const result = await g.runSoulTests();
-
-              output(
-                "SOUL TESTS: " +
-                result.passed +
-                " passed.\n\n" +
-
-                "Mechanical/component tests passed. " +
-                "Fighting improvement was not tested.\n\n" +
-
-                "These checks do not establish that the " +
-                "revised training process improves win rate."
-              );
-
+              output("SOUL TESTS: " + result.passed + " passed.");
             } finally {
               busy = false;
               refresh();
@@ -793,18 +743,12 @@
             break;
 
           case "close":
-            if (!busy) {
-              host.close();
-            }
+            if (!busy) host.close();
             break;
         }
 
       } catch (error) {
-        output(
-          "ERROR\n" +
-          error.message
-        );
-
+        output("ERROR\n" + error.message);
         refresh();
       }
     });
@@ -824,31 +768,19 @@
         refresh();
 
         try {
-          if (file.size > 15 * 1024 * 1024) {
-            throw new Error(
-              "Checkpoint file is unexpectedly large."
-            );
+          await g.SoulAgent.ready();
+          const payload = JSON.parse(await file.text());
+
+          if (payload?.version === g.SoulAgent.MASTER_VERSION || payload?.matchups) {
+            const count = g.SoulAgent.importMasterBundle(payload, "candidate");
+            output(`Imported Master Matrix Bundle (${count} matchup policies loaded).`);
+          } else {
+            g.SoulAgent.importCandidate(payload);
+            output("Checkpoint imported as CANDIDATE.");
           }
 
-          await g.SoulAgent.ready();
-
-          const payload = JSON.parse(
-            await file.text()
-          );
-
-          g.SoulAgent.importCandidate(payload);
-
-          output(
-            "Checkpoint imported as CANDIDATE.\n\n" +
-            "ACTIVE was not changed. " +
-            "TRAIN / RESUME will continue this imported candidate."
-          );
-
         } catch (error) {
-          output(
-            "IMPORT ERROR\n" +
-            error.message
-          );
+          output("IMPORT ERROR\n" + error.message);
 
         } finally {
           input.value = "";
@@ -858,115 +790,33 @@
       }
     );
 
-    document.addEventListener("click", event => {
-      const target = event.target?.closest?.(
-        "#ichigo-train-btn, #policy-sim-btn, " +
-        "#btn-simulate-matches, #btn-simulate, " +
-        "#simulate-btn, #btn-export-ichigo"
-      );
-
-      if (!target) return;
-
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      if (target.id === "btn-export-ichigo") {
-        try {
-          g.SoulAgent.download("active");
-
-        } catch (error) {
-          openTools();
-          output(error.message);
-        }
-
-      } else {
-        openTools();
-      }
-    }, true);
-
-    g.handleSimulateMatches = openTools;
-
     try {
-      if (
-        g.SoulNN?.BUILD !== BUILD ||
-        g.SoulSim?.BUILD !== BUILD
-      ) {
-        throw new Error(
-          "Page module cache/version mismatch.\n" +
-          "Expected build: " + BUILD + "\n" +
-          "neural_core.js: " +
-          (g.SoulNN?.BUILD || "older/unidentified") + "\n" +
-          "soul_sim.js: " +
-          (g.SoulSim?.BUILD || "older/unidentified") + "\n\n" +
-          "Replace all four revised files and hard-refresh. " +
-          "Do not clear browser checkpoint storage."
-        );
-      }
-
       const readyData = await g.SoulAgent.ready();
-
       const learnerSelect = field("learner");
       const opponentSelect = field("opponent");
 
       for (const rider of readyData.data.riders) {
         const lOption = document.createElement("option");
         lOption.value = rider.id;
-        lOption.textContent = rider.name;
+        lOption.textContent = `${rider.name} [${g.SoulAgent.toCode(rider.id)}]`;
         learnerSelect.appendChild(lOption);
 
         const oOption = document.createElement("option");
         oOption.value = rider.id;
-        oOption.textContent = rider.name;
+        oOption.textContent = `${rider.name} [${g.SoulAgent.toCode(rider.id)}]`;
         opponentSelect.appendChild(oOption);
       }
 
-      output(
-        "Ready.\n" +
-        "Trainer build: " + BUILD + "\n\n" +
-
-        "Guided-round teacher: MASTER.\n" +
-        "Evaluation: no guidance, exploration, or learning.\n" +
-        "Minimum demonstration imitation coefficient: 0.02.\n" +
-        "Discounting: once per completed combat round.\n\n" +
-
-        "For this revision, import your saved best checkpoint " +
-        "as CANDIDATE before training. " +
-        "Do not resume an already-degraded candidate.\n\n" +
-
-        "TRAIN / RESUME continues CANDIDATE first. " +
-        "It uses ACTIVE only when no candidate exists.\n\n" +
-
-        "Resuming preserves network weights and counters. " +
-        "Replay memory and Adam state still restart.\n\n" +
-
-        "Keep your best exported checkpoint. " +
-        "This revision does not automatically roll back " +
-        "a candidate that loses performance."
-      );
-
+      output("Ready.\nTrainer build: " + BUILD);
       refresh();
 
     } catch (error) {
-      output(
-        "INITIALIZATION ERROR\n" +
-        error.message
-      );
-
-      host.querySelectorAll("button").forEach(button => {
-        button.disabled = true;
-      });
-
-      if (action("close")) {
-        action("close").disabled = false;
-      }
+      output("INITIALIZATION ERROR\n" + error.message);
     }
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener(
-      "DOMContentLoaded",
-      initialize
-    );
+    document.addEventListener("DOMContentLoaded", initialize);
   } else {
     void initialize();
   }
