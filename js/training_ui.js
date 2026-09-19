@@ -9,10 +9,7 @@
     if (initialized) return;
     initialized = true;
 
-    const dedicated = document.getElementById(
-      "soul-training-root"
-    );
-
+    const dedicated = document.getElementById("soul-training-root");
     const host = dedicated || document.createElement("dialog");
 
     if (!dedicated) {
@@ -228,15 +225,8 @@
 
     document.head.appendChild(style);
 
-    const field = name =>
-      host.querySelector(
-        '[data-field="' + name + '"]'
-      );
-
-    const action = name =>
-      host.querySelector(
-        '[data-action="' + name + '"]'
-      );
+    const field = name => host.querySelector('[data-field="' + name + '"]');
+    const action = name => host.querySelector('[data-action="' + name + '"]');
 
     let worker = null;
     let busy = false;
@@ -255,6 +245,39 @@
       field("output").textContent = text;
     }
 
+    function renderMatrixTable(breakdown) {
+      const codes = ["001", "002", "003", "004", "005", "006"];
+      const names = {
+        "001": "Ichigo",
+        "002": "Nigo",
+        "003": "V3",
+        "004": "Riderman",
+        "005": "Rider X",
+        "006": "Amazon"
+      };
+
+      const header = "Learner \\ Opp  | " + codes.map(c => c.padStart(7, " ")).join(" | ");
+      const divider = "-".repeat(header.length);
+      const rows = [
+        "--- MASTER MATRIX BUNDLE PROGRESS (CANDIDATE) ---",
+        header,
+        divider
+      ];
+
+      for (const lCode of codes) {
+        const rowLabel = `${lCode} (${names[lCode].padEnd(7, " ")})`;
+        const cells = [];
+        for (const oCode of codes) {
+          const info = breakdown[lCode]?.[oCode];
+          const gStr = info?.hasModel ? `${info.games}g` : "0g";
+          cells.push(gStr.padStart(7, " "));
+        }
+        rows.push(`${rowLabel} | ` + cells.join(" | "));
+      }
+
+      return rows.join("\n");
+    }
+
     function refresh() {
       const state = g.SoulAgent.status();
       const learnerVal = field("learner")?.value || "ichigo";
@@ -264,17 +287,29 @@
         ? g.SoulAgent.getCanonicalKey(learnerVal, oppVal)
         : null;
 
-      field("status").textContent = [
-        `ACTIVE MATCHUP KEY: ${pairKey ? pairKey : "ALL"}`,
-        state.active
-          ? "ACTIVE: " + state.active.games + " games; model " + state.active.id
-          : "ACTIVE: fallback / unassigned.",
-        state.candidate
-          ? "CANDIDATE: " + state.candidate.games + " games; model " + state.candidate.id
-          : "CANDIDATE: none.",
+      const candSection = oppVal !== "*"
+        ? g.SoulAgent.getSection(learnerVal, oppVal, "candidate")
+        : null;
+
+      const actSection = oppVal !== "*"
+        ? g.SoulAgent.getSection(learnerVal, oppVal, "active")
+        : null;
+
+      const breakdown = g.SoulAgent.getMatchupBreakdown("candidate");
+
+      const lines = [
+        `ACTIVE MATCHUP KEY: ${pairKey ? pairKey : "ALL RIDER ROSTER"}`,
+        oppVal !== "*"
+          ? `SELECTED 1v1 MATCHUP (${learnerVal} -> ${oppVal}):\n  Candidate: ${candSection ? candSection.games + " games (" + candSection.steps + " steps)" : "0 games"}\n  Active:    ${actSection ? actSection.games + " games (" + actSection.steps + " steps)" : "0 games"}`
+          : "SELECTED MATCHUP: Global Roster Mode",
+        "",
+        renderMatrixTable(breakdown),
+        "",
         state.storageWarning,
         ...(state.warnings || [])
-      ].filter(Boolean).join("\n");
+      ].filter(Boolean);
+
+      field("status").textContent = lines.join("\n");
 
       host.querySelectorAll("button").forEach(button => {
         button.disabled = busy;
@@ -287,14 +322,14 @@
       action("stop").disabled = !busy;
 
       if (!busy) {
-        action("eval-candidate").disabled = !state.candidate;
+        action("eval-candidate").disabled = !state.candidate && !candSection;
         action("export-candidate").disabled = !state.candidate;
 
         action("promote").disabled =
           !state.candidate ||
           !state.candidate.evaluated;
 
-        action("eval-active").disabled = !state.active;
+        action("eval-active").disabled = !state.active && !actSection;
       }
     }
 
@@ -491,10 +526,11 @@
       let checkpoint;
 
       if (training) {
+        // Robust 1v1 resolution: Candidate Matchup -> Active Matchup -> Candidate Snapshot -> Active Snapshot
         checkpoint =
           g.SoulAgent.getSection(learnerVal, opponentVal, "candidate") ||
-          g.SoulAgent.snapshot("candidate") ||
           g.SoulAgent.getSection(learnerVal, opponentVal, "active") ||
+          g.SoulAgent.snapshot("candidate") ||
           g.SoulAgent.snapshot("active");
 
       } else {
