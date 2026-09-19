@@ -211,6 +211,9 @@ async function run(job) {
   let currentImitation = 0;
   let currentEpsilon = 0;
 
+  // Track WASD directional stance picks for skill distribution analysis
+  const wasdCounts = { W: 0, A: 0, S: 0, D: 0, IDLE: 0 };
+
   const breakdown = {};
 
   function checkpoint() {
@@ -237,6 +240,11 @@ async function run(job) {
     const seconds = Math.max(
       0.001,
       (performance.now() - started) / 1000
+    );
+
+    const totalWasd = Math.max(
+      1,
+      wasdCounts.W + wasdCounts.A + wasdCounts.S + wasdCounts.D + wasdCounts.IDLE
     );
 
     return {
@@ -283,7 +291,16 @@ async function run(job) {
       opponent: opponentId,
       mode: job.mode,
       cancelled,
-      breakdown
+      breakdown,
+
+      wasdRatio: {
+        W: (100 * wasdCounts.W / totalWasd).toFixed(1) + "%",
+        A: (100 * wasdCounts.A / totalWasd).toFixed(1) + "%",
+        S: (100 * wasdCounts.S / totalWasd).toFixed(1) + "%",
+        D: (100 * wasdCounts.D / totalWasd).toFixed(1) + "%",
+        IDLE: (100 * wasdCounts.IDLE / totalWasd).toFixed(1) + "%",
+        counts: { ...wasdCounts }
+      }
     };
   }
 
@@ -369,6 +386,9 @@ async function run(job) {
 
       if (event.type === "transition") {
         transitions++;
+
+        const dir = event.transition.direction || "IDLE";
+        wasdCounts[dir] = (wasdCounts[dir] || 0) + 1;
 
         if (training) {
           learner.accept(
