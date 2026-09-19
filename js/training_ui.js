@@ -447,15 +447,19 @@
         }
       }
 
-      if (r.wasdRatio) {
+   if (r.wasdRatio && r.wasdRatio.counts) {
+        const counts = r.wasdRatio.counts;
+        // Denominator strictly sums W, A, S, and D, excluding IDLE
+        const totalActive = Math.max(1, counts.W + counts.A + counts.S + counts.D);
+        const pct = val => (100 * val / totalActive).toFixed(1) + "%";
+
         lines.push(
           "",
           "--- WASD STANCE & SKILL USAGE RATIO ---",
-          `W (Up / Special)    : ${r.wasdRatio.W.padStart(6)} (${r.wasdRatio.counts.W.toLocaleString()})`,
-          `A (Back / Guard)    : ${r.wasdRatio.A.padStart(6)} (${r.wasdRatio.counts.A.toLocaleString()})  <-- Defense & Omni-Guards`,
-          `S (Down / Heavy)    : ${r.wasdRatio.S.padStart(6)} (${r.wasdRatio.counts.S.toLocaleString()})`,
-          `D (Forward / Light) : ${r.wasdRatio.D.padStart(6)} (${r.wasdRatio.counts.D.toLocaleString()})`,
-        //  `IDLE / Wait         : ${r.wasdRatio.IDLE.padStart(6)} (${r.wasdRatio.counts.IDLE.toLocaleString()})`
+          `W (Up / Special)    : ${pct(counts.W).padStart(6)} (${counts.W.toLocaleString()})`,
+          `A (Back / Guard)    : ${pct(counts.A).padStart(6)} (${counts.A.toLocaleString()})  <-- Defense & Omni-Guards`,
+          `S (Down / Heavy)    : ${pct(counts.S).padStart(6)} (${counts.S.toLocaleString()})`,
+          `D (Forward / Light) : ${pct(counts.D).padStart(6)} (${counts.D.toLocaleString()})`
         );
       }
 
