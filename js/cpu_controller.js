@@ -144,29 +144,28 @@
     }
 
     const player = context.state[context.slot];
+    const oppSlot = context.slot === "p1" ? "p2" : "p1";
+    const opponent = context.state[oppSlot];
     const soul = g.KF.difficulty(context.difficulty) === "soul";
 
+    // Ensure Master Matrix Bundle is ready
+    if (g.SoulAgent && typeof g.SoulAgent.ready === "function") {
+      await g.SoulAgent.ready();
+    }
+
+    const hasNeuralModel = (g.SoulAgent && opponent)
+      ? Boolean(g.SoulAgent.getSection(player.id, opponent.id, "active"))
+      : false;
+
     const useAgent =
-      player.id === "ichigo" &&
       context.disableAgent !== true &&
-      (soul || context.policyWeights != null);
+      (soul && hasNeuralModel || context.policyWeights != null);
 
     if (
       useAgent &&
       !player.isFainted &&
       !context.state.winner
     ) {
-      if (
-        !g.AgentIchigo ||
-        typeof g.AgentIchigo.loadActivePolicyStore !== "function"
-      ) {
-        throw new Error(
-          "AgentIchigo is missing. Soul learning is unavailable."
-        );
-      }
-
-      await g.AgentIchigo.loadActivePolicyStore();
-
       return mainThread(context);
     }
 
@@ -202,7 +201,6 @@
         }
       });
 
-      // Detect an old cached ai.js inside a worker.
       if (result?.debug?.engineVersion !== VERSION) {
         const error = new Error(
           "Worker loaded an older ai.js; using current main-thread AI."
