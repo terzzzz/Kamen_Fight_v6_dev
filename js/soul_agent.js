@@ -92,22 +92,16 @@
         // Try local storage first
         loadFromLocalStorage();
 
-        // If active matrix is empty, attempt to fetch local or remote GitHub release bundle
+        // If active matrix is empty, attempt to fetch default data/soul_matrix_master.json
         if (Object.keys(store.active.matchups).length === 0) {
           try {
-            let res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
-
-            if (!res.ok) {
-              const remoteURL = "https://github.com/terzzzz/Kamen_Fight_v6_dev/releases/download/soul/soul_matrix_master.json";
-              res = await fetch(remoteURL, { cache: "no-store" });
-            }
-
+            const res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
             if (res.ok) {
               const bundle = await res.json();
               importMasterBundle(bundle, "active");
             }
           } catch (_) {
-            // Fallback silent warning
+            // Master bundle file not created yet - silent fallback
           }
         }
 
@@ -277,12 +271,12 @@
     }
 
     const blob = new Blob([JSON.stringify(model, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(url); // fixed below in your logic or standard blob link
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = `soul_checkpoint_${target}_${Date.now()}.json`;
     a.click();
-    URL.revokeObjectURL(a.href);
+    URL.revokeObjectURL(url);
   }
 
   function downloadMasterBundle(target = "candidate") {
@@ -298,7 +292,7 @@
       matchups: bucket.matchups
     };
 
-    const blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
