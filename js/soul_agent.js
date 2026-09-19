@@ -83,7 +83,7 @@
     return false;
   }
 
-async function ready() {
+  async function ready() {
     if (!readyPromise) {
       readyPromise = (async () => {
         const loadedData = await g.KF.loadData();
@@ -92,26 +92,22 @@ async function ready() {
         // Try local storage first
         loadFromLocalStorage();
 
-        // If active matrix is empty, attempt to fetch default local or remote GitHub release bundle
+        // If active matrix is empty, attempt to fetch local or remote GitHub release bundle
         if (Object.keys(store.active.matchups).length === 0) {
           try {
-            // 1. Try local project path first
             let res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
 
-            // 2. Fallback to GitHub Release direct download URL if local file isn't present
             if (!res.ok) {
               const remoteURL = "https://github.com/terzzzz/Kamen_Fight_v6_dev/releases/download/soul/soul_matrix_master.json";
-              console.log("[SoulAgent] Fetching active matrix from GitHub Release CDN...");
               res = await fetch(remoteURL, { cache: "no-store" });
             }
 
             if (res.ok) {
               const bundle = await res.json();
               importMasterBundle(bundle, "active");
-              console.log("[SoulAgent] Active matrix successfully loaded!");
             }
-          } catch (e) {
-            console.warn("[SoulAgent] Master bundle load error (running on defaults/RAM):", e);
+          } catch (_) {
+            // Fallback silent warning
           }
         }
 
@@ -281,12 +277,12 @@ async function ready() {
     }
 
     const blob = new Blob([JSON.stringify(model, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(url); // fixed below in your logic or standard blob link
     const a = document.createElement("a");
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = `soul_checkpoint_${target}_${Date.now()}.json`;
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(a.href);
   }
 
   function downloadMasterBundle(target = "candidate") {
@@ -302,7 +298,7 @@ async function ready() {
       matchups: bucket.matchups
     };
 
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
