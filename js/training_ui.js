@@ -278,60 +278,67 @@
       return rows.join("\n");
     }
 
-    function refresh() {
-      const state = g.SoulAgent.status();
-      const learnerVal = field("learner")?.value || "ichigo";
-      const oppVal = field("opponent")?.value || "*";
+    /* Inside js/training_ui.js -> refresh() function */
 
-      const pairKey = oppVal !== "*"
-        ? g.SoulAgent.getCanonicalKey(learnerVal, oppVal)
-        : null;
+function refresh() {
+  const state = g.SoulAgent.status();
+  const learnerVal = field("learner")?.value || "ichigo";
+  const oppVal = field("opponent")?.value || "*";
 
-      const candSection = oppVal !== "*"
-        ? g.SoulAgent.getSection(learnerVal, oppVal, "candidate")
-        : null;
+  const pairKey = oppVal !== "*"
+    ? g.SoulAgent.getCanonicalKey(learnerVal, oppVal)
+    : null;
 
-      const actSection = oppVal !== "*"
-        ? g.SoulAgent.getSection(learnerVal, oppVal, "active")
-        : null;
+  const candSection = oppVal !== "*"
+    ? g.SoulAgent.getSection(learnerVal, oppVal, "candidate")
+    : null;
 
-      const breakdown = g.SoulAgent.getMatchupBreakdown("candidate");
+  const actSection = oppVal !== "*"
+    ? g.SoulAgent.getSection(learnerVal, oppVal, "active")
+    : null;
 
-      const lines = [
-        `ACTIVE MATCHUP KEY: ${pairKey ? pairKey : "ALL RIDER ROSTER"}`,
-        oppVal !== "*"
-          ? `SELECTED 1v1 MATCHUP (${learnerVal} -> ${oppVal}):\n  Candidate: ${candSection ? candSection.games + " games (" + candSection.steps + " steps)" : "0 games"}\n  Active:    ${actSection ? actSection.games + " games (" + actSection.steps + " steps)" : "0 games"}`
-          : "SELECTED MATCHUP: Global Roster Mode",
-        "",
-        renderMatrixTable(breakdown),
-        "",
-        state.storageWarning,
-        ...(state.warnings || [])
-      ].filter(Boolean);
+  // Safe check for getMatchupBreakdown
+  const breakdown = typeof g.SoulAgent.getMatchupBreakdown === "function"
+    ? g.SoulAgent.getMatchupBreakdown("candidate")
+    : {};
 
-      field("status").textContent = lines.join("\n");
+  const lines = [
+    `ACTIVE MATCHUP KEY: ${pairKey ? pairKey : "ALL RIDER ROSTER"}`,
+    oppVal !== "*"
+      ? `SELECTED 1v1 MATCHUP (${learnerVal} -> ${oppVal}):\n  Candidate: ${candSection ? candSection.games + " games (" + candSection.steps + " steps)" : "0 games"}\n  Active:    ${actSection ? actSection.games + " games (" + actSection.steps + " steps)" : "0 games"}`
+      : "SELECTED MATCHUP: Global Roster Mode",
+    "",
+    typeof g.SoulAgent.getMatchupBreakdown === "function"
+      ? renderMatrixTable(breakdown)
+      : "[Warning: Reloading Master Matrix script…]",
+    "",
+    state.storageWarning,
+    ...(state.warnings || [])
+  ].filter(Boolean);
 
-      host.querySelectorAll("button").forEach(button => {
-        button.disabled = busy;
-      });
+  field("status").textContent = lines.join("\n");
 
-      host.querySelectorAll("select, input:not([type=file])").forEach(element => {
-        element.disabled = busy;
-      });
+  host.querySelectorAll("button").forEach(button => {
+    button.disabled = busy;
+  });
 
-      action("stop").disabled = !busy;
+  host.querySelectorAll("select, input:not([type=file])").forEach(element => {
+    element.disabled = busy;
+  });
 
-      if (!busy) {
-        action("eval-candidate").disabled = !state.candidate && !candSection;
-        action("export-candidate").disabled = !state.candidate;
+  action("stop").disabled = !busy;
 
-        action("promote").disabled =
-          !state.candidate ||
-          !state.candidate.evaluated;
+  if (!busy) {
+    action("eval-candidate").disabled = !state.candidate && !candSection;
+    action("export-candidate").disabled = !state.candidate;
 
-        action("eval-active").disabled = !state.active && !actSection;
-      }
-    }
+    action("promote").disabled =
+      !state.candidate ||
+      !state.candidate.evaluated;
+
+    action("eval-active").disabled = !state.active && !actSection;
+  }
+}
 
     function formatReport(r) {
       const training = r.kind === "train";
