@@ -293,6 +293,7 @@ async function run(job) {
       cancelled,
       breakdown,
 
+      // WASD Ratio Payload
       wasdRatio: {
         W: (100 * wasdCounts.W / totalWasd).toFixed(1) + "%",
         A: (100 * wasdCounts.A / totalWasd).toFixed(1) + "%",
@@ -387,6 +388,7 @@ async function run(job) {
       if (event.type === "transition") {
         transitions++;
 
+        // Increment stance counts from simulator event
         const dir = event.transition.direction || "IDLE";
         wasdCounts[dir] = (wasdCounts[dir] || 0) + 1;
 
