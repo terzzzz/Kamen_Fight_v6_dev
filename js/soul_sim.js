@@ -342,7 +342,30 @@
         nextInput.m1,
         pendingObj.m.length
       );
+/* Inside js/soul_sim.js -> closeTransition() */
 
+const actionKey = E.INPUTS[pendingObj.a];
+let transitionDir = "IDLE";
+
+if (["W", "A", "S", "D"].includes(actionKey)) {
+  transitionDir = actionKey;
+} else if (["I", "J", "K", "L"].includes(actionKey)) {
+  transitionDir = pendingObj.selfDir || "IDLE";
+}
+
+return {
+  s: pendingObj.s,
+  a: pendingObj.a,
+  m: pendingObj.m,
+  demo: pendingObj.demo,
+  direction: transitionDir, // <-- Pass directional stance to worker
+  r,
+  discount,
+  weightScale,
+  s1: new Float32Array(nextInput.s1),
+  m1: new Uint8Array(nextInput.m1),
+  done: terminal
+};
       const elapsedRounds = rounds - pendingObj.completedRounds;
 
       if (
