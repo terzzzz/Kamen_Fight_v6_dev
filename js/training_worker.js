@@ -2,11 +2,6 @@
 "use strict";
 
 const BUILD = "round-discount-master-guide-v4";
-
-/*
- * Keep the existing checkpoint format identifier.
- * The network architecture and observation schema are unchanged.
- */
 const VERSION = "kf-soul-ddqn-v2";
 
 const MIN_IMITATION = 0.01;
@@ -98,6 +93,7 @@ async function run(job) {
   const old = job.checkpoint || null;
 
   const learnerId = job.learner || "ichigo";
+  const opponentId = job.opponent || "*";
 
   if (
     old &&
@@ -164,7 +160,7 @@ async function run(job) {
   const taskKey = JSON.stringify([
     BUILD,
     learnerId,
-    job.opponent,
+    opponentId,
     job.mode
   ]);
 
@@ -182,10 +178,10 @@ async function run(job) {
     throw new Error(`Learner rider '${learnerId}' not found in dataset.`);
   }
 
-  const opponents = job.opponent === "*"
+  const opponents = opponentId === "*"
     ? data.riders
     : data.riders.filter(
-        rider => rider.id === job.opponent
+        rider => rider.id === opponentId
       );
 
   if (!opponents.length) {
@@ -229,6 +225,7 @@ async function run(job) {
       evaluation: null,
       trainerBuild: BUILD,
       learnerId,
+      opponentId,
       trainingTask: {
         key: taskKey,
         games: taskBaseGames + games
@@ -283,7 +280,7 @@ async function run(job) {
 
       seed,
       learner: learnerId,
-      opponent: job.opponent,
+      opponent: opponentId,
       mode: job.mode,
       cancelled,
       breakdown
@@ -324,7 +321,6 @@ async function run(job) {
     const learnedGames = taskBaseGames + games;
     const rosterFactor = Math.max(1, opponents.length);
 
-    // Guide probability decay scaled by roster size N
     const guideProbability = !training
       ? 0
       : learnedGames < (5 * rosterFactor)
