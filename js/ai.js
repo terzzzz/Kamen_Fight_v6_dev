@@ -22,8 +22,10 @@
     const { state, slot } = context;
     const difficulty = K.difficulty(context.difficulty);
     const player = state?.[slot];
+    const oppSlot = slot === "p1" ? "p2" : "p1";
+    const opponent = state?.[oppSlot];
 
-    if (!player || !state.moves?.[slot]) {
+    if (!player || !opponent || !state.moves?.[slot]) {
       throw new Error("Invalid AI planning context.");
     }
 
@@ -38,30 +40,58 @@
       });
     }
 
+    // Determine if Neural Agent is available for this rider in this matchup
+    const agentModel = (g.SoulAgent && typeof g.SoulAgent.getSection === "function")
+      ? g.SoulAgent.getSection(player.id, opponent.id, "active")
+      : null;
+
     const useAgent =
-      player.id === "ichigo" &&
       context.disableAgent !== true &&
       (
-        difficulty === "soul" ||
+        (difficulty === "soul" && Boolean(agentModel)) ||
         context.policyWeights != null
       );
 
     if (useAgent) {
-      if (
-        !g.AgentIchigo ||
-        typeof g.AgentIchigo.chooseAction !== "function" ||
-        !g.AgentIchigo.isReady()
-      ) {
-        throw new Error(
-          "Soul Ichigo requires a ready AgentIchigo. " +
-          "Use AIService.plan() or await agent loading first."
-        );
+      const model = context.policyWeights || agentModel;
+
+      if (!model || !g.SoulNN) {
+        throw new Error("Soul AI requires a loaded neural checkpoint.");
       }
 
-      return stamp(g.AgentIchigo.chooseAction(
-        { ...context, difficulty },
-        context.policyWeights ?? null
-      ));
+      // Execute Neural Decision directly from the 1v1 policy
+      const env = g.SoulEnv.create(state, context.previousActions || {});
+      const obs = g.SoulEnv.observe(env, slot);
+      const spec = g.SoulEnv.makeSpec(context.data || { riders: [player, opponent], moves: state.moves });
+      const frames = context.frames || new g.SoulEnv.Frames(spec);
+      const vector = g.SoulEnv.vector(obs, spec);
+      const stacked = frames.push(vector);
+      const mask = Uint8Array.from(g.SoulEnv.mask(env, slot));
+
+      const net = g.SoulNN.Network.fromJSON(model.net);
+      const qValues = net.predict(stacked);
+      const actionIdx = g.SoulNN.argmax(qValues, mask);
+      const actionKey = g.SoulEnv.INPUTS[actionIdx];
+
+      let actionObj = { key: "DO_NOTHING", charge: 0 };
+      if (actionKey !== "IDLE" && actionKey !== "DO_NOTHING" && actionKey !== "WAIT") {
+        const [dir, btn] = actionKey.split("+");
+        if (dir && btn) {
+          actionObj = {
+            key: actionKey,
+            charge: env.cells[slot].charge
+          };
+        }
+      }
+
+      return stamp({
+        action: C.normalizeAction(state, slot, actionObj),
+        debug: {
+          difficulty: "soul",
+          strategy: `Neural Master Matrix [${g.SoulAgent.getCanonicalKey(player.id, opponent.id)}]`,
+          qValue: qValues[actionIdx]
+        }
+      });
     }
 
     const result = g.ForeseeEngine.search({
