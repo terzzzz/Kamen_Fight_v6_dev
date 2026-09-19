@@ -83,7 +83,7 @@
     return false;
   }
 
-  async function ready() {
+async function ready() {
     if (!readyPromise) {
       readyPromise = (async () => {
         const loadedData = await g.KF.loadData();
@@ -92,16 +92,26 @@
         // Try local storage first
         loadFromLocalStorage();
 
-        // If active matrix is empty, attempt to fetch default data/soul_matrix_master.json
+        // If active matrix is empty, attempt to fetch default local or remote GitHub release bundle
         if (Object.keys(store.active.matchups).length === 0) {
           try {
-            const res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
+            // 1. Try local project path first
+            let res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
+
+            // 2. Fallback to GitHub Release direct download URL if local file isn't present
+            if (!res.ok) {
+              const remoteURL = "https://github.com/terzzzz/Kamen_Fight_v6_dev/releases/download/soul/soul_matrix_master.json";
+              console.log("[SoulAgent] Fetching active matrix from GitHub Release CDN...");
+              res = await fetch(remoteURL, { cache: "no-store" });
+            }
+
             if (res.ok) {
               const bundle = await res.json();
               importMasterBundle(bundle, "active");
+              console.log("[SoulAgent] Active matrix successfully loaded!");
             }
-          } catch (_) {
-            // Master bundle file not created yet - silent fallback
+          } catch (e) {
+            console.warn("[SoulAgent] Master bundle load error (running on defaults/RAM):", e);
           }
         }
 
