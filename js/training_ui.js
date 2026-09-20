@@ -135,6 +135,9 @@
         <button type="button" data-action="import">
           IMPORT CHECKPOINT / MASTER BUNDLE
         </button>
+        <button type="button" data-action="sync-cdn">
+          SYNC ACTIVE FROM CDN
+        </button>
         <button type="button" data-action="tests">
           RUN MECHANICAL TESTS
         </button>
@@ -336,7 +339,7 @@
           !state.candidate ||
           !state.candidate.evaluated;
 
-        action("eval-active").disabled = !state.active && !actSection;
+        action("eval-active").disabled = !state.active && !actSection && state.activeMatchupsCount === 0;
       }
     }
 
@@ -447,7 +450,7 @@
         }
       }
 
-   if (r.wasdRatio && r.wasdRatio.counts) {
+      if (r.wasdRatio && r.wasdRatio.counts) {
         const counts = r.wasdRatio.counts;
         // Denominator strictly sums W, A, S, and D, excluding IDLE
         const totalActive = Math.max(1, counts.W + counts.A + counts.S + counts.D);
@@ -811,6 +814,24 @@
 
           case "import":
             field("file").click();
+            break;
+
+          case "sync-cdn":
+            busy = true;
+            refresh();
+            output("Fetching latest active matrix directly from Hugging Face CDN...");
+            try {
+              if (typeof g.SoulAgent.fetchMasterFromCDN !== "function") {
+                throw new Error("SoulAgent.fetchMasterFromCDN is not defined. Ensure soul_agent.js is updated.");
+              }
+              const count = await g.SoulAgent.fetchMasterFromCDN();
+              output(`SUCCESS\nLoaded ${count} active matchup partitions from Hugging Face CDN!`);
+            } catch (err) {
+              output("CDN SYNC ERROR\n" + err.message);
+            } finally {
+              busy = false;
+              refresh();
+            }
             break;
 
           case "tests":
