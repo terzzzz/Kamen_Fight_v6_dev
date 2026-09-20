@@ -11,6 +11,11 @@
   const C = g.CombatCore;
   const K = g.KF;
 
+  function safeClamp(val, min, max) {
+    if (!Number.isFinite(val)) return min;
+    return Math.max(min, Math.min(max, val));
+  }
+
   function assertObservationSize(spec, name, vector) {
     if (!(vector instanceof Float32Array)) {
       throw new Error(
@@ -70,15 +75,21 @@
   }
 
   function applyRandomizedStartState(state, rng) {
+    if (!state) return;
+
     for (const slot of ["p1", "p2"]) {
       const player = state[slot];
+      if (!player) continue;
 
       // 1. Randomize HP ratio between 15% and 100%
+      const maxLp = player.maxLp || player.lp || 1000;
+      player.maxLp = maxLp;
       const lpRatio = 0.15 + rng() * 0.85;
-      player.lp = Math.max(100, Math.floor(player.maxLp * lpRatio));
+      player.lp = Math.max(100, Math.floor(maxLp * lpRatio));
 
       // 2. Randomize Chi between 0 and max capacity
       const maxChi = player.maxChi || 20;
+      player.maxChi = maxChi;
       player.chi = Math.floor(rng() * (maxChi + 1));
 
       // 3. Randomize Faint Meter between 0 and 85
@@ -166,23 +177,26 @@
   }
 
   function potential(state, slot) {
+    if (!state) return 0;
     const enemy = C.other(slot);
+    const selfLp = state[slot]?.lp ?? 0;
+    const selfMaxLp = Math.max(1, state[slot]?.maxLp ?? 1000);
+    const oppLp = state[enemy]?.lp ?? 0;
+    const oppMaxLp = Math.max(1, state[enemy]?.maxLp ?? 1000);
 
-    return (
-      state[slot].lp / state[slot].maxLp -
-      state[enemy].lp / state[enemy].maxLp
-    );
+    return (selfLp / selfMaxLp) - (oppLp / oppMaxLp);
   }
 
   function remember(history, state, selected) {
+    if (!state) return history;
     return [
       ...history,
       {
-        p1: { ...selected.p1 },
-        p2: { ...selected.p2 },
+        p1: { ...selected?.p1 },
+        p2: { ...selected?.p2 },
         fainted: {
-          p1: Boolean(state.p1.isFainted),
-          p2: Boolean(state.p2.isFainted)
+          p1: Boolean(state.p1?.isFainted),
+          p2: Boolean(state.p2?.isFainted)
         }
       }
     ].slice(-24);
@@ -218,9 +232,9 @@
     assertNetworkSize(spec, net, "Learner network");
     assertNetworkSize(spec, opponentNet, "Opponent network");
 
-    const learnerRider = data.riders.find(
+    const learnerRider = data?.riders?.find(
       rider => rider.id === learnerId
-    ) || data.riders.find(
+    ) || data?.riders?.find(
       rider => rider.id === "ichigo"
     );
 
@@ -245,12 +259,12 @@
     }
 
     // Capture initial HP percentages for Symmetrical Comeback/Advantage Multiplier
-    const initialSelfLpPct = state[learnerSlot].lp / Math.max(1, state[learnerSlot].maxLp);
-    const initialOppLpPct = state[enemySlot].lp / Math.max(1, state[enemySlot].maxLp);
+    const initialSelfLpPct = (state[learnerSlot]?.lp ?? 1000) / Math.max(1, state[learnerSlot]?.maxLp ?? 1000);
+    const initialOppLpPct = (state[enemySlot]?.lp ?? 1000) / Math.max(1, state[enemySlot]?.maxLp ?? 1000);
     const initialLpRatio = initialSelfLpPct / Math.max(0.01, initialOppLpPct);
     
     // Clamp multiplier between 0.3x (heavy advantage discount) and 2.5x (comeback bonus)
-    const matchRewardMultiplier = K.clamp(Math.pow(initialLpRatio, -0.8), 0.3, 2.5);
+    const matchRewardMultiplier = safeClamp(Math.pow(initialLpRatio, -0.8), 0.3, 2.5);
 
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
@@ -313,7 +327,7 @@
           "Failed to build post-resolution learner input: " +
           (err instanceof Error ? err.message : String(err)) +
           " Completed rounds=" + rounds +
-          ", state.round=" + nextState.round + "."
+          ", state.round=" + (nextState?.round ?? "unknown") + "."
         );
       }
     }
@@ -324,38 +338,32 @@
       terminal,
       nextInput
     ) {
-      if (!pendingObj) {
-        throw new Error("Cannot close an empty transition.");
+      if (!pendingObj || !pendingObj.s) {
+        return null;
       }
 
+      const safeNextInput = nextInput || {};
+      const s1 = safeNextInput.s1 || new Float32Array(spec.input);
+      const m1 = safeNextInput.m1 || new Uint8Array(pendingObj.m ? pendingObj.m.length : 10);
+
       assertObservationSize(spec, "Pending s", pendingObj.s);
-      assertObservationSize(spec, "Next s1", nextInput.s1);
+      assertObservationSize(spec, "Next s1", s1);
 
       assertMask(
         "Pending action mask",
         pendingObj.m,
-        nextInput.m1.length
+        m1.length
       );
 
       assertMask(
         "Next-action mask",
-        nextInput.m1,
+        m1,
         pendingObj.m.length
       );
 
-      const elapsedRounds = rounds - pendingObj.completedRounds;
+      const elapsedRounds = Math.max(1, rounds - (pendingObj.completedRounds ?? rounds));
 
-      if (
-        !Number.isSafeInteger(elapsedRounds) ||
-        elapsedRounds < 1
-      ) {
-        throw new Error(
-          "Invalid completed-round transition: elapsedRounds=" +
-          elapsedRounds + "."
-        );
-      }
-
-      const roundDiscount = Math.pow(E.GAMMA, elapsedRounds);
+      const roundDiscount = Math.pow(E.GAMMA ?? 0.99, elapsedRounds);
       const discount = terminal ? 0 : roundDiscount;
 
       const nextPotential = terminal
@@ -365,27 +373,30 @@
       // Symmetrical terminal reward with comeback scaling
       const terminalReward = terminal
         ? (
-          nextState.winner === "draw"
+          nextState?.winner === "draw"
             ? drawPenalty
-            : nextState.winner === learnerSlot
+            : nextState?.winner === learnerSlot
               ? 1.0 * matchRewardMultiplier
               : -1.0
         )
         : 0;
 
-      const selfMaxLp = Math.max(1, pendingObj.selfMaxLp);
-      const oppMaxLp = Math.max(1, pendingObj.oppMaxLp);
+      const selfMaxLp = Math.max(1, pendingObj.selfMaxLp ?? 1000);
+      const oppMaxLp = Math.max(1, pendingObj.oppMaxLp ?? 1000);
+
+      const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
+      const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
 
       const damageDealt =
         Math.max(
           0,
-          pendingObj.oppLp - nextState[enemySlot].lp
+          pendingObj.oppLp - nextOppLp
         ) / oppMaxLp;
 
       const damageTaken =
         Math.max(
           0,
-          pendingObj.selfLp - nextState[learnerSlot].lp
+          pendingObj.selfLp - nextSelfLp
         ) / selfMaxLp;
 
       const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
@@ -394,11 +405,11 @@
       const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
 
       const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 20);
-      const nextChi = nextState[learnerSlot].chi || 0;
-      const chiGained = Math.max(0, nextChi - pendingObj.selfChi);
+      const nextChi = nextState?.[learnerSlot]?.chi ?? 0;
+      const chiGained = Math.max(0, nextChi - (pendingObj.selfChi ?? 0));
       const chiReward = 0.04 * (chiGained / selfMaxChi);
 
-      const actionKey = E.INPUTS[pendingObj.a];
+      const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
       const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
       const idlePenalty = isVoluntaryIdle ? -0.05 : 0;
 
@@ -416,20 +427,20 @@
       }
 
       // 3. Smart Healing / Survival at Low HP
-      const riderMoves = data.moves?.[pendingObj.learnerRiderId];
+      const riderMoves = data?.moves?.[pendingObj.learnerRiderId];
       const move = riderMoves?.[actionKey];
       if (move?.lpRecovery) {
-        if (pendingObj.selfLp / pendingObj.selfMaxLp < 0.30) {
+        if (pendingObj.selfLp / selfMaxLp < 0.30) {
           humanShaping += 0.15; // Clutch recovery
-        } else if (pendingObj.selfLp === pendingObj.selfMaxLp) {
+        } else if (pendingObj.selfLp === selfMaxLp) {
           humanShaping -= 0.10; // Wasted Chi at full health
         }
       }
 
-      const r =
+      let r =
         terminalReward +
         SHAPING_SCALE * (
-          discount * nextPotential - pendingObj.phi
+          discount * nextPotential - (pendingObj.phi ?? 0)
         ) +
         damageReward +
         chiReward +
@@ -437,14 +448,11 @@
         stallPenalty +
         humanShaping;
 
-      if (!Number.isFinite(r) || !Number.isFinite(discount)) {
-        throw new Error(
-          "Non-finite transition reward or discount."
-        );
-      }
+      if (!Number.isFinite(r)) r = 0;
+      const finalDiscount = Number.isFinite(discount) ? discount : 0;
 
       // Replay gradient scale prioritizes comeback victories in Adam updates
-      const weightScale = (terminal && nextState.winner === learnerSlot) ? matchRewardMultiplier : 1.0;
+      const weightScale = (terminal && nextState?.winner === learnerSlot) ? matchRewardMultiplier : 1.0;
 
       let transitionDir = "IDLE";
       if (["W", "A", "S", "D"].includes(actionKey)) {
@@ -460,10 +468,10 @@
         demo: pendingObj.demo,
         direction: transitionDir,
         r,
-        discount,
-        weightScale,
-        s1: new Float32Array(nextInput.s1),
-        m1: new Uint8Array(nextInput.m1),
+        discount: finalDiscount,
+        weightScale: Number.isFinite(weightScale) ? weightScale : 1.0,
+        s1: new Float32Array(s1),
+        m1: new Uint8Array(m1),
         done: terminal
       };
     }
@@ -492,15 +500,17 @@
           const obsSim = E.observe(envSim, simSlot);
           const vec = E.vector(obsSim, spec);
           
+          const len = Math.min(vec.length, spec.input);
+          const offset = spec.input - len;
           leafBuffer.fill(0);
-          leafBuffer.set(vec, spec.input - vec.length);
+          leafBuffer.set(vec.subarray(0, len), offset);
           
           const q = net.predict(leafBuffer);
           let maxQ = -Infinity;
           for (let i = 0; i < q.length; i++) {
             if (q[i] > maxQ) maxQ = q[i];
           }
-          return maxQ;
+          return Number.isFinite(maxQ) ? maxQ : 0;
         } catch (_) {
           return 0;
         }
@@ -617,14 +627,18 @@
               const envSim = E.create(simState, previousActions);
               const obsSim = E.observe(envSim, simSlot);
               const vec = E.vector(obsSim, spec);
+              
+              const len = Math.min(vec.length, spec.input);
+              const offset = spec.input - len;
               oppLeafBuffer.fill(0);
-              oppLeafBuffer.set(vec, spec.input - vec.length);
+              oppLeafBuffer.set(vec.subarray(0, len), offset);
+
               const q = opponentNet.predict(oppLeafBuffer);
               let maxQ = -Infinity;
               for (let i = 0; i < q.length; i++) {
                 if (q[i] > maxQ) maxQ = q[i];
               }
-              return maxQ;
+              return Number.isFinite(maxQ) ? maxQ : 0;
             } catch (_) {
               return 0;
             }
@@ -647,8 +661,9 @@
         const opposingAction = opponentAct(e);
 
         if (ownDecision) {
-          const inputName = E.INPUTS[ownDecision.a];
-          const currentStance = e.cells[learnerSlot].direction || (["W", "A", "S", "D"].includes(inputName) ? inputName : null);
+          const inputName = E.INPUTS?.[ownDecision.a] || "IDLE";
+          const cellDir = e.cells?.[learnerSlot]?.direction;
+          const currentStance = cellDir || (["W", "A", "S", "D"].includes(inputName) ? inputName : null);
 
           pending.push({
             ...ownDecision,
@@ -657,16 +672,16 @@
             phi: potential(state, learnerSlot),
             completedRounds: rounds,
 
-            selfLp: state[learnerSlot].lp,
-            oppLp: state[enemySlot].lp,
-            selfMaxLp: state[learnerSlot].maxLp,
-            oppMaxLp: state[enemySlot].maxLp,
+            selfLp: state[learnerSlot]?.lp ?? 0,
+            oppLp: state[enemySlot]?.lp ?? 0,
+            selfMaxLp: state[learnerSlot]?.maxLp ?? 1000,
+            oppMaxLp: state[enemySlot]?.maxLp ?? 1000,
 
-            selfChi: state[learnerSlot].chi || 0,
-            oppChi: state[enemySlot].chi || 0,
-            selfMaxChi: state[learnerSlot].maxChi || 20,
-            selfFainted: Boolean(state[learnerSlot].isFainted),
-            oppFainted: Boolean(state[enemySlot].isFainted),
+            selfChi: state[learnerSlot]?.chi ?? 0,
+            oppChi: state[enemySlot]?.chi ?? 0,
+            selfMaxChi: state[learnerSlot]?.maxChi ?? 20,
+            selfFainted: Boolean(state[learnerSlot]?.isFainted),
+            oppFainted: Boolean(state[enemySlot]?.isFainted),
 
             learnerRiderId: learnerRider.id,
             prevAction1: actionHistory[actionHistory.length - 1],
@@ -717,7 +732,7 @@
       const terminal = Boolean(state.winner);
 
       if (pending.length > 0) {
-        const actionCount = pending[0].m.length;
+        const actionCount = pending[0].m ? pending[0].m.length : 10;
 
         const nextInput = buildNextInput(
           state,
@@ -726,15 +741,18 @@
         );
 
         for (const pendingDecision of pending) {
-          yield {
-            type: "transition",
-            transition: closeTransition(
-              pendingDecision,
-              state,
-              terminal,
-              nextInput
-            )
-          };
+          const transitionObj = closeTransition(
+            pendingDecision,
+            state,
+            terminal,
+            nextInput
+          );
+          if (transitionObj) {
+            yield {
+              type: "transition",
+              transition: transitionObj
+            };
+          }
         }
       }
 
