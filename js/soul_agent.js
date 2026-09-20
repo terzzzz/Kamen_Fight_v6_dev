@@ -99,9 +99,9 @@
             // 1. Try local project path first
             let res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
 
-            // 2. Fallback to Hugging Face direct raw CDN endpoint
+            // 2. Fallback to Hugging Face direct endpoint
             if (!res.ok) {
-              const hfURL = "https://huggingface.co/datasets/terzzzz/kamen-fight-matrix/raw/main/soul_matrix_master.json";
+              const hfURL = "https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/resolve/main/soul_matrix_master.json";
               res = await fetch(hfURL);
             }
 
