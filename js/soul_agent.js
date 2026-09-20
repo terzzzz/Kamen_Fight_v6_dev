@@ -4,6 +4,7 @@
 
   const VERSION = "round-discount-master-guide-v4";
   const MASTER_VERSION = "kf-soul-matrix-v1";
+  const WORKER_VERSION = "kf-soul-ddqn-v2";
   const STORAGE_KEY = "kf_soul_agent_data_v2";
 
   const RIDER_CODES = {
@@ -92,16 +93,24 @@
         // Try local storage first
         loadFromLocalStorage();
 
-        // If active matrix is empty, attempt to fetch default data/soul_matrix_master.json
+        // If active matrix is empty, attempt to fetch local or Hugging Face CDN bundle
         if (Object.keys(store.active.matchups).length === 0) {
           try {
-            const res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
+            // 1. Try local project path first
+            let res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
+
+            // 2. Fallback to Hugging Face direct raw CDN endpoint
+            if (!res.ok) {
+              const hfURL = "https://huggingface.co/datasets/terzzzz/kamen-fight-matrix/raw/main/soul_matrix_master.json";
+              res = await fetch(hfURL);
+            }
+
             if (res.ok) {
               const bundle = await res.json();
               importMasterBundle(bundle, "active");
             }
-          } catch (_) {
-            // Master bundle file not created yet - silent fallback
+          } catch (e) {
+            console.warn("[SoulAgent] Master bundle load error:", e);
           }
         }
 
@@ -157,7 +166,7 @@
     const key = getCanonicalKey(learnerId, opponentId);
 
     const checkpoint = {
-      version: MASTER_VERSION,
+      version: WORKER_VERSION, // Matches training_worker.js expectations
       spec,
       net: net.toJSON(),
       games: sampleMatches,
@@ -251,6 +260,8 @@
 
     for (const [key, section] of Object.entries(matchups)) {
       if (section && section.net) {
+        // Ensure individual matchup entries match worker version expectation
+        section.version = WORKER_VERSION;
         store[target].matchups[key] = section;
         count++;
       }
@@ -317,6 +328,7 @@
   g.SoulAgent = {
     VERSION,
     MASTER_VERSION,
+    WORKER_VERSION,
     ready,
     toCode,
     fromCode,
