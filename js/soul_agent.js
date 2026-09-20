@@ -85,10 +85,11 @@
   }
 
   async function fetchMasterFromCDN() {
-    const hfURL = "https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/raw/main/soul_matrix_master.json";
+    // Append timestamp query parameter to bypass Safari WebKit redirect bug with cache: "no-store"
+    const hfURL = `https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/raw/main/soul_matrix_master.json?t=${Date.now()}`;
     console.log("[SoulAgent] Fetching latest active matrix directly from Hugging Face CDN...");
 
-    const res = await fetch(hfURL, { cache: "no-store" });
+    const res = await fetch(hfURL);
     if (!res.ok) {
       throw new Error(`Hugging Face CDN fetch failed with status ${res.status}`);
     }
@@ -113,7 +114,7 @@
           try {
             let loadedLocal = false;
             try {
-              const res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
+              const res = await fetch(new URL(`data/soul_matrix_master.json?t=${Date.now()}`, document.baseURI));
               if (res.ok) {
                 const bundle = await res.json();
                 importMasterBundle(bundle, "active");
