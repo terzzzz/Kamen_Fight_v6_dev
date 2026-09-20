@@ -84,10 +84,11 @@
     return false;
   }
 
-  async function fetchMasterFromCDN() {
-    // Append timestamp query parameter to bypass Safari WebKit redirect bug with cache: "no-store"
-    const hfURL = `https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/raw/main/soul_matrix_master.json?t=${Date.now()}`;
-    console.log("[SoulAgent] Fetching latest active matrix directly from Hugging Face CDN...");
+async function fetchMasterFromCDN() {
+    // /resolve/ main endpoint resolves Git LFS pointers to the actual 101MB file on CDN.
+    // Query string ?t= parameter prevents mobile browser cache issues.
+    const hfURL = `https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/resolve/main/soul_matrix_master.json?t=${Date.now()}`;
+    console.log("[SoulAgent] Fetching latest active matrix directly from Hugging Face LFS CDN...");
 
     const res = await fetch(hfURL);
     if (!res.ok) {
