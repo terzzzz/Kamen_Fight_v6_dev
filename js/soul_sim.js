@@ -229,9 +229,6 @@
       throw new Error("Invalid learner slot: " + learnerSlot);
     }
 
-    assertNetworkSize(spec, net, "Learner network");
-    assertNetworkSize(spec, opponentNet, "Opponent network");
-
     const learnerRider = data?.riders?.find(
       rider => rider.id === learnerId
     ) || data?.riders?.find(
@@ -241,6 +238,23 @@
     if (!learnerRider) {
       throw new Error(`Learner rider '${learnerId}' is missing from active riders.`);
     }
+
+    const opponentRiderId = opponent?.id || "ichigo";
+    const isMirrorMatch = (learnerRider.id === opponentRiderId);
+
+    // Safeguard: Disable frozen-self/opponentNet for asymmetric matchups
+    let effectiveOpponentNet = opponentNet;
+    let effectiveOpponentMode = opponentMode;
+
+    if (!isMirrorMatch) {
+      effectiveOpponentNet = null;
+      if (effectiveOpponentMode === "frozen-self") {
+        effectiveOpponentMode = "mixed";
+      }
+    }
+
+    assertNetworkSize(spec, net, "Learner network");
+    assertNetworkSize(spec, effectiveOpponentNet, "Opponent network");
 
     const enemySlot = C.other(learnerSlot);
 
@@ -563,10 +577,10 @@
 
       let opponentAct;
 
-      if (opponentNet) {
+      if (effectiveOpponentNet) {
         const actor = reactor(
           spec,
-          opponentNet,
+          effectiveOpponentNet,
           K.rng(
             K.hash(
               seed,
@@ -580,7 +594,7 @@
         opponentAct = env =>
           actor.decide(env, enemySlot)?.a ?? 0;
 
-      } else if (opponentMode === "mixed") {
+      } else if (effectiveOpponentMode === "mixed") {
         const styles = [
           "reactive",
           "aggressive",
@@ -619,10 +633,10 @@
           state: C.copyState(state),
           slot: enemySlot,
           history,
-          difficulty: K.difficulty(opponentMode),
+          difficulty: K.difficulty(effectiveOpponentMode),
           disableAgent: true,
           isTraining: true,
-          evaluator: opponentNet ? (simState, simSlot) => {
+          evaluator: effectiveOpponentNet ? (simState, simSlot) => {
             try {
               const envSim = E.create(simState, previousActions);
               const obsSim = E.observe(envSim, simSlot);
@@ -633,7 +647,7 @@
               oppLeafBuffer.fill(0);
               oppLeafBuffer.set(vec.subarray(0, len), offset);
 
-              const q = opponentNet.predict(oppLeafBuffer);
+              const q = effectiveOpponentNet.predict(oppLeafBuffer);
               let maxQ = -Infinity;
               for (let i = 0; i < q.length; i++) {
                 if (q[i] > maxQ) maxQ = q[i];
