@@ -101,7 +101,7 @@
 
             // 2. Fallback to Hugging Face direct endpoint
             if (!res.ok) {
-              const hfURL = "https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/resolve/main/soul_matrix_master.json";
+              const hfURL = "https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/raw/main/soul_matrix_master.json";
               res = await fetch(hfURL);
             }
 
