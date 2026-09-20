@@ -84,8 +84,23 @@
     return false;
   }
 
-  async function ready() {
-    if (!readyPromise) {
+  async function fetchMasterFromCDN() {
+    const hfURL = "https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/raw/main/soul_matrix_master.json";
+    console.log("[SoulAgent] Fetching latest active matrix directly from Hugging Face CDN...");
+
+    const res = await fetch(hfURL, { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error(`Hugging Face CDN fetch failed with status ${res.status}`);
+    }
+
+    const bundle = await res.json();
+    const count = importMasterBundle(bundle, "active");
+    console.log(`[SoulAgent] Successfully loaded ${count} active matchup partitions from Hugging Face.`);
+    return count;
+  }
+
+  async function ready(forceFetch = false) {
+    if (!readyPromise || forceFetch) {
       readyPromise = (async () => {
         const loadedData = await g.KF.loadData();
         cachedData = loadedData;
@@ -93,21 +108,22 @@
         // Try local storage first
         loadFromLocalStorage();
 
-        // If active matrix is empty, attempt to fetch local or Hugging Face CDN bundle
-        if (Object.keys(store.active.matchups).length === 0) {
+        // If active matrix is missing or forceFetch is true, fetch CDN/local bundle
+        if (forceFetch || Object.keys(store.active.matchups).length === 0) {
           try {
-            // 1. Try local project path first
-            let res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
+            let loadedLocal = false;
+            try {
+              const res = await fetch(new URL("data/soul_matrix_master.json", document.baseURI), { cache: "no-store" });
+              if (res.ok) {
+                const bundle = await res.json();
+                importMasterBundle(bundle, "active");
+                loadedLocal = true;
+              }
+            } catch (_) {}
 
-            // 2. Fallback to Hugging Face direct endpoint
-            if (!res.ok) {
-              const hfURL = "https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/raw/main/soul_matrix_master.json";
-              res = await fetch(hfURL);
-            }
-
-            if (res.ok) {
-              const bundle = await res.json();
-              importMasterBundle(bundle, "active");
+            // Fallback to Hugging Face direct RAW endpoint
+            if (!loadedLocal) {
+              await fetchMasterFromCDN();
             }
           } catch (e) {
             console.warn("[SoulAgent] Master bundle load error:", e);
@@ -146,6 +162,7 @@
       const key = getCanonicalKey(learner, opponent);
       store.candidate.matchups[key] = {
         ...checkpoint,
+        version: WORKER_VERSION,
         canonicalKey: key,
         learnerId: learner,
         opponentId: opponent,
@@ -316,6 +333,7 @@
     return {
       version: VERSION,
       masterVersion: MASTER_VERSION,
+      workerVersion: WORKER_VERSION,
       candidate: store.candidate.legacy,
       active: store.active.legacy,
       candidateMatchupsCount: Object.keys(store.candidate.matchups).length,
@@ -330,6 +348,7 @@
     MASTER_VERSION,
     WORKER_VERSION,
     ready,
+    fetchMasterFromCDN,
     toCode,
     fromCode,
     getCanonicalKey,
