@@ -99,7 +99,10 @@ async function run(job) {
 
   if (old) {
     const isBaselinePlaceholder = (old.games <= 50 && old.steps <= 750);
-    const schemaMismatch = old.version !== VERSION || JSON.stringify(old.spec) !== JSON.stringify(spec);
+    
+    // Accept both checkpoint version tags
+    const validVersion = (old.version === VERSION || old.version === "kf-soul-matrix-v1");
+    const schemaMismatch = !validVersion || JSON.stringify(old.spec) !== JSON.stringify(spec);
     const inputMismatch = old.net?.sizes?.[0] !== spec.input;
 
     if (schemaMismatch || inputMismatch) {
