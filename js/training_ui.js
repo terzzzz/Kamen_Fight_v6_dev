@@ -474,7 +474,7 @@
 
         lines.push(
           "",
-          "--- EXECUTED MOVE BREAKDOWN (STANCE x ATTACK) ---",
+          "--- FINAL TURN RESOLUTIONS (1 PER COMBAT ROUND) ---",
           `J (Light Attack)   : ${pctAll(jkil.J || 0).padStart(6)} (${(jkil.J || 0).toLocaleString()})`,
           `K (Heavy Attack)   : ${pctAll(jkil.K || 0).padStart(6)} (${(jkil.K || 0).toLocaleString()})`,
           `I (Special Move)   : ${pctAll(jkil.I || 0).padStart(6)} (${(jkil.I || 0).toLocaleString()})`,
