@@ -81,21 +81,17 @@
       const player = state[slot];
       if (!player) continue;
 
-      // 1. Randomize HP ratio between 15% and 100%
       const maxLp = player.maxLp || player.lp || 1000;
       player.maxLp = maxLp;
       const lpRatio = 0.15 + rng() * 0.85;
       player.lp = Math.max(100, Math.floor(maxLp * lpRatio));
 
-      // 2. Randomize Chi between 0 and max capacity
       const maxChi = player.maxChi || 20;
       player.maxChi = maxChi;
       player.chi = Math.floor(rng() * (maxChi + 1));
 
-      // 3. Randomize Faint Meter between 0 and 85
       player.faintMeter = Math.floor(rng() * 86);
 
-      // 4. 5% chance player starts in a fainted recovery state
       player.isFainted = rng() < 0.05;
       if (player.isFainted) {
         player.faintRounds = 1;
@@ -242,7 +238,6 @@
     const opponentRiderId = opponent?.id || "ichigo";
     const isMirrorMatch = (learnerRider.id === opponentRiderId);
 
-    // Safeguard: Disable frozen-self/opponentNet for asymmetric matchups
     let effectiveOpponentNet = opponentNet;
     let effectiveOpponentMode = opponentMode;
 
@@ -267,17 +262,14 @@
     const setupRng = K.rng(K.hash(seed, "setup-randomization"));
     const isTrainingRun = guideProbability > 0 || epsilon > 0;
 
-    // Apply 50% randomized starting state during training
     if (!initialStateOverride && isTrainingRun && setupRng() < 0.50) {
       applyRandomizedStartState(state, setupRng);
     }
 
-    // Capture initial HP percentages for Symmetrical Comeback/Advantage Multiplier
     const initialSelfLpPct = (state[learnerSlot]?.lp ?? 1000) / Math.max(1, state[learnerSlot]?.maxLp ?? 1000);
     const initialOppLpPct = (state[enemySlot]?.lp ?? 1000) / Math.max(1, state[enemySlot]?.maxLp ?? 1000);
     const initialLpRatio = initialSelfLpPct / Math.max(0.01, initialOppLpPct);
     
-    // Clamp multiplier between 0.3x (heavy advantage discount) and 2.5x (comeback bonus)
     const matchRewardMultiplier = safeClamp(Math.pow(initialLpRatio, -0.8), 0.3, 2.5);
 
     const combatRng = K.rng(K.hash(seed, "combat"));
@@ -384,7 +376,6 @@
         ? 0
         : potential(nextState, learnerSlot);
 
-      // Symmetrical terminal reward with comeback scaling
       const terminalReward = terminal
         ? (
           nextState?.winner === "draw"
@@ -415,7 +406,6 @@
 
       const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
 
-      // Anti-stalling penalty
       const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
 
       const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 20);
@@ -427,27 +417,23 @@
       const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
       const idlePenalty = isVoluntaryIdle ? -0.05 : 0;
 
-      // Human-like Action Shaping Penalties/Bonuses
       let humanShaping = 0;
 
-      // 1. Anti-Spam Penalty (3 consecutive identical moves)
       if (pendingObj.prevAction1 === pendingObj.a && pendingObj.prevAction2 === pendingObj.a) {
         humanShaping -= 0.05;
       }
 
-      // 2. Punish / Stun Conversion Bonus (Heavy specials on fainted opponent)
       if (pendingObj.oppFainted && ["S+I", "S+L", "S+K"].includes(actionKey)) {
         humanShaping += 0.20;
       }
 
-      // 3. Smart Healing / Survival at Low HP
       const riderMoves = data?.moves?.[pendingObj.learnerRiderId];
       const move = riderMoves?.[actionKey];
       if (move?.lpRecovery) {
         if (pendingObj.selfLp / selfMaxLp < 0.30) {
-          humanShaping += 0.15; // Clutch recovery
+          humanShaping += 0.15;
         } else if (pendingObj.selfLp === selfMaxLp) {
-          humanShaping -= 0.10; // Wasted Chi at full health
+          humanShaping -= 0.10;
         }
       }
 
@@ -465,7 +451,6 @@
       if (!Number.isFinite(r)) r = 0;
       const finalDiscount = Number.isFinite(discount) ? discount : 0;
 
-      // Replay gradient scale prioritizes comeback victories in Adam updates
       const weightScale = (terminal && nextState?.winner === learnerSlot) ? matchRewardMultiplier : 1.0;
 
       let transitionDir = "IDLE";
@@ -481,6 +466,7 @@
         m: pendingObj.m,
         demo: pendingObj.demo,
         direction: transitionDir,
+        actionKey: actionKey, // Passed directly to worker
         r,
         discount: finalDiscount,
         weightScale: Number.isFinite(weightScale) ? weightScale : 1.0,
