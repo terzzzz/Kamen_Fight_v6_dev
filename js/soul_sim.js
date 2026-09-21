@@ -342,7 +342,9 @@
       pendingObj,
       nextState,
       terminal,
-      nextInput
+      nextInput,
+      finalResolvedKey,
+      isFinal
     ) {
       if (!pendingObj || !pendingObj.s) {
         return null;
@@ -408,14 +410,11 @@
 
       const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
 
-      const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 20);
-      const nextChi = nextState?.[learnerSlot]?.chi ?? 0;
-      const chiGained = Math.max(0, nextChi - (pendingObj.selfChi ?? 0));
       const chiReward = 0;
 
-const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
-const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
-const idlePenalty = isVoluntaryIdle ? -0.15 : 0;
+      const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
+      const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
+      const idlePenalty = isVoluntaryIdle ? -0.15 : 0;
 
       let humanShaping = 0;
 
@@ -466,7 +465,9 @@ const idlePenalty = isVoluntaryIdle ? -0.15 : 0;
         m: pendingObj.m,
         demo: pendingObj.demo,
         direction: transitionDir,
-        actionKey: actionKey, // Passed directly to worker
+        actionKey: actionKey,
+        resolvedActionKey: finalResolvedKey || actionKey,
+        isFinalRoundResolution: Boolean(isFinal),
         r,
         discount: finalDiscount,
         weightScale: Number.isFinite(weightScale) ? weightScale : 1.0,
@@ -740,12 +741,17 @@ const idlePenalty = isVoluntaryIdle ? -0.15 : 0;
           actionCount
         );
 
-        for (const pendingDecision of pending) {
+        const finalResolvedKey = result.actions?.[learnerSlot]?.key || "DO_NOTHING";
+
+        for (let i = 0; i < pending.length; i++) {
+          const isFinal = (i === pending.length - 1);
           const transitionObj = closeTransition(
-            pendingDecision,
+            pending[i],
             state,
             terminal,
-            nextInput
+            nextInput,
+            finalResolvedKey,
+            isFinal
           );
           if (transitionObj) {
             yield {
