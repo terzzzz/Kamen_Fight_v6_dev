@@ -91,7 +91,7 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
 
-  // MUST be declared with 'let' so we can reset schema-mismatched placeholders
+  // MUST be declared with 'let' so we can reset/patch baseline placeholders
   let old = job.checkpoint || null;
 
   const learnerId = job.learner || "ichigo";
@@ -100,13 +100,28 @@ async function run(job) {
   if (old) {
     const isBaselinePlaceholder = (old.games <= 50 && old.steps <= 750);
     const schemaMismatch = old.version !== VERSION || JSON.stringify(old.spec) !== JSON.stringify(spec);
+    const inputMismatch = old.net?.sizes?.[0] !== spec.input;
 
-    if (schemaMismatch) {
-      if (isBaselinePlaceholder || !training) {
-        // Automatically re-initialize baseline placeholders with current runtime spec
-        old = null;
+    if (schemaMismatch || inputMismatch) {
+      if (training) {
+        // Reset baseline placeholders to start fresh when starting a new training run
+        if (isBaselinePlaceholder) {
+          old = null;
+        } else {
+          throw new Error("Worker/checkpoint schema mismatch on a trained model.");
+        }
       } else {
-        throw new Error("Worker/checkpoint schema mismatch on a trained model.");
+        // Patch spec & version in-memory so evaluation can proceed on baseline placeholders
+        if (isBaselinePlaceholder) {
+          old.version = VERSION;
+          old.spec = spec;
+          if (inputMismatch) {
+            const freshNet = new SoulNN.Network(spec.input, 128, 128, 10);
+            old.net = freshNet.toJSON();
+          }
+        } else {
+          throw new Error("Worker/checkpoint schema mismatch on a trained model.");
+        }
       }
     }
   }
@@ -241,7 +256,6 @@ async function run(job) {
       }
     };
   }
-
   function report() {
     const seconds = Math.max(
       0.001,
