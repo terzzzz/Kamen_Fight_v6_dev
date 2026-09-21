@@ -220,7 +220,7 @@ async function run(job) {
   let currentImitation = 0;
   let currentEpsilon = 0;
 
-  // Track WASD directional stances and JKIL attack action breakdown
+  // Track WASD directional stances and JKIL attack action breakdown (Recorded 1 per combat round)
   const wasdCounts = { W: 0, A: 0, S: 0, D: 0, IDLE: 0 };
   const jkilCounts = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
   const moveMatrix = {
@@ -413,28 +413,44 @@ async function run(job) {
       if (event.type === "transition") {
         transitions++;
 
-        const dir = event.transition.direction || "IDLE";
-        const actionKey = event.transition.actionKey || "IDLE";
-
-        let attackBtn = "NONE";
-        if (actionKey.includes("J")) attackBtn = "J";
-        else if (actionKey.includes("K")) attackBtn = "K";
-        else if (actionKey.includes("I")) attackBtn = "I";
-        else if (actionKey.includes("L")) attackBtn = "L";
-
-        wasdCounts[dir] = (wasdCounts[dir] || 0) + 1;
-        jkilCounts[attackBtn] = (jkilCounts[attackBtn] || 0) + 1;
-
-        if (!moveMatrix[dir]) {
-          moveMatrix[dir] = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
-        }
-        moveMatrix[dir][attackBtn] = (moveMatrix[dir][attackBtn] || 0) + 1;
-
         if (training) {
           learner.accept(
             event.transition,
             imitation
           );
+        }
+
+        // Record Matrix Stats ONLY ONCE per completed combat round
+        if (event.transition.isFinalRoundResolution) {
+          const moveKey = event.transition.resolvedActionKey || event.transition.actionKey || "DO_NOTHING";
+
+          let dir = "IDLE";
+          let attackBtn = "NONE";
+
+          if (moveKey && moveKey !== "DO_NOTHING" && moveKey !== "IDLE") {
+            if (moveKey.includes("+")) {
+              const parts = moveKey.split("+");
+              dir = parts[0] || "IDLE";
+              attackBtn = parts[1] || "NONE";
+            } else if (["W", "A", "S", "D"].includes(moveKey)) {
+              dir = moveKey;
+              attackBtn = "NONE";
+            } else if (["J", "K", "I", "L"].includes(moveKey)) {
+              dir = event.transition.direction || "IDLE";
+              attackBtn = moveKey;
+            }
+          }
+
+          if (!["W", "A", "S", "D"].includes(dir)) dir = "IDLE";
+          if (!["J", "K", "I", "L"].includes(attackBtn)) attackBtn = "NONE";
+
+          wasdCounts[dir] = (wasdCounts[dir] || 0) + 1;
+          jkilCounts[attackBtn] = (jkilCounts[attackBtn] || 0) + 1;
+
+          if (!moveMatrix[dir]) {
+            moveMatrix[dir] = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
+          }
+          moveMatrix[dir][attackBtn] = (moveMatrix[dir][attackBtn] || 0) + 1;
         }
       } else if (event.type === "round") {
         latestAvgQ = event.avgQ;
