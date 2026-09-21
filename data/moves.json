@@ -436,15 +436,15 @@
     "W+J": {
       "name": "Inca Blessing",
       "type": "UTILITY",
-      "chiCost": 3,
+      "chiCost": 2,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "inca_blessing.mp4",
       "buff": {
         "id": "inca_blessing",
-        "label": "INCA BLESSING (+100 LP/RND)",
+        "label": "INCA BLESSING (+200 LP/RND)",
         "type": "heal",
-        "duration": 5,
+        "duration": 3,
         "lpRegen": 100,
         "cancelOnLpDamage": true
       }
@@ -458,7 +458,7 @@
       "video": "gigi_focus.mp4",
       "buff": {
         "id": "gigi_focus",
-        "label": "GIGI FOCUS (+20% EVS)",
+        "label": "GIGI FOCUS (+25% EVS)",
         "type": "speed",
         "duration": 3
       }
@@ -476,7 +476,7 @@
       "name": "Mystic Kick",
       "type": "PHYSICAL",
       "chiCost": 0,
-      "baseDamage": 72,
+      "baseDamage": 77,
       "hitChance": 80,
       "video": "kick_myst.mp4",
       "chiRefundOnHit": 2,
@@ -523,7 +523,7 @@
       "type": "SPECIAL",
       "chiCost": 5,
       "baseDamage": 540,
-      "hitChance": 75,
+      "hitChance": 84,
       "video": "jaguar_shock.mp4",
       "debuff": {
         "id": "bleeding",
@@ -545,9 +545,9 @@
     "S+I": {
       "name": "Daisetsudan",
       "type": "SPECIAL",
-      "chiCost": 10,
+      "chiCost": 9,
       "baseDamage": 1120,
-      "hitChance": 75,
+      "hitChance": 77,
       "video": "dai_slash.mp4",
       "sourceFacing": "right"
     },
