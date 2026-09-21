@@ -411,7 +411,7 @@
       const selfMaxChi = Math.max(1, pendingObj.selfMaxChi || 20);
       const nextChi = nextState?.[learnerSlot]?.chi ?? 0;
       const chiGained = Math.max(0, nextChi - (pendingObj.selfChi ?? 0));
-      const chiReward = 0.04 * (chiGained / selfMaxChi);
+      const chiReward = 0;
 
       const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
       const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
