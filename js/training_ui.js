@@ -2,7 +2,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v4";
+  const BUILD = "round-discount-master-guide-v5";
   let initialized = false;
 
   async function initialize() {
