@@ -98,33 +98,22 @@ async function run(job) {
   const opponentId = job.opponent || "*";
 
   if (old) {
-    const isBaselinePlaceholder = (old.games <= 50 && old.steps <= 750);
-    const validVersion = (old.version === VERSION || old.version === "kf-soul-matrix-v1");
-    const schemaMismatch = !validVersion || JSON.stringify(old.spec) !== JSON.stringify(spec);
     const inputMismatch = old.net?.sizes?.[0] !== spec.input;
 
-    if (schemaMismatch || inputMismatch) {
+    if (inputMismatch) {
       if (training) {
-        if (isBaselinePlaceholder) {
-          old = null;
-        } else {
-          throw new Error("Worker/checkpoint schema mismatch on a trained model.");
-        }
+        throw new Error(
+          `Network input size mismatch: checkpoint expects ${old.net?.sizes?.[0]}, current spec requires ${spec.input}.`
+        );
       } else {
-        if (isBaselinePlaceholder) {
-          old.version = VERSION;
-          old.spec = spec;
-          if (inputMismatch) {
-            const freshNet = new SoulNN.Network(spec.input, 128, 128, 10);
-            old.net = freshNet.toJSON();
-          }
-        } else {
-          throw new Error("Worker/checkpoint schema mismatch on a trained model.");
-        }
+        throw new Error("Worker network input size mismatch.");
       }
     }
-  }
 
+    // Auto-patch metadata so training continues seamlessly on top of existing matrix weights
+    old.version = VERSION;
+    old.spec = spec;
+  }
   if (
     old &&
     (
