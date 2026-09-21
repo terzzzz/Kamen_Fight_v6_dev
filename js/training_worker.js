@@ -95,14 +95,18 @@ async function run(job) {
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
-  if (
-    old &&
-    (
-      old.version !== VERSION ||
-      JSON.stringify(old.spec) !== JSON.stringify(spec)
-    )
-  ) {
-    throw new Error("Worker/checkpoint schema mismatch.");
+if (old) {
+    const isBaselinePlaceholder = (old.games <= 50 && old.steps <= 750);
+    const schemaMismatch = old.version !== VERSION || JSON.stringify(old.spec) !== JSON.stringify(spec);
+
+    if (schemaMismatch) {
+      if (isBaselinePlaceholder || !training) {
+        // Automatically re-initialize baseline placeholders with current runtime spec
+        old = null;
+      } else {
+        throw new Error("Worker/checkpoint schema mismatch on a trained model.");
+      }
+    }
   }
 
   if (
