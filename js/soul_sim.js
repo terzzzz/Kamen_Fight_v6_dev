@@ -413,9 +413,9 @@
       const chiGained = Math.max(0, nextChi - (pendingObj.selfChi ?? 0));
       const chiReward = 0;
 
-      const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
-      const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
-      const idlePenalty = isVoluntaryIdle ? -0.05 : 0;
+const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
+const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
+const idlePenalty = isVoluntaryIdle ? -0.15 : 0;
 
       let humanShaping = 0;
 
