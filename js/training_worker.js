@@ -1,7 +1,7 @@
 /* js/training_worker.js */
 "use strict";
 
-const BUILD = "round-discount-master-guide-v4";
+const BUILD = "round-discount-master-guide-v5";
 const VERSION = "kf-soul-ddqn-v2";
 
 const MIN_IMITATION = 0.01;
@@ -90,12 +90,14 @@ async function run(job) {
   const data = job.data;
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
-  const old = job.checkpoint || null;
+
+  // MUST be declared with 'let' so we can reset schema-mismatched placeholders
+  let old = job.checkpoint || null;
 
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
-if (old) {
+  if (old) {
     const isBaselinePlaceholder = (old.games <= 50 && old.steps <= 750);
     const schemaMismatch = old.version !== VERSION || JSON.stringify(old.spec) !== JSON.stringify(spec);
 
@@ -328,10 +330,13 @@ if (old) {
       KF.hash(matchSeed, "opponent-choice")
     );
 
+    const isMirrorMatch = (learnerId === opponent.id);
     let opponentNet = null;
 
+    // Only enable frozen-self opponentNet for mirror matches (e.g. Ichigo vs Ichigo)
     if (
       training &&
+      isMirrorMatch &&
       pool.length &&
       chooser() < 0.50
     ) {
