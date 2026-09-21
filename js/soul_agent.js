@@ -2,7 +2,7 @@
 (function (g) {
   "use strict";
 
-  const VERSION = "round-discount-master-guide-v4";
+  const VERSION = "round-discount-master-guide-v5";
   const MASTER_VERSION = "kf-soul-matrix-v1";
   const WORKER_VERSION = "kf-soul-ddqn-v2";
   const STORAGE_KEY = "kf_soul_agent_data_v2";
@@ -23,10 +23,9 @@
   let readyPromise = null;
   let cachedData = null;
 
-  // In-memory model store for Master Matrix Bundle
   const store = {
     candidate: {
-      matchups: {}, // Keyed by "001_002", "001_006", etc.
+      matchups: {},
       legacy: null
     },
     active: {
@@ -84,9 +83,7 @@
     return false;
   }
 
-async function fetchMasterFromCDN() {
-    // /resolve/ main endpoint resolves Git LFS pointers to the actual 101MB file on CDN.
-    // Query string ?t= parameter prevents mobile browser cache issues.
+  async function fetchMasterFromCDN() {
     const hfURL = `https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/resolve/main/soul_matrix_master.json?t=${Date.now()}`;
     console.log("[SoulAgent] Fetching latest active matrix directly from Hugging Face LFS CDN...");
 
@@ -107,10 +104,8 @@ async function fetchMasterFromCDN() {
         const loadedData = await g.KF.loadData();
         cachedData = loadedData;
 
-        // Try local storage first
         loadFromLocalStorage();
 
-        // If active matrix is missing or forceFetch is true, fetch CDN/local bundle
         if (forceFetch || Object.keys(store.active.matchups).length === 0) {
           try {
             let loadedLocal = false;
@@ -123,7 +118,6 @@ async function fetchMasterFromCDN() {
               }
             } catch (_) {}
 
-            // Fallback to Hugging Face direct RAW endpoint
             if (!loadedLocal) {
               await fetchMasterFromCDN();
             }
@@ -185,7 +179,7 @@ async function fetchMasterFromCDN() {
     const key = getCanonicalKey(learnerId, opponentId);
 
     const checkpoint = {
-      version: WORKER_VERSION, // Matches training_worker.js expectations
+      version: WORKER_VERSION,
       spec,
       net: net.toJSON(),
       games: sampleMatches,
@@ -233,7 +227,6 @@ async function fetchMasterFromCDN() {
       throw new Error("No candidate model exists to activate.");
     }
 
-    // Merge candidate matchups into active matchups
     store.active.matchups = {
       ...store.active.matchups,
       ...JSON.parse(JSON.stringify(store.candidate.matchups))
@@ -279,7 +272,6 @@ async function fetchMasterFromCDN() {
 
     for (const [key, section] of Object.entries(matchups)) {
       if (section && section.net) {
-        // Ensure individual matchup entries match worker version expectation
         section.version = WORKER_VERSION;
         store[target].matchups[key] = section;
         count++;
