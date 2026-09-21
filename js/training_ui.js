@@ -452,7 +452,6 @@
 
       if (r.wasdRatio && r.wasdRatio.counts) {
         const counts = r.wasdRatio.counts;
-        // Denominator strictly sums W, A, S, and D, excluding IDLE
         const totalActive = Math.max(1, counts.W + counts.A + counts.S + counts.D);
         const pct = val => (100 * val / totalActive).toFixed(1) + "%";
 
@@ -464,6 +463,43 @@
           `S (Down / Heavy)    : ${pct(counts.S).padStart(6)} (${counts.S.toLocaleString()})`,
           `D (Forward / Light) : ${pct(counts.D).padStart(6)} (${counts.D.toLocaleString()})`
         );
+      }
+
+      // Detailed Executed Move Table (ASDW x JKIL Matrix)
+      if (r.moveBreakdown && r.moveBreakdown.moveMatrix) {
+        const matrix = r.moveBreakdown.moveMatrix;
+        const jkil = r.moveBreakdown.jkilCounts || {};
+        const totalMoves = Math.max(1, Object.values(jkil).reduce((a, b) => a + b, 0));
+        const pctAll = val => (100 * val / totalMoves).toFixed(1) + "%";
+
+        lines.push(
+          "",
+          "--- EXECUTED MOVE BREAKDOWN (STANCE x ATTACK) ---",
+          `J (Light Attack)   : ${pctAll(jkil.J || 0).padStart(6)} (${(jkil.J || 0).toLocaleString()})`,
+          `K (Heavy Attack)   : ${pctAll(jkil.K || 0).padStart(6)} (${(jkil.K || 0).toLocaleString()})`,
+          `I (Special Move)   : ${pctAll(jkil.I || 0).padStart(6)} (${(jkil.I || 0).toLocaleString()})`,
+          `L (Guard / Utility): ${pctAll(jkil.L || 0).padStart(6)} (${(jkil.L || 0).toLocaleString()})`,
+          `NONE (Movement Only): ${pctAll(jkil.NONE || 0).padStart(6)} (${(jkil.NONE || 0).toLocaleString()})`,
+          "",
+          "Stance \\ Attack |      J |      K |      I |      L |   NONE |  Total",
+          "-------------------------------------------------------------------"
+        );
+
+        const stances = ["W", "A", "S", "D", "IDLE"];
+        const stanceNames = { W: "W (Up)", A: "A (Back)", S: "S (Down)", D: "D (Fwd)", IDLE: "IDLE" };
+        const buttons = ["J", "K", "I", "L", "NONE"];
+
+        for (const st of stances) {
+          const rowObj = matrix[st] || {};
+          let rowTotal = 0;
+          const cells = buttons.map(b => {
+            const cnt = rowObj[b] || 0;
+            rowTotal += cnt;
+            return pctAll(cnt).padStart(6);
+          });
+          const label = (stanceNames[st] || st).padEnd(15, " ");
+          lines.push(`${label} | ` + cells.join(" | ") + " | " + pctAll(rowTotal).padStart(6));
+        }
       }
 
       lines.push(
