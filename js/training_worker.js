@@ -91,7 +91,7 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
 
-  // MUST be declared with 'let' so we can reset/patch baseline placeholders
+  // Declared with 'let' to allow auto-healing baseline placeholders
   let old = job.checkpoint || null;
 
   const learnerId = job.learner || "ichigo";
@@ -99,22 +99,18 @@ async function run(job) {
 
   if (old) {
     const isBaselinePlaceholder = (old.games <= 50 && old.steps <= 750);
-    
-    // Accept both checkpoint version tags
     const validVersion = (old.version === VERSION || old.version === "kf-soul-matrix-v1");
     const schemaMismatch = !validVersion || JSON.stringify(old.spec) !== JSON.stringify(spec);
     const inputMismatch = old.net?.sizes?.[0] !== spec.input;
 
     if (schemaMismatch || inputMismatch) {
       if (training) {
-        // Reset baseline placeholders to start fresh when starting a new training run
         if (isBaselinePlaceholder) {
           old = null;
         } else {
           throw new Error("Worker/checkpoint schema mismatch on a trained model.");
         }
       } else {
-        // Patch spec & version in-memory so evaluation can proceed on baseline placeholders
         if (isBaselinePlaceholder) {
           old.version = VERSION;
           old.spec = spec;
@@ -235,8 +231,16 @@ async function run(job) {
   let currentImitation = 0;
   let currentEpsilon = 0;
 
-  // Track WASD directional stance picks for skill distribution analysis
+  // Track WASD directional stances and JKIL attack action breakdown
   const wasdCounts = { W: 0, A: 0, S: 0, D: 0, IDLE: 0 };
+  const jkilCounts = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
+  const moveMatrix = {
+    W: { J: 0, K: 0, I: 0, L: 0, NONE: 0 },
+    A: { J: 0, K: 0, I: 0, L: 0, NONE: 0 },
+    S: { J: 0, K: 0, I: 0, L: 0, NONE: 0 },
+    D: { J: 0, K: 0, I: 0, L: 0, NONE: 0 },
+    IDLE: { J: 0, K: 0, I: 0, L: 0, NONE: 0 }
+  };
 
   const breakdown = {};
 
@@ -259,6 +263,7 @@ async function run(job) {
       }
     };
   }
+
   function report() {
     const seconds = Math.max(
       0.001,
@@ -316,7 +321,7 @@ async function run(job) {
       cancelled,
       breakdown,
 
-      // WASD Ratio Payload
+      // Stance Ratio Payload
       wasdRatio: {
         W: (100 * wasdCounts.W / totalWasd).toFixed(1) + "%",
         A: (100 * wasdCounts.A / totalWasd).toFixed(1) + "%",
@@ -324,6 +329,12 @@ async function run(job) {
         D: (100 * wasdCounts.D / totalWasd).toFixed(1) + "%",
         IDLE: (100 * wasdCounts.IDLE / totalWasd).toFixed(1) + "%",
         counts: { ...wasdCounts }
+      },
+
+      // Executed Move Matrix Payload (ASDW x JKIL)
+      moveBreakdown: {
+        jkilCounts: { ...jkilCounts },
+        moveMatrix: JSON.parse(JSON.stringify(moveMatrix))
       }
     };
   }
@@ -350,7 +361,6 @@ async function run(job) {
     const isMirrorMatch = (learnerId === opponent.id);
     let opponentNet = null;
 
-    // Only enable frozen-self opponentNet for mirror matches (e.g. Ichigo vs Ichigo)
     if (
       training &&
       isMirrorMatch &&
@@ -414,9 +424,22 @@ async function run(job) {
       if (event.type === "transition") {
         transitions++;
 
-        // Increment stance counts from simulator event
         const dir = event.transition.direction || "IDLE";
+        const actionKey = event.transition.actionKey || "IDLE";
+
+        let attackBtn = "NONE";
+        if (actionKey.includes("J")) attackBtn = "J";
+        else if (actionKey.includes("K")) attackBtn = "K";
+        else if (actionKey.includes("I")) attackBtn = "I";
+        else if (actionKey.includes("L")) attackBtn = "L";
+
         wasdCounts[dir] = (wasdCounts[dir] || 0) + 1;
+        jkilCounts[attackBtn] = (jkilCounts[attackBtn] || 0) + 1;
+
+        if (!moveMatrix[dir]) {
+          moveMatrix[dir] = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
+        }
+        moveMatrix[dir][attackBtn] = (moveMatrix[dir][attackBtn] || 0) + 1;
 
         if (training) {
           learner.accept(
