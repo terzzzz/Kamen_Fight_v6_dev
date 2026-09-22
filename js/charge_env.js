@@ -233,13 +233,24 @@
       m[i + 1] = Number(d !== c.direction);
     });
 
+    let hasLegalButton = false;
     if (c.direction) {
       BUTTONS.forEach((b, i) => {
-        m[i + 5] = Number(C.isLegal(e.state, slot, {
+        const isLegal = C.isLegal(e.state, slot, {
           key: c.direction + "+" + b,
           charge: c.charge
-        }));
+        });
+        m[i + 5] = Number(isLegal);
+        if (isLegal) hasLegalButton = true;
       });
+    }
+
+    // Force Neural Action on Final Decision Tick:
+    // If round clock is on its last decision tick and a legal button exists,
+    // disable WAIT (m[0] = 0) so argmax is forced to select an active move.
+    const lastDecision = (e.t + DECISION >= limit());
+    if (lastDecision && hasLegalButton) {
+      m[0] = 0;
     }
 
     m[9] = 1;
@@ -439,68 +450,63 @@
     }
   }
 
- /* js/charge_env.js -> Bulletproof planned() implementation */
+  function planned(action) {
+    const plan = action ? { ...action } : {};
+    const key = String(plan.key || "DO_NOTHING");
 
-function planned(action) {
-  const plan = action ? { ...action } : {};
-  const key = String(plan.key || "DO_NOTHING");
+    return function (e, slot) {
+      const c = e.cells[slot];
 
-  return function (e, slot) {
-    const c = e.cells[slot];
+      if (c.locked || !isDecision(e)) return 0;
 
-    // Return WAIT (0) if cell is locked or not on a 100ms decision tick
-    if (c.locked || !isDecision(e)) return 0;
+      if (key === "DO_NOTHING" || key === "WAIT") return key === "DO_NOTHING" ? 9 : 0;
 
-    // Direct handles for non-combat actions
-    if (key === "DO_NOTHING" || key === "WAIT") return key === "DO_NOTHING" ? 9 : 0;
+      const legalMask = mask(e, slot);
+      const parts = key.split("+");
+      const direction = parts[0];
+      const button = parts[1];
 
-    const legalMask = mask(e, slot);
-    const parts = key.split("+");
-    const direction = parts[0];
-    const button = parts[1];
+      // 1. Align Stance Direction if not yet in target stance
+      if (direction && DIRS.includes(direction) && c.direction !== direction) {
+        const a = INPUTS.indexOf(direction);
+        return (a > 0 && legalMask[a]) ? a : 0;
+      }
 
-    // 1. Align Stance Direction if not yet in target stance
-    if (direction && DIRS.includes(direction) && c.direction !== direction) {
-      const a = INPUTS.indexOf(direction);
-      return (a > 0 && legalMask[a]) ? a : 0;
-    }
+      const targetCharge = typeof plan.charge === "number" ? plan.charge : 0;
+      const lastDecision = e.t + DECISION >= limit();
 
-    const targetCharge = typeof plan.charge === "number" ? plan.charge : 0;
-    const lastDecision = e.t + DECISION >= limit();
-
-    // 2. Fire target button if legal
-    if (button && BUTTONS.includes(button)) {
-      const targetBtnIdx = INPUTS.indexOf(button);
-      if (targetBtnIdx > 0 && legalMask[targetBtnIdx]) {
-        if (c.charge >= targetCharge || lastDecision) {
-          return targetBtnIdx;
+      // 2. Fire target button if legal
+      if (button && BUTTONS.includes(button)) {
+        const targetBtnIdx = INPUTS.indexOf(button);
+        if (targetBtnIdx > 0 && legalMask[targetBtnIdx]) {
+          if (c.charge >= targetCharge || lastDecision) {
+            return targetBtnIdx;
+          }
+          return 0; // Continue charging
         }
-        return 0; // Continue charging
       }
-    }
 
-    // 3. Intelligent fallback button search if target button is illegal or unavailable
-    function findFallbackButton() {
-      const searchOrder = ["J", "L", "K", "I"];
-      for (const b of searchOrder) {
-        const idx = INPUTS.indexOf(b);
-        if (idx > 0 && legalMask[idx]) return idx;
+      // 3. Intelligent fallback button search if target button is illegal or unavailable
+      function findFallbackButton() {
+        const searchOrder = ["J", "L", "K", "I"];
+        for (const b of searchOrder) {
+          const idx = INPUTS.indexOf(b);
+          if (idx > 0 && legalMask[idx]) return idx;
+        }
+        return 0;
       }
-      return 0;
-    }
 
-    const fallbackBtnIdx = findFallbackButton();
-    if (fallbackBtnIdx !== 0) {
-      if (c.charge >= Math.min(targetCharge, 30) || lastDecision) {
-        return fallbackBtnIdx;
+      const fallbackBtnIdx = findFallbackButton();
+      if (fallbackBtnIdx !== 0) {
+        if (c.charge >= Math.min(targetCharge, 30) || lastDecision) {
+          return fallbackBtnIdx;
+        }
+        return 0;
       }
-      return 0;
-    }
 
-    // Default to IDLE (9) only if time has run out and no legal move exists
-    return lastDecision ? 9 : 0;
-  };
-}
+      return lastDecision ? 9 : 0;
+    };
+  }
 
   function scripted(rng, style = "reactive") {
     let goal = null;
