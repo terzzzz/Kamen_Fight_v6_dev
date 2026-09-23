@@ -1,4 +1,3 @@
-/* js/soul_sim.js */
 (function (g) {
   "use strict";
 
@@ -414,7 +413,7 @@
 
       const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
       const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
-      const idlePenalty = isVoluntaryIdle ? -0.15 : 0;
+      const idlePenalty = isVoluntaryIdle ? -0.25 : 0;
 
       let humanShaping = 0;
 
@@ -616,6 +615,7 @@
           throw new Error("Search AI modules are not loaded.");
         }
 
+        // FIXED: Disconnect search evaluator leak (Pass null instead of learner's neuralEval when effectiveOpponentNet is null)
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
@@ -643,7 +643,7 @@
             } catch (_) {
               return 0;
             }
-          } : neuralEval,
+          } : null,
           seed: K.hash(
             seed,
             "decision",
