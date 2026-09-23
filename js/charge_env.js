@@ -216,46 +216,42 @@
   }
 
   // FIXED: Block voluntary IDLE (m[9] = 0) on final decision ticks when legal attacks exist to prevent 79.4% stalling
-  function mask(e, slot) {
-    const m = new Uint8Array(INPUTS.length);
-    const c = e.cells[slot];
+ function mask(e, slot) {
+  const m = new Uint8Array(INPUTS.length);
+  const c = e.cells[slot];
 
-    m[0] = 1;
+  m[0] = 1; // WAIT (Index 0) is legal for charging/holding state
 
-    if (
-      c.locked ||
-      e.state[slot].isFainted ||
-      e.t >= limit()
-    ) {
-      return m;
-    }
-
-    DIRS.forEach((d, i) => {
-      m[i + 1] = Number(d !== c.direction);
-    });
-
-    let hasLegalButton = false;
-    if (c.direction) {
-      BUTTONS.forEach((b, i) => {
-        const isLegal = C.isLegal(e.state, slot, {
-          key: c.direction + "+" + b,
-          charge: c.charge
-        });
-        m[i + 5] = Number(isLegal);
-        if (isLegal) hasLegalButton = true;
-      });
-    }
-
-    const lastDecision = (e.t + DECISION >= limit());
-    if (lastDecision && hasLegalButton) {
-      m[0] = 0;
-      m[9] = 0;
-    } else {
-      m[9] = 1;
-    }
-
+  if (
+    c.locked ||
+    e.state[slot].isFainted ||
+    e.t >= limit()
+  ) {
     return m;
   }
+
+  // Legal stance direction changes
+  DIRS.forEach((d, i) => {
+    m[i + 1] = Number(d !== c.direction);
+  });
+
+  // Legal attack button triggers
+  if (c.direction) {
+    BUTTONS.forEach((b, i) => {
+      const isLegal = C.isLegal(e.state, slot, {
+        key: c.direction + "+" + b,
+        charge: c.charge
+      });
+      m[i + 5] = Number(isLegal);
+    });
+  }
+
+  // FORCE NEURAL ACTION: Voluntary IDLE (Index 9) is disabled during active turns.
+  // The network must select WAIT (0), a Stance (1-4), or an Attack (5-8).
+  m[9] = 0;
+
+  return m;
+}
 
   function isDecision(e) {
     return e.t >= REACTION &&
