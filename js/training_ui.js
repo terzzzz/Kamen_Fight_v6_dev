@@ -1,4 +1,4 @@
- /* js/training_ui.js */
+/* js/training_ui.js */
 (function (g) {
   "use strict";
 
