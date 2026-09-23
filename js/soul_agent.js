@@ -1,6 +1,4 @@
-//This is soul_agent.js//
-
-
+/* js/soul_agent.js */
 (function (g) {
   "use strict";
 
@@ -24,6 +22,7 @@
 
   let readyPromise = null;
   let cachedData = null;
+  let lastStorageWarning = "";
 
   const store = {
     candidate: {
@@ -56,15 +55,27 @@
 
   function saveToLocalStorage() {
     try {
-      if (!g.localStorage) return;
+      if (!g.localStorage) {
+        lastStorageWarning = "NOTICE: LocalStorage unavailable. Matrix runs in RAM only.";
+        return;
+      }
       const data = {
         version: MASTER_VERSION,
         candidate: store.candidate,
         active: store.active
       };
-      g.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      const serialized = JSON.stringify(data);
+
+      // Standard browser localStorage cap is ~5MB (~5,000,000 characters)
+      if (serialized.length > 4.5 * 1024 * 1024) {
+        lastStorageWarning = "NOTICE: Matrix exceeds 5MB LocalStorage limit. All cells active in RAM — use EXPORT MASTER BUNDLE to save.";
+        return;
+      }
+
+      g.localStorage.setItem(STORAGE_KEY, serialized);
+      lastStorageWarning = "";
     } catch (e) {
-      console.warn("[SoulAgent] LocalStorage save failed or quota exceeded:", e);
+      lastStorageWarning = "STORAGE NOTICE: Exceeded browser 5MB storage quota. Matrix safe in RAM — use EXPORT MASTER BUNDLE to save.";
     }
   }
 
@@ -77,6 +88,8 @@
       if (data?.version === MASTER_VERSION) {
         if (data.candidate?.matchups) store.candidate.matchups = data.candidate.matchups;
         if (data.active?.matchups) store.active.matchups = data.active.matchups;
+        if (data.candidate?.legacy) store.candidate.legacy = data.candidate.legacy;
+        if (data.active?.legacy) store.active.legacy = data.active.legacy;
         return true;
       }
     } catch (e) {
@@ -134,7 +147,6 @@
     return readyPromise;
   }
 
-  // FIXED: Strict canonical matchup key lookup (Eliminating legacy cross-contamination fallback)
   function getSection(learnerId, opponentId, target = "candidate") {
     const bucket = store[target] || store.candidate;
     if (!learnerId || !opponentId || opponentId === "*") {
@@ -149,7 +161,13 @@
     return bucket.legacy || Object.values(bucket.matchups)[0] || null;
   }
 
-  // FIXED: Deep clone checkpoint to break RAM pointer aliasing
+  /**
+   * ENFORCED MATRIX ISOLATION:
+   * When training/updating a specific matchup (learnerId -> opponentId),
+   * this function ensures that ONLY that specific matchup cell is mutated in candidate.
+   * All other 35 matchup partitions in store.candidate are explicitly preserved
+   * from the active store if they haven't been trained yet, preventing cross-cell contamination.
+   */
   function setCandidate(checkpoint) {
     if (!checkpoint) return;
 
@@ -160,11 +178,20 @@
     const opponent = cloned.opponentId || cloned.opponent;
 
     if (learner && opponent && opponent !== "*") {
-      const key = getCanonicalKey(learner, opponent);
-      store.candidate.matchups[key] = {
+      const targetKey = getCanonicalKey(learner, opponent);
+
+      // 1. Ensure all active partitions exist in candidate bucket as an untouchable baseline
+      for (const [key, section] of Object.entries(store.active.matchups)) {
+        if (!store.candidate.matchups[key]) {
+          store.candidate.matchups[key] = JSON.parse(JSON.stringify(section));
+        }
+      }
+
+      // 2. Safely update ONLY the targeted cell
+      store.candidate.matchups[targetKey] = {
         ...cloned,
         version: WORKER_VERSION,
-        canonicalKey: key,
+        canonicalKey: targetKey,
         learnerId: learner,
         opponentId: opponent,
         games: cloned.games || 0,
@@ -181,7 +208,14 @@
 
     const spec = g.SoulEnv.makeSpec(cachedData);
     const net = new g.SoulNN.Network(spec.input, 128, 128, 10);
-    const key = getCanonicalKey(learnerId, opponentId);
+    const targetKey = getCanonicalKey(learnerId, opponentId);
+
+    // 1. Ensure active baseline partitions are preserved
+    for (const [key, section] of Object.entries(store.active.matchups)) {
+      if (!store.candidate.matchups[key]) {
+        store.candidate.matchups[key] = JSON.parse(JSON.stringify(section));
+      }
+    }
 
     const checkpoint = {
       version: WORKER_VERSION,
@@ -195,11 +229,11 @@
       trainerBuild: VERSION,
       learnerId,
       opponentId,
-      canonicalKey: key,
+      canonicalKey: targetKey,
       distilledFrom: searchDifficulty
     };
 
-    store.candidate.matchups[key] = checkpoint;
+    store.candidate.matchups[targetKey] = checkpoint;
     store.candidate.legacy = checkpoint;
 
     saveToLocalStorage();
@@ -308,7 +342,9 @@
 
   function downloadMasterBundle(target = "candidate") {
     const bucket = store[target] || store.candidate;
-    if (Object.keys(bucket.matchups).length === 0 && !bucket.legacy) {
+    const matchupKeys = Object.keys(bucket.matchups);
+
+    if (matchupKeys.length === 0 && !bucket.legacy) {
       throw new Error(`No ${target} matrix bundle available to export.`);
     }
 
@@ -319,13 +355,22 @@
       matchups: bucket.matchups
     };
 
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `soul_matrix_master_${target}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const jsonString = JSON.stringify(bundle, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `soul_matrix_master_${target}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      return { count: matchupKeys.length, sizeMB };
+    } catch (err) {
+      throw new Error("Export serialization failed: " + (err.message || String(err)));
+    }
   }
 
   function status() {
@@ -337,7 +382,7 @@
       active: store.active.legacy,
       candidateMatchupsCount: Object.keys(store.candidate.matchups).length,
       activeMatchupsCount: Object.keys(store.active.matchups).length,
-      storageWarning: g.localStorage ? "" : "LocalStorage unavailable. Models exist in RAM only.",
+      storageWarning: lastStorageWarning || (g.localStorage ? "" : "LocalStorage unavailable. Models exist in RAM only."),
       warnings: []
     };
   }
