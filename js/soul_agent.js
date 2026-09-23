@@ -1,4 +1,3 @@
-/* js/soul_agent.js */
 (function (g) {
   "use strict";
 
@@ -132,13 +131,14 @@
     return readyPromise;
   }
 
+  // FIXED: Strict canonical matchup key lookup (Eliminating legacy cross-contamination fallback)
   function getSection(learnerId, opponentId, target = "candidate") {
     const bucket = store[target] || store.candidate;
     if (!learnerId || !opponentId || opponentId === "*") {
       return bucket.legacy || null;
     }
     const key = getCanonicalKey(learnerId, opponentId);
-    return bucket.matchups[key] || bucket.legacy || null;
+    return bucket.matchups[key] || null;
   }
 
   function snapshot(target = "candidate") {
@@ -146,24 +146,26 @@
     return bucket.legacy || Object.values(bucket.matchups)[0] || null;
   }
 
+  // FIXED: Deep clone checkpoint to break RAM pointer aliasing
   function setCandidate(checkpoint) {
     if (!checkpoint) return;
 
-    store.candidate.legacy = checkpoint;
+    const cloned = JSON.parse(JSON.stringify(checkpoint));
+    store.candidate.legacy = cloned;
 
-    const learner = checkpoint.learnerId || checkpoint.learner;
-    const opponent = checkpoint.opponentId || checkpoint.opponent;
+    const learner = cloned.learnerId || cloned.learner;
+    const opponent = cloned.opponentId || cloned.opponent;
 
     if (learner && opponent && opponent !== "*") {
       const key = getCanonicalKey(learner, opponent);
       store.candidate.matchups[key] = {
-        ...checkpoint,
+        ...cloned,
         version: WORKER_VERSION,
         canonicalKey: key,
         learnerId: learner,
         opponentId: opponent,
-        games: checkpoint.games || 0,
-        steps: checkpoint.steps || 0,
+        games: cloned.games || 0,
+        steps: cloned.steps || 0,
         updatedAt: new Date().toISOString()
       };
     }
@@ -273,7 +275,7 @@
     for (const [key, section] of Object.entries(matchups)) {
       if (section && section.net) {
         section.version = WORKER_VERSION;
-        store[target].matchups[key] = section;
+        store[target].matchups[key] = JSON.parse(JSON.stringify(section));
         count++;
       }
     }
