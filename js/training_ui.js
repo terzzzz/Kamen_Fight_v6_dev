@@ -548,6 +548,9 @@
 
     function finishWorker() {
       if (worker) {
+        worker.onmessage = null;
+        worker.onerror = null;
+        worker.onmessageerror = null;
         worker.terminate();
       }
 
@@ -711,7 +714,7 @@
               }
 
               let ending = training
-                ? "\n\nCandidate saved in memory/browser storage & Master Bundle."
+                ? "\n\nCandidate saved in memory & Master Bundle."
                 : completeEvaluation
                   ? "\n\nEvaluation finished."
                   : "\n\nEvaluation incomplete.";
@@ -844,9 +847,17 @@
             g.SoulAgent.download("candidate");
             break;
 
-          case "export-master":
-            g.SoulAgent.downloadMasterBundle("candidate");
+          case "export-master": {
+            output("Packaging Master Matrix Bundle from RAM…");
+            const result = g.SoulAgent.downloadMasterBundle("candidate");
+            output(
+              `EXPORT SUCCESSFUL\n` +
+              `Partitions exported: ${result.count} matchup Q-tables\n` +
+              `File size: ${result.sizeMB} MB\n\n` +
+              `Ready to upload directly to Hugging Face LFS CDN!`
+            );
             break;
+          }
 
           case "import":
             field("file").click();
