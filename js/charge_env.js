@@ -215,6 +215,7 @@
     };
   }
 
+  // FIXED: Block voluntary IDLE (m[9] = 0) on final decision ticks when legal attacks exist to prevent 79.4% stalling
   function mask(e, slot) {
     const m = new Uint8Array(INPUTS.length);
     const c = e.cells[slot];
@@ -245,15 +246,14 @@
       });
     }
 
-    // Force Neural Action on Final Decision Tick:
-    // If round clock is on its last decision tick and a legal button exists,
-    // disable WAIT (m[0] = 0) so argmax is forced to select an active move.
     const lastDecision = (e.t + DECISION >= limit());
     if (lastDecision && hasLegalButton) {
       m[0] = 0;
+      m[9] = 0;
+    } else {
+      m[9] = 1;
     }
 
-    m[9] = 1;
     return m;
   }
 
@@ -466,7 +466,6 @@
       const direction = parts[0];
       const button = parts[1];
 
-      // 1. Align Stance Direction if not yet in target stance
       if (direction && DIRS.includes(direction) && c.direction !== direction) {
         const a = INPUTS.indexOf(direction);
         return (a > 0 && legalMask[a]) ? a : 0;
@@ -475,18 +474,16 @@
       const targetCharge = typeof plan.charge === "number" ? plan.charge : 0;
       const lastDecision = e.t + DECISION >= limit();
 
-      // 2. Fire target button if legal
       if (button && BUTTONS.includes(button)) {
         const targetBtnIdx = INPUTS.indexOf(button);
         if (targetBtnIdx > 0 && legalMask[targetBtnIdx]) {
           if (c.charge >= targetCharge || lastDecision) {
             return targetBtnIdx;
           }
-          return 0; // Continue charging
+          return 0;
         }
       }
 
-      // 3. Intelligent fallback button search if target button is illegal or unavailable
       function findFallbackButton() {
         const searchOrder = ["J", "L", "K", "I"];
         for (const b of searchOrder) {
