@@ -659,7 +659,7 @@
               `Matchup Key: ${result.key}\n` +
               `File Size: ${result.sizeMB} MB\n` +
               `Games Trained: ${result.games}\n\n` +
-              `Upload '${result.fileName}' to 'data/matrix/' in GitHub!`
+              `Upload '${result.fileName}' directly into 'data/matrix/' in GitHub!`
             );
             break;
           }
