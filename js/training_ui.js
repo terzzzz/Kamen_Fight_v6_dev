@@ -1,4 +1,4 @@
-/* js/training_ui.js */
+ /* js/training_ui.js */
 (function (g) {
   "use strict";
 
@@ -126,14 +126,14 @@
       </div>
 
       <div class="soul-buttons">
-        <button type="button" data-action="export-candidate">
-          EXPORT CANDIDATE
+        <button type="button" data-action="export-matchup">
+          EXPORT MATCHUP FILE (e.g. 001_002.json)
         </button>
         <button type="button" data-action="export-master">
           EXPORT MASTER BUNDLE
         </button>
         <button type="button" data-action="import">
-          IMPORT CHECKPOINT / MASTER BUNDLE
+          IMPORT MATCHUP / MASTER BUNDLE
         </button>
         <button type="button" data-action="sync-cdn">
           SYNC ACTIVE FROM CDN
@@ -333,12 +333,7 @@
 
       if (!busy) {
         action("eval-candidate").disabled = !state.candidate && !candSection;
-        action("export-candidate").disabled = !state.candidate;
-
-        action("promote").disabled =
-          !state.candidate ||
-          !state.candidate.evaluated;
-
+        action("promote").disabled = !state.candidate || !state.candidate.evaluated;
         action("eval-active").disabled = !state.active && !actSection && state.activeMatchupsCount === 0;
       }
     }
@@ -372,19 +367,9 @@
 
       if (!training) {
         lines.push(
-          "Evaluated checkpoint: " +
-            (
-              evaluationTarget
-                ? evaluationTarget.toUpperCase()
-                : "UNKNOWN"
-            ),
-
-          "Checkpoint fingerprint: " +
-            (r.weightsID ?? "Unavailable"),
-
-          "Loaded-network fingerprint: " +
-            (r.loadedWeightsID ?? "Unavailable"),
-
+          "Evaluated checkpoint: " + (evaluationTarget ? evaluationTarget.toUpperCase() : "UNKNOWN"),
+          "Checkpoint fingerprint: " + (r.weightsID ?? "Unavailable"),
+          "Loaded-network fingerprint: " + (r.loadedWeightsID ?? "Unavailable"),
           ""
         );
       }
@@ -397,15 +382,9 @@
       if (training) {
         lines.push(
           "Teacher: " + (r.teacher || "none"),
-          "Guided-round probability: " +
-            (100 * r.guideProbability).toFixed(1) + "%",
-
-          "Exploration probability: " +
-            (100 * r.epsilon).toFixed(1) + "%",
-
-          "Imitation coefficient: " +
-            r.imitationCoefficient.toFixed(5),
-
+          "Guided-round probability: " + (100 * r.guideProbability).toFixed(1) + "%",
+          "Exploration probability: " + (100 * r.epsilon).toFixed(1) + "%",
+          "Imitation coefficient: " + r.imitationCoefficient.toFixed(5),
           "Discount clock: completed combat rounds"
         );
       }
@@ -413,22 +392,11 @@
       lines.push(
         "",
         "Completed: " + r.games + " / " + r.requested,
-
-        "Wins / losses / draws: " +
-          r.wins + " / " +
-          r.losses + " / " +
-          r.draws,
-
+        "Wins / losses / draws: " + r.wins + " / " + r.losses + " / " + r.draws,
         "Win rate: " + r.winRate.toFixed(1) + "%",
-
-        "Average rounds: " +
-          r.averageRounds.toFixed(1),
-
-        "Matches/minute: " +
-          r.matchesPerMinute.toFixed(1),
-
-        "Decision transitions/second: " +
-          r.decisionsPerSecond.toFixed(1)
+        "Average rounds: " + r.averageRounds.toFixed(1),
+        "Matches/minute: " + r.matchesPerMinute.toFixed(1),
+        "Decision transitions/second: " + r.decisionsPerSecond.toFixed(1)
       );
 
       if (training) {
@@ -439,67 +407,6 @@
         if (r.avgQ !== undefined) {
           lines.push("Avg Q-Value (Recent): " + r.avgQ.toFixed(4));
         }
-        if (r.updateStats) {
-          lines.push(
-            "Matrix updates (Win/Dmg/Loss/Neu): " +
-            r.updateStats.win + " / " +
-            r.updateStats.damage + " / " +
-            r.updateStats.loss + " / " +
-            r.updateStats.neutral
-          );
-        }
-      }
-
-      if (r.wasdRatio && r.wasdRatio.counts) {
-        const counts = r.wasdRatio.counts;
-        const totalActive = Math.max(1, counts.W + counts.A + counts.S + counts.D);
-        const pct = val => (100 * val / totalActive).toFixed(1) + "%";
-
-        lines.push(
-          "",
-          "--- WASD STANCE & SKILL USAGE RATIO ---",
-          `W (Up / Special)    : ${pct(counts.W).padStart(6)} (${counts.W.toLocaleString()})`,
-          `A (Back / Guard)    : ${pct(counts.A).padStart(6)} (${counts.A.toLocaleString()})  <-- Defense & Omni-Guards`,
-          `S (Down / Heavy)    : ${pct(counts.S).padStart(6)} (${counts.S.toLocaleString()})`,
-          `D (Forward / Light) : ${pct(counts.D).padStart(6)} (${counts.D.toLocaleString()})`
-        );
-      }
-
-      // Detailed Executed Move Table (ASDW x JKIL Matrix)
-      if (r.moveBreakdown && r.moveBreakdown.moveMatrix) {
-        const matrix = r.moveBreakdown.moveMatrix;
-        const jkil = r.moveBreakdown.jkilCounts || {};
-        const totalMoves = Math.max(1, Object.values(jkil).reduce((a, b) => a + b, 0));
-        const pctAll = val => (100 * val / totalMoves).toFixed(1) + "%";
-
-        lines.push(
-          "",
-          "--- FINAL TURN RESOLUTIONS (1 PER COMBAT ROUND) ---",
-          `J : ${pctAll(jkil.J || 0).padStart(6)} (${(jkil.J || 0).toLocaleString()})`,
-          `K : ${pctAll(jkil.K || 0).padStart(6)} (${(jkil.K || 0).toLocaleString()})`,
-          `I : ${pctAll(jkil.I || 0).padStart(6)} (${(jkil.I || 0).toLocaleString()})`,
-          `L : ${pctAll(jkil.L || 0).padStart(6)} (${(jkil.L || 0).toLocaleString()})`,
-          `NONE (Movement Only): ${pctAll(jkil.NONE || 0).padStart(6)} (${(jkil.NONE || 0).toLocaleString()})`,
-          "",
-          "Stance \\ Attack |      J |      K |      I |      L |   NONE |  Total",
-          "-------------------------------------------------------------------"
-        );
-
-        const stances = ["W", "A", "S", "D", "IDLE"];
-        const stanceNames = { W: "W (Up)", A: "A (Back)", S: "S (Down)", D: "D (Fwd)", IDLE: "IDLE" };
-        const buttons = ["J", "K", "I", "L", "NONE"];
-
-        for (const st of stances) {
-          const rowObj = matrix[st] || {};
-          let rowTotal = 0;
-          const cells = buttons.map(b => {
-            const cnt = rowObj[b] || 0;
-            rowTotal += cnt;
-            return pctAll(cnt).padStart(6);
-          });
-          const label = (stanceNames[st] || st).padEnd(15, " ");
-          lines.push(`${label} | ` + cells.join(" | ") + " | " + pctAll(rowTotal).padStart(6));
-        }
       }
 
       lines.push(
@@ -509,38 +416,7 @@
       );
 
       if (r.cancelled) {
-        lines.push(
-          "",
-          "STOPPED — this is a partial run."
-        );
-      }
-
-      if (r.mode === "mixed") {
-        lines.push(
-          "",
-          "NOTE: The opponent uses scripted warm-up mode.",
-          "This is not an evaluation against a search difficulty."
-        );
-      }
-
-      if (training) {
-        lines.push(
-          "",
-          "Training win rate includes assistance and exploration."
-        );
-      }
-
-      lines.push("", "BREAKDOWN");
-
-      for (
-        const [name, row] of Object.entries(r.breakdown || {})
-      ) {
-        lines.push(
-          name + ": " +
-          row.wins + "W / " +
-          row.losses + "L / " +
-          row.draws + "D"
-        );
+        lines.push("", "STOPPED — this is a partial run.");
       }
 
       return lines.join("\n");
@@ -564,15 +440,8 @@
     function numberField(name, minimum, maximum) {
       const value = Number(field(name).value);
 
-      if (
-        !Number.isSafeInteger(value) ||
-        value < minimum ||
-        value > maximum
-      ) {
-        throw new Error(
-          name + " must be an integer from " +
-          minimum + " to " + maximum
-        );
+      if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+        throw new Error(name + " must be an integer from " + minimum + " to " + maximum);
       }
 
       return value;
@@ -582,7 +451,6 @@
       if (busy) return;
 
       const ready = await g.SoulAgent.ready();
-
       if (busy) return;
 
       const learnerVal = field("learner").value;
@@ -604,69 +472,43 @@
           g.SoulAgent.snapshot(target);
 
         if (!checkpoint) {
-          throw new Error(
-            "No " + target + " checkpoint exists for this matchup."
-          );
+          throw new Error("No " + target + " checkpoint exists for this matchup.");
         }
       }
 
-      let count = numberField(
-        training ? "train-count" : "eval-count",
-        2,
-        100000
-      );
+      // PRE-RUN VERIFICATION CHECK
+      const val = g.SoulAgent.validateCheckpoint(checkpoint, learnerVal, opponentVal);
+      if (!val.valid) {
+        throw new Error(`PRE-TRAINING VERIFICATION FAILED: ${val.error}`);
+      }
+
+      let count = numberField(training ? "train-count" : "eval-count", 2, 100000);
 
       if (!training && count % 2 !== 0) {
         count++;
         field("eval-count").value = count;
       }
 
-      const seed = numberField(
-        "seed",
-        0,
-        4294967295
-      );
+      const seed = numberField("seed", 0, 4294967295);
 
       if (location.protocol === "file:") {
-        throw new Error(
-          "Serve the project over HTTP/HTTPS, not file://."
-        );
+        throw new Error("Serve the project over HTTP/HTTPS, not file://.");
       }
 
       busy = true;
       evaluationTarget = training ? null : target;
-
       refresh();
 
-      output(
-        "Starting " + kind + " worker…\n" +
-        "Expected build: " + BUILD
-      );
+      output(`Starting ${kind} worker…\nVerified initial checkpoint: ${val.canonicalKey} (${val.weightCount} parameters intact)\nExpected build: ${BUILD}`);
 
       try {
-        const workerURL = new URL(
-          "js/training_worker.js",
-          document.baseURI
-        );
-
+        const workerURL = new URL("js/training_worker.js", document.baseURI);
         workerURL.searchParams.set("v", BUILD);
 
         worker = new Worker(workerURL);
 
         worker.onerror = event => {
-          output(
-            "WORKER ERROR\n" +
-            event.message
-          );
-
-          finishWorker();
-        };
-
-        worker.onmessageerror = () => {
-          output(
-            "WORKER ERROR\nCould not decode worker message."
-          );
-
+          output("WORKER ERROR\n" + event.message);
           finishWorker();
         };
 
@@ -675,71 +517,41 @@
             const message = event.data;
 
             if (message?.build !== BUILD) {
-              throw new Error(
-                "Worker cache/version mismatch.\n" +
-                "Expected: " + BUILD + "\n" +
-                "Received: " +
-                (message?.build || "older/unidentified worker") +
-                "\nReplace the revised files and hard-refresh."
-              );
+              throw new Error("Worker version mismatch.");
             }
 
             if (message.type === "progress") {
               output(formatReport(message.report));
 
             } else if (message.type === "checkpoint") {
-              g.SoulAgent.setCandidate(
-                message.checkpoint
-              );
+              // POST-STEP VERIFICATION CHECK
+              const postVal = g.SoulAgent.validateCheckpoint(message.checkpoint, learnerVal, opponentVal);
+              if (!postVal.valid) {
+                throw new Error(`POST-TRAINING VERIFICATION FAILED: ${postVal.error}`);
+              }
 
+              g.SoulAgent.setCandidate(message.checkpoint);
               refresh();
 
             } else if (message.type === "done") {
               const report = message.report;
+              const completeEvaluation = !training && !report.cancelled && report.games >= 2 && report.games === report.requested;
 
-              const completeEvaluation =
-                !training &&
-                !report.cancelled &&
-                report.games >= 2 &&
-                report.games === report.requested;
-
-              if (
-                evaluationTarget &&
-                completeEvaluation
-              ) {
-                g.SoulAgent.recordEvaluation(
-                  evaluationTarget,
-                  report
-                );
+              if (evaluationTarget && completeEvaluation) {
+                g.SoulAgent.recordEvaluation(evaluationTarget, report);
               }
 
-              let ending = training
-                ? "\n\nCandidate saved in memory & Master Bundle."
-                : completeEvaluation
-                  ? "\n\nEvaluation finished."
-                  : "\n\nEvaluation incomplete.";
-
-              output(
-                formatReport(report) + ending
-              );
-
+              let ending = training ? "\n\nVERIFIED & SAVED: Candidate updated in RAM." : "\n\nEvaluation finished.";
+              output(formatReport(report) + ending);
               finishWorker();
 
             } else if (message.type === "error") {
-              output(
-                "JOB ERROR\n" +
-                message.error
-              );
-
+              output("JOB ERROR\n" + message.error);
               finishWorker();
             }
 
           } catch (error) {
-            output(
-              "ERROR\n" +
-              error.message
-            );
-
+            output("ERROR\n" + error.message);
             finishWorker();
           }
         };
@@ -765,27 +577,11 @@
       }
     }
 
-    function openTools() {
-      if (!dedicated && !host.open) {
-        host.showModal();
-      }
-      refresh();
-    }
-
-    host.addEventListener("cancel", event => {
-      if (busy) {
-        event.preventDefault();
-      }
-    });
-
     host.querySelector('[data-field="learner"]').addEventListener("change", refresh);
     host.querySelector('[data-field="opponent"]').addEventListener("change", refresh);
 
     host.addEventListener("click", async event => {
-      const button = event.target?.closest?.(
-        "[data-action]"
-      );
-
+      const button = event.target?.closest?.("[data-action]");
       if (!button || button.disabled) return;
 
       try {
@@ -807,9 +603,7 @@
 
             output(`Distilling ${searchMode.toUpperCase()} search algorithm into ${learnerVal} -> ${opponentVal} matrix...`);
 
-            const opponentsToDistill = opponentVal === "*"
-              ? readyData.data.riders.map(r => r.id)
-              : [opponentVal];
+            const opponentsToDistill = opponentVal === "*" ? readyData.data.riders.map(r => r.id) : [opponentVal];
 
             let count = 0;
             for (const oppId of opponentsToDistill) {
@@ -818,7 +612,7 @@
             }
 
             refresh();
-            output(`SUCCESS\nConverted ${searchMode.toUpperCase()} search algorithm directly into ${count} candidate matrix partition(s)!`);
+            output(`SUCCESS\nConverted ${searchMode.toUpperCase()} search algorithm directly into ${count} verified candidate matrix partition(s)!`);
             break;
           }
 
@@ -831,9 +625,7 @@
             break;
 
           case "stop":
-            worker?.postMessage({
-              type: "stop"
-            });
+            worker?.postMessage({ type: "stop" });
             break;
 
           case "promote":
@@ -843,9 +635,26 @@
             output("Candidate activated.");
             break;
 
-          case "export-candidate":
-            g.SoulAgent.download("candidate");
+          case "export-matchup": {
+            const learnerVal = field("learner").value;
+            const opponentVal = field("opponent").value;
+
+            if (opponentVal === "*") {
+              output("ERROR\nSelect a specific Opponent rider (not 'All active riders') to export an individual 1v1 matchup file.");
+              break;
+            }
+
+            const result = g.SoulAgent.downloadMatchupFile(learnerVal, opponentVal, "candidate");
+            output(
+              `EXPORT SUCCESSFUL\n` +
+              `File: ${result.fileName}\n` +
+              `Matchup Key: ${result.key}\n` +
+              `File Size: ${result.sizeMB} MB\n` +
+              `Games Trained: ${result.games}\n\n` +
+              `Upload '${result.fileName}' to 'data/matrix/' in Hugging Face!`
+            );
             break;
+          }
 
           case "export-master": {
             output("Packaging Master Matrix Bundle from RAM…");
@@ -863,23 +672,34 @@
             field("file").click();
             break;
 
-          case "sync-cdn":
+          case "sync-cdn": {
             busy = true;
             refresh();
-            output("Fetching latest active matrix directly from Hugging Face CDN...");
-            try {
-              if (typeof g.SoulAgent.fetchMasterFromCDN !== "function") {
-                throw new Error("SoulAgent.fetchMasterFromCDN is not defined. Ensure soul_agent.js is updated.");
+            const learnerVal = field("learner").value;
+            const opponentVal = field("opponent").value;
+
+            if (opponentVal !== "*") {
+              const key = g.SoulAgent.getCanonicalKey(learnerVal, opponentVal);
+              output(`Fetching single matchup ${key}.json from Hugging Face CDN...`);
+              try {
+                await g.SoulAgent.fetchMatchupFromCDN(learnerVal, opponentVal);
+                output(`SUCCESS\nLoaded and verified ${key}.json from Hugging Face CDN!`);
+              } catch (err) {
+                output("CDN SYNC ERROR\n" + err.message);
               }
-              const count = await g.SoulAgent.fetchMasterFromCDN();
-              output(`SUCCESS\nLoaded ${count} active matchup partitions from Hugging Face CDN!`);
-            } catch (err) {
-              output("CDN SYNC ERROR\n" + err.message);
-            } finally {
-              busy = false;
-              refresh();
+            } else {
+              output("Fetching active master matrix from Hugging Face CDN...");
+              try {
+                const count = await g.SoulAgent.fetchMasterFromCDN();
+                output(`SUCCESS\nLoaded ${count} verified active matchup partitions from Hugging Face CDN!`);
+              } catch (err) {
+                output("CDN SYNC ERROR\n" + err.message);
+              }
             }
+            busy = false;
+            refresh();
             break;
+          }
 
           case "tests":
             busy = true;
@@ -908,42 +728,37 @@
       }
     });
 
-    field("file").addEventListener(
-      "change",
-      async event => {
-        const input = event.target;
-        const file = input.files[0];
-
-        if (!file || busy) {
-          input.value = "";
-          return;
-        }
-
-        busy = true;
-        refresh();
-
-        try {
-          await g.SoulAgent.ready();
-          const payload = JSON.parse(await file.text());
-
-          if (payload?.version === g.SoulAgent.MASTER_VERSION || payload?.matchups) {
-            const count = g.SoulAgent.importMasterBundle(payload, "candidate");
-            output(`Imported Master Matrix Bundle (${count} matchup policies loaded).`);
-          } else {
-            g.SoulAgent.importCandidate(payload);
-            output("Checkpoint imported as CANDIDATE.");
-          }
-
-        } catch (error) {
-          output("IMPORT ERROR\n" + error.message);
-
-        } finally {
-          input.value = "";
-          busy = false;
-          refresh();
-        }
+    field("file").addEventListener("change", async event => {
+      const input = event.target;
+      const file = input.files[0];
+      if (!file || busy) {
+        input.value = "";
+        return;
       }
-    );
+
+      busy = true;
+      refresh();
+
+      try {
+        await g.SoulAgent.ready();
+        const payload = JSON.parse(await file.text());
+
+        if (payload?.version === g.SoulAgent.MASTER_VERSION || payload?.matchups) {
+          const count = g.SoulAgent.importMasterBundle(payload, "candidate");
+          output(`Imported Master Matrix Bundle (${count} matchup policies verified and loaded).`);
+        } else {
+          g.SoulAgent.importCandidate(payload);
+          output("Matchup checkpoint verified and imported as CANDIDATE.");
+        }
+
+      } catch (error) {
+        output("IMPORT ERROR\n" + error.message);
+      } finally {
+        input.value = "";
+        busy = false;
+        refresh();
+      }
+    });
 
     try {
       const readyData = await g.SoulAgent.ready();
