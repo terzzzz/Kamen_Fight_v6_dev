@@ -45,7 +45,7 @@ function validateJob(job) {
   ) {
     throw new Error(
       "Training UI/worker version mismatch. " +
-      "Replace all four revised files and hard-refresh."
+      "Replace all revised files and hard-refresh."
     );
   }
 
@@ -391,6 +391,7 @@ async function run(job) {
     currentImitation = imitation;
     currentEpsilon = epsilon;
 
+    // Ensure full search algorithm execution during both training and evaluation
     const generator = SoulSim.episode({
       data,
       spec,
@@ -402,7 +403,8 @@ async function run(job) {
       opponentNet,
       seed: matchSeed,
       epsilon,
-      guideProbability
+      guideProbability,
+      isEvaluation: !training
     });
 
     let result = null;
@@ -469,7 +471,7 @@ async function run(job) {
         lastProgress = now;
       }
 
-      if (now - lastYield >= 20) {
+      if (now - lastYield >= 12) {
         await pause();
         lastYield = performance.now();
       }
