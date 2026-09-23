@@ -624,7 +624,7 @@
           history,
           difficulty: K.difficulty(effectiveOpponentMode),
           disableAgent: true,
-          isTraining: true,
+          isTraining: isTrainingRun, // <--- Dynamically passes false during evaluation!
           evaluator: effectiveOpponentNet ? (simState, simSlot) => {
             try {
               const envSim = E.create(simState, previousActions);
