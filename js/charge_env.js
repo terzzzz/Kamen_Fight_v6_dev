@@ -215,43 +215,41 @@
     };
   }
 
-  // FIXED: Block voluntary IDLE (m[9] = 0) on final decision ticks when legal attacks exist to prevent 79.4% stalling
- function mask(e, slot) {
-  const m = new Uint8Array(INPUTS.length);
-  const c = e.cells[slot];
+  function mask(e, slot) {
+    const m = new Uint8Array(INPUTS.length);
+    const c = e.cells[slot];
 
-  m[0] = 1; // WAIT (Index 0) is legal for charging/holding state
+    m[0] = 1; // WAIT (Index 0) is legal for charging/holding state
 
-  if (
-    c.locked ||
-    e.state[slot].isFainted ||
-    e.t >= limit()
-  ) {
+    if (
+      c.locked ||
+      e.state[slot].isFainted ||
+      e.t >= limit()
+    ) {
+      return m;
+    }
+
+    // Legal stance direction changes
+    DIRS.forEach((d, i) => {
+      m[i + 1] = Number(d !== c.direction);
+    });
+
+    // Legal attack button triggers
+    if (c.direction) {
+      BUTTONS.forEach((b, i) => {
+        const isLegal = C.isLegal(e.state, slot, {
+          key: c.direction + "+" + b,
+          charge: c.charge
+        });
+        m[i + 5] = Number(isLegal);
+      });
+    }
+
+    // IDLE (Index 9) is legal as a standard turn-pass option
+    m[9] = 1;
+
     return m;
   }
-
-  // Legal stance direction changes
-  DIRS.forEach((d, i) => {
-    m[i + 1] = Number(d !== c.direction);
-  });
-
-  // Legal attack button triggers
-  if (c.direction) {
-    BUTTONS.forEach((b, i) => {
-      const isLegal = C.isLegal(e.state, slot, {
-        key: c.direction + "+" + b,
-        charge: c.charge
-      });
-      m[i + 5] = Number(isLegal);
-    });
-  }
-
-  // FORCE NEURAL ACTION: Voluntary IDLE (Index 9) is disabled during active turns.
-  // The network must select WAIT (0), a Stance (1-4), or an Attack (5-8).
-  m[9] = 0;
-
-  return m;
-}
 
   function isDecision(e) {
     return e.t >= REACTION &&
