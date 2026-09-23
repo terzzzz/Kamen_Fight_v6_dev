@@ -46,55 +46,63 @@
   }
 
   function validateCheckpoint(checkpoint, expectedLearner = null, expectedOpponent = null) {
-  if (!checkpoint || typeof checkpoint !== "object") {
-    return { valid: false, error: "Checkpoint is empty or invalid object." };
-  }
-  if (!checkpoint.net || !checkpoint.net.layers || !Array.isArray(checkpoint.net.layers)) {
-    return { valid: false, error: "Missing or corrupted neural network layers ('net.layers')." };
-  }
-
-  let weightCount = 0;
-  for (let lIdx = 0; lIdx < checkpoint.net.layers.length; lIdx++) {
-    const layer = checkpoint.net.layers[lIdx];
-    // Support both layer.weights and layer.w, and handle Float32Array / TypedArrays
-    const weights = layer.weights || layer.w;
-
-    if (!weights || (!Array.isArray(weights) && !ArrayBuffer.isView(weights) && typeof weights.length !== "number")) {
-      return { valid: false, error: `Layer ${lIdx} is missing a valid weights array.` };
+    if (!checkpoint || typeof checkpoint !== "object") {
+      return { valid: false, error: "Checkpoint is empty or invalid object." };
+    }
+    if (!checkpoint.net || !checkpoint.net.layers || !Array.isArray(checkpoint.net.layers)) {
+      return { valid: false, error: "Missing or corrupted neural network layers ('net.layers')." };
     }
 
-    for (let wIdx = 0; wIdx < weights.length; wIdx++) {
-      const w = weights[wIdx];
-      if (typeof w !== "number" || !Number.isFinite(w)) {
-        return { valid: false, error: `Corrupted weight (NaN/Inf) at layer ${lIdx}, index ${wIdx}.` };
+    let weightCount = 0;
+    for (let lIdx = 0; lIdx < checkpoint.net.layers.length; lIdx++) {
+      const layer = checkpoint.net.layers[lIdx];
+      
+      // Support layer.weights, layer.w, layer.W, or layer.data
+      const rawWeights = layer.weights || layer.w || layer.W || layer.data;
+
+      if (!rawWeights) {
+        return { valid: false, error: `Layer ${lIdx} is missing weight data.` };
       }
-      weightCount++;
+
+      // Handle 2D arrays or 1D TypedArrays
+      const flatWeights = Array.isArray(rawWeights) ? rawWeights.flat(Infinity) : rawWeights;
+
+      if (!flatWeights || (typeof flatWeights.length !== "number" && typeof flatWeights.byteLength !== "number")) {
+        return { valid: false, error: `Layer ${lIdx} has non-iterable weight format.` };
+      }
+
+      for (let wIdx = 0; wIdx < flatWeights.length; wIdx++) {
+        const w = flatWeights[wIdx];
+        if (typeof w !== "number" || !Number.isFinite(w)) {
+          return { valid: false, error: `Corrupted weight (NaN/Inf) at layer ${lIdx}, index ${wIdx}.` };
+        }
+        weightCount++;
+      }
     }
-  }
 
-  if (weightCount === 0) {
-    return { valid: false, error: "Neural network contains 0 parameter weights." };
-  }
-
-  const key = checkpoint.canonicalKey || (checkpoint.learnerId && checkpoint.opponentId ? getCanonicalKey(checkpoint.learnerId, checkpoint.opponentId) : null);
-
-  if (expectedLearner && expectedOpponent && expectedOpponent !== "*") {
-    const expectedKey = getCanonicalKey(expectedLearner, expectedOpponent);
-    if (key && key !== expectedKey) {
-      return { valid: false, error: `Matchup key mismatch! Checkpoint key is '${key}', expected '${expectedKey}'.` };
+    if (weightCount === 0) {
+      return { valid: false, error: "Neural network contains 0 parameter weights." };
     }
-  }
 
-  return {
-    valid: true,
-    canonicalKey: key,
-    learnerId: checkpoint.learnerId || "unknown",
-    opponentId: checkpoint.opponentId || "unknown",
-    games: checkpoint.games || 0,
-    steps: checkpoint.steps || 0,
-    weightCount
-  };
-}
+    const key = checkpoint.canonicalKey || (checkpoint.learnerId && checkpoint.opponentId ? getCanonicalKey(checkpoint.learnerId, checkpoint.opponentId) : null);
+
+    if (expectedLearner && expectedOpponent && expectedOpponent !== "*") {
+      const expectedKey = getCanonicalKey(expectedLearner, expectedOpponent);
+      if (key && key !== expectedKey) {
+        return { valid: false, error: `Matchup key mismatch! Checkpoint key is '${key}', expected '${expectedKey}'.` };
+      }
+    }
+
+    return {
+      valid: true,
+      canonicalKey: key,
+      learnerId: checkpoint.learnerId || "unknown",
+      opponentId: checkpoint.opponentId || "unknown",
+      games: checkpoint.games || 0,
+      steps: checkpoint.steps || 0,
+      weightCount
+    };
+  }
 
   function saveToLocalStorage() {
     try {
@@ -258,42 +266,42 @@
     saveToLocalStorage();
   }
 
- function seedFromSearchEngine(learnerId, opponentId, searchDifficulty = "master", sampleMatches = 50) {
-  if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
+  function seedFromSearchEngine(learnerId, opponentId, searchDifficulty = "master", sampleMatches = 50) {
+    if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
 
-  const spec = g.SoulEnv.makeSpec(cachedData);
-  const inputDim = Number.isFinite(spec?.input) ? spec.input : (spec?.inputSize || spec?.inputs || 128);
-  const net = new g.SoulNN.Network(inputDim, 128, 128, 10);
-  const targetKey = getCanonicalKey(learnerId, opponentId);
+    const spec = g.SoulEnv.makeSpec(cachedData);
+    const inputDim = Number.isFinite(spec?.input) ? spec.input : (spec?.inputSize || spec?.inputs || 128);
+    const net = new g.SoulNN.Network(inputDim, 128, 128, 10);
+    const targetKey = getCanonicalKey(learnerId, opponentId);
 
-  for (const [key, section] of Object.entries(store.active.matchups)) {
-    if (!store.candidate.matchups[key]) {
-      store.candidate.matchups[key] = JSON.parse(JSON.stringify(section));
+    for (const [key, section] of Object.entries(store.active.matchups)) {
+      if (!store.candidate.matchups[key]) {
+        store.candidate.matchups[key] = JSON.parse(JSON.stringify(section));
+      }
     }
+
+    const checkpoint = {
+      version: WORKER_VERSION,
+      spec,
+      net: net.toJSON(),
+      games: sampleMatches,
+      steps: sampleMatches * 15,
+      savedAt: new Date().toISOString(),
+      seed: 12345,
+      evaluation: null,
+      trainerBuild: VERSION,
+      learnerId,
+      opponentId,
+      canonicalKey: targetKey,
+      distilledFrom: searchDifficulty
+    };
+
+    store.candidate.matchups[targetKey] = checkpoint;
+    store.candidate.legacy = checkpoint;
+
+    saveToLocalStorage();
+    return checkpoint;
   }
-
-  const checkpoint = {
-    version: WORKER_VERSION,
-    spec,
-    net: net.toJSON(),
-    games: sampleMatches,
-    steps: sampleMatches * 15,
-    savedAt: new Date().toISOString(),
-    seed: 12345,
-    evaluation: null,
-    trainerBuild: VERSION,
-    learnerId,
-    opponentId,
-    canonicalKey: targetKey,
-    distilledFrom: searchDifficulty
-  };
-
-  store.candidate.matchups[targetKey] = checkpoint;
-  store.candidate.legacy = checkpoint;
-
-  saveToLocalStorage();
-  return checkpoint;
-}
 
   function getMatchupBreakdown(target = "candidate") {
     const bucket = store[target] || store.candidate;
