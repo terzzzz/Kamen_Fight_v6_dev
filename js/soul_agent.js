@@ -149,26 +149,28 @@
     return false;
   }
 
-  async function fetchMatchupFromCDN(learnerId, opponentId) {
-    const key = getCanonicalKey(learnerId, opponentId);
-    const hfURL = `https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/resolve/main/data/matrix/${key}.json?t=${Date.now()}`;
-    console.log(`[SoulAgent] Fetching matchup ${key}.json directly from Hugging Face LFS CDN...`);
+ async function fetchMatchupFromCDN(learnerId, opponentId) {
+  const key = getCanonicalKey(learnerId, opponentId);
+  const path = `data/matrix/${key}.json?t=${Date.now()}`;
+  const localURL = new URL(path, document.baseURI);
 
-    const res = await fetch(hfURL);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch ${key}.json from CDN (HTTP ${res.status})`);
-    }
+  console.log(`[SoulAgent] Fetching matchup ${key}.json directly from repo data/matrix/...`);
 
-    const checkpoint = await res.json();
-    const val = validateCheckpoint(checkpoint, learnerId, opponentId);
-    if (!val.valid) {
-      throw new Error(`Fetched file ${key}.json is invalid: ${val.error}`);
-    }
-
-    store.active.matchups[key] = checkpoint;
-    saveToLocalStorage();
-    return checkpoint;
+  const res = await fetch(localURL);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch ${path} (HTTP ${res.status})`);
   }
+
+  const checkpoint = await res.json();
+  const val = validateCheckpoint(checkpoint, learnerId, opponentId);
+  if (!val.valid) {
+    throw new Error(`Fetched file ${key}.json is invalid: ${val.error}`);
+  }
+
+  store.active.matchups[key] = checkpoint;
+  saveToLocalStorage();
+  return checkpoint;
+}
 
   async function fetchMasterFromCDN() {
     const hfURL = `https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/resolve/main/soul_matrix_master.json?t=${Date.now()}`;
