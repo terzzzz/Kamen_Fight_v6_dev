@@ -25,14 +25,8 @@
   let lastStorageWarning = "";
 
   const store = {
-    candidate: {
-      matchups: {},
-      legacy: null
-    },
-    active: {
-      matchups: {},
-      legacy: null
-    }
+    candidate: { matchups: {}, legacy: null },
+    active: { matchups: {}, legacy: null }
   };
 
   function toCode(riderId) {
@@ -48,22 +42,15 @@
   }
 
   function getCanonicalKey(rider1, rider2) {
-    const c1 = toCode(rider1);
-    const c2 = toCode(rider2);
-    return `${c1}_${c2}`;
+    return `${toCode(rider1)}_${toCode(rider2)}`;
   }
 
-  /**
-   * VERIFICATION FUNCTION:
-   * Validates structure, layer integrity, numeric sanity (no NaNs), and matchup keys.
-   */
   function validateCheckpoint(checkpoint, expectedLearner = null, expectedOpponent = null) {
     if (!checkpoint || typeof checkpoint !== "object") {
       return { valid: false, error: "Checkpoint is empty or invalid object." };
     }
-
     if (!checkpoint.net || !checkpoint.net.layers || !Array.isArray(checkpoint.net.layers)) {
-      return { valid: false, error: "Missing or corrupted neural network architecture ('net.layers')." };
+      return { valid: false, error: "Missing or corrupted neural network layers ('net.layers')." };
     }
 
     let weightCount = 0;
@@ -75,14 +62,10 @@
       for (let wIdx = 0; wIdx < layer.weights.length; wIdx++) {
         const w = layer.weights[wIdx];
         if (typeof w !== "number" || !Number.isFinite(w)) {
-          return { valid: false, error: `Corrupted non-numeric weight (NaN/Inf) found in layer ${lIdx} at index ${wIdx}.` };
+          return { valid: false, error: `Corrupted weight (NaN/Inf) at layer ${lIdx}, index ${wIdx}.` };
         }
         weightCount++;
       }
-    }
-
-    if (weightCount === 0) {
-      return { valid: false, error: "Neural network contains 0 parameter weights." };
     }
 
     const key = checkpoint.canonicalKey || (checkpoint.learnerId && checkpoint.opponentId ? getCanonicalKey(checkpoint.learnerId, checkpoint.opponentId) : null);
@@ -90,7 +73,7 @@
     if (expectedLearner && expectedOpponent && expectedOpponent !== "*") {
       const expectedKey = getCanonicalKey(expectedLearner, expectedOpponent);
       if (key && key !== expectedKey) {
-        return { valid: false, error: `Matchup key mismatch! Checkpoint key is '${key}', expected '${expectedKey}'.` };
+        return { valid: false, error: `Matchup key mismatch! File is '${key}', expected '${expectedKey}'.` };
       }
     }
 
@@ -108,25 +91,21 @@
   function saveToLocalStorage() {
     try {
       if (!g.localStorage) {
-        lastStorageWarning = "NOTICE: LocalStorage unavailable. Matrix runs in RAM only.";
+        lastStorageWarning = "NOTICE: LocalStorage unavailable. Models run in RAM only.";
         return;
       }
-      const data = {
-        version: MASTER_VERSION,
-        candidate: store.candidate,
-        active: store.active
-      };
+      const data = { version: MASTER_VERSION, candidate: store.candidate, active: store.active };
       const serialized = JSON.stringify(data);
 
       if (serialized.length > 4.5 * 1024 * 1024) {
-        lastStorageWarning = "NOTICE: Matrix exceeds 5MB LocalStorage limit. All cells safe in RAM — use EXPORT MATCHUP / EXPORT MASTER BUNDLE to save.";
+        lastStorageWarning = "NOTICE: LocalStorage cap exceeded. Active models stored in RAM — export .json to save.";
         return;
       }
 
       g.localStorage.setItem(STORAGE_KEY, serialized);
       lastStorageWarning = "";
     } catch (e) {
-      lastStorageWarning = "STORAGE NOTICE: Exceeded browser 5MB storage quota. Matrix safe in RAM — use EXPORT MATCHUP to save.";
+      lastStorageWarning = "STORAGE NOTICE: LocalStorage quota reached. Models safe in RAM.";
     }
   }
 
@@ -149,42 +128,66 @@
     return false;
   }
 
- async function fetchMatchupFromCDN(learnerId, opponentId) {
-  const key = getCanonicalKey(learnerId, opponentId);
-  const path = `data/matrix/${key}.json?t=${Date.now()}`;
-  const localURL = new URL(path, document.baseURI);
+  /**
+   * AUTO-MAPS ALL 36 FILES FROM data/matrix/ ON STARTUP
+   * Iterates through 001_001.json -> 006_006.json in parallel.
+   * If found, populates game counts; if 404, returns 0g.
+   */
+  async function scanAllMatchupsFromRepo() {
+    const codes = ["001", "002", "003", "004", "005", "006"];
+    const fetchPromises = [];
+    let foundCount = 0;
 
-  console.log(`[SoulAgent] Fetching matchup ${key}.json directly from repo data/matrix/...`);
+    for (const lCode of codes) {
+      for (const oCode of codes) {
+        const key = `${lCode}_${oCode}`;
+        const path = `data/matrix/${key}.json?t=${Date.now()}`;
+        const targetURL = new URL(path, document.baseURI);
 
-  const res = await fetch(localURL);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${path} (HTTP ${res.status})`);
-  }
-
-  const checkpoint = await res.json();
-  const val = validateCheckpoint(checkpoint, learnerId, opponentId);
-  if (!val.valid) {
-    throw new Error(`Fetched file ${key}.json is invalid: ${val.error}`);
-  }
-
-  store.active.matchups[key] = checkpoint;
-  saveToLocalStorage();
-  return checkpoint;
-}
-
-  async function fetchMasterFromCDN() {
-    const hfURL = `https://huggingface.co/datasets/ttercheng/kamen-fight-matrix/resolve/main/soul_matrix_master.json?t=${Date.now()}`;
-    console.log("[SoulAgent] Fetching active master matrix from Hugging Face LFS CDN...");
-
-    const res = await fetch(hfURL);
-    if (!res.ok) {
-      throw new Error(`Hugging Face CDN fetch failed with status ${res.status}`);
+        fetchPromises.push(
+          fetch(targetURL)
+            .then(async res => {
+              if (res.ok) {
+                const checkpoint = await res.json();
+                const val = validateCheckpoint(checkpoint);
+                if (val.valid) {
+                  store.active.matchups[key] = checkpoint;
+                  if (!store.candidate.matchups[key]) {
+                    store.candidate.matchups[key] = JSON.parse(JSON.stringify(checkpoint));
+                  }
+                  foundCount++;
+                }
+              }
+            })
+            .catch(() => { /* 404 / File missing: Gracefully returns 0g */ })
+        );
+      }
     }
 
-    const bundle = await res.json();
-    const count = importMasterBundle(bundle, "active");
-    console.log(`[SoulAgent] Loaded ${count} active matchup partitions from Hugging Face.`);
-    return count;
+    await Promise.all(fetchPromises);
+    saveToLocalStorage();
+    return foundCount;
+  }
+
+  async function fetchMatchupFromCDN(learnerId, opponentId) {
+    const key = getCanonicalKey(learnerId, opponentId);
+    const path = `data/matrix/${key}.json?t=${Date.now()}`;
+    const targetURL = new URL(path, document.baseURI);
+
+    console.log(`[SoulAgent] Fetching ${path}...`);
+    const res = await fetch(targetURL);
+    if (!res.ok) throw new Error(`File 'data/matrix/${key}.json' not found on server (HTTP ${res.status}).`);
+
+    const checkpoint = await res.json();
+    const val = validateCheckpoint(checkpoint, learnerId, opponentId);
+    if (!val.valid) throw new Error(`Fetched ${key}.json invalid: ${val.error}`);
+
+    store.active.matchups[key] = checkpoint;
+    if (!store.candidate.matchups[key]) {
+      store.candidate.matchups[key] = JSON.parse(JSON.stringify(checkpoint));
+    }
+    saveToLocalStorage();
+    return checkpoint;
   }
 
   async function ready(forceFetch = false) {
@@ -194,26 +197,7 @@
         cachedData = loadedData;
 
         loadFromLocalStorage();
-
-        if (forceFetch || Object.keys(store.active.matchups).length === 0) {
-          try {
-            let loadedLocal = false;
-            try {
-              const res = await fetch(new URL(`data/soul_matrix_master.json?t=${Date.now()}`, document.baseURI));
-              if (res.ok) {
-                const bundle = await res.json();
-                importMasterBundle(bundle, "active");
-                loadedLocal = true;
-              }
-            } catch (_) {}
-
-            if (!loadedLocal) {
-              await fetchMasterFromCDN();
-            }
-          } catch (e) {
-            console.warn("[SoulAgent] Master bundle load error:", e);
-          }
-        }
+        await scanAllMatchupsFromRepo();
 
         return { data: cachedData };
       })();
@@ -223,9 +207,7 @@
 
   function getSection(learnerId, opponentId, target = "candidate") {
     const bucket = store[target] || store.candidate;
-    if (!learnerId || !opponentId || opponentId === "*") {
-      return bucket.legacy || null;
-    }
+    if (!learnerId || !opponentId) return bucket.legacy || null;
     const key = getCanonicalKey(learnerId, opponentId);
     return bucket.matchups[key] || null;
   }
@@ -244,7 +226,7 @@
     const learner = cloned.learnerId || cloned.learner;
     const opponent = cloned.opponentId || cloned.opponent;
 
-    if (learner && opponent && opponent !== "*") {
+    if (learner && opponent) {
       const targetKey = getCanonicalKey(learner, opponent);
 
       for (const [key, section] of Object.entries(store.active.matchups)) {
@@ -348,7 +330,7 @@
       bucket.legacy.evaluated = true;
       bucket.legacy.evaluation = report;
     }
-    if (report.learner && report.opponent && report.opponent !== "*") {
+    if (report.learner && report.opponent) {
       const key = getCanonicalKey(report.learner, report.opponent);
       if (bucket.matchups[key]) {
         bucket.matchups[key].evaluated = true;
@@ -360,42 +342,10 @@
 
   function importCandidate(payload) {
     const val = validateCheckpoint(payload);
-    if (!val.valid) {
-      throw new Error("Invalid checkpoint payload: " + val.error);
-    }
+    if (!val.valid) throw new Error("Invalid checkpoint payload: " + val.error);
     setCandidate(payload);
   }
 
-  function importMasterBundle(payload, target = "candidate") {
-    if (!payload || (payload.version !== MASTER_VERSION && !payload.matchups)) {
-      throw new Error("Invalid Master Matrix Bundle payload.");
-    }
-
-    const matchups = payload.matchups || {};
-    let count = 0;
-
-    for (const [key, section] of Object.entries(matchups)) {
-      if (section && section.net) {
-        const val = validateCheckpoint(section);
-        if (val.valid) {
-          section.version = WORKER_VERSION;
-          store[target].matchups[key] = JSON.parse(JSON.stringify(section));
-          count++;
-        }
-      }
-    }
-
-    if (count > 0) {
-      store[target].legacy = Object.values(store[target].matchups)[0];
-    }
-
-    saveToLocalStorage();
-    return count;
-  }
-
-  /**
-   * EXPORTS A SINGLE 1v1 MATCHUP FILE (e.g. 001_002.json)
-   */
   function downloadMatchupFile(learnerId, opponentId, target = "candidate") {
     const checkpoint = getSection(learnerId, opponentId, target);
     if (!checkpoint) {
@@ -403,9 +353,7 @@
     }
 
     const val = validateCheckpoint(checkpoint, learnerId, opponentId);
-    if (!val.valid) {
-      throw new Error(`Cannot export invalid checkpoint: ${val.error}`);
-    }
+    if (!val.valid) throw new Error(`Cannot export invalid checkpoint: ${val.error}`);
 
     const key = val.canonicalKey;
     const fileName = `${key}.json`;
@@ -423,41 +371,6 @@
     return { fileName, key, sizeMB, games: checkpoint.games || 0 };
   }
 
-  function downloadMasterBundle(target = "candidate") {
-    const bucket = store[target] || store.candidate;
-    const matchupKeys = Object.keys(bucket.matchups);
-
-    if (matchupKeys.length === 0) {
-      throw new Error(`No ${target} matrix bundle available to export.`);
-    }
-
-    const blobParts = [];
-    blobParts.push(`{\n"version":${JSON.stringify(MASTER_VERSION)},\n"build":${JSON.stringify(VERSION)},\n"exportedAt":${JSON.stringify(new Date().toISOString())},\n"matchups":{\n`);
-
-    matchupKeys.forEach((key, index) => {
-      const isLast = index === matchupKeys.length - 1;
-      blobParts.push(`"${key}":${JSON.stringify(bucket.matchups[key])}${isLast ? "" : ",\n"}`);
-    });
-
-    blobParts.push(`\n}\n}`);
-
-    try {
-      const blob = new Blob(blobParts, { type: "application/json" });
-      const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `soul_matrix_master_${target}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      return { count: matchupKeys.length, sizeMB };
-    } catch (err) {
-      throw new Error("Export failed: " + (err.message || String(err)));
-    }
-  }
-
   function status() {
     return {
       version: VERSION,
@@ -467,7 +380,7 @@
       active: store.active.legacy,
       candidateMatchupsCount: Object.keys(store.candidate.matchups).length,
       activeMatchupsCount: Object.keys(store.active.matchups).length,
-      storageWarning: lastStorageWarning || (g.localStorage ? "" : "LocalStorage unavailable. Models exist in RAM only."),
+      storageWarning: lastStorageWarning || (g.localStorage ? "" : "LocalStorage unavailable. Models run in RAM only."),
       warnings: []
     };
   }
@@ -477,8 +390,8 @@
     MASTER_VERSION,
     WORKER_VERSION,
     ready,
+    scanAllMatchupsFromRepo,
     fetchMatchupFromCDN,
-    fetchMasterFromCDN,
     toCode,
     fromCode,
     getCanonicalKey,
@@ -490,9 +403,7 @@
     promote,
     recordEvaluation,
     importCandidate,
-    importMasterBundle,
     downloadMatchupFile,
-    downloadMasterBundle,
     validateCheckpoint,
     status
   };
