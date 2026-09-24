@@ -473,7 +473,7 @@ async function run(job) {
         lastProgress = now;
       }
 
-      if (now - lastYield >= 12) {
+      if (now - lastYield >= 250) {
         await pause();
         lastYield = performance.now();
       }
