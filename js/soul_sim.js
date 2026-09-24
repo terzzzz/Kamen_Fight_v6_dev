@@ -2,7 +2,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v5";
+  const BUILD = "round-discount-master-guide-v6";
   const TEACHER_DIFFICULTY = "master";
   const SHAPING_SCALE = 0.2;
 
@@ -216,7 +216,55 @@
           const qValues = net.predict(s);
           const temp = options.temperature ?? 0;
 
-          if (temp > 0) {
+          // Check if runtime 1-step Foresee Search filter is enabled (e.g. during evaluation)
+          const useForesee = Boolean(options.foresee) &&
+            typeof C !== "undefined" &&
+            typeof C.resolve === "function" &&
+            Boolean(options.state);
+
+          if (useForesee) {
+            // 1. Gather all legal candidate actions sorted by Q-value (descending)
+            const candidates = [];
+            for (let i = 0; i < qValues.length; i++) {
+              if (m[i]) candidates.push({ action: i, q: qValues[i] });
+            }
+            candidates.sort((x, y) => y.q - x.q);
+
+            if (candidates.length <= 1) {
+              a = candidates[0]?.action ?? 0;
+            } else {
+              // 2. Evaluate top candidate moves using 1-step CombatCore simulation lookahead
+              const topCandidates = candidates.slice(0, 2);
+              let bestAction = topCandidates[0].action;
+              let maxVerifiedValue = -Infinity;
+
+              for (const cand of topCandidates) {
+                const simState = C.copyState(options.state);
+                const ownActionKey = E.INPUTS?.[cand.action] || "DO_NOTHING";
+
+                const p1Act = slot === "p1" ? ownActionKey : "DO_NOTHING";
+                const p2Act = slot === "p2" ? ownActionKey : "DO_NOTHING";
+
+                const outcome = C.resolve(
+                  simState,
+                  p1Act,
+                  p2Act,
+                  K.rng(12345),
+                  false
+                );
+
+                const nextPotential = potential(outcome.state, slot);
+                const verifiedScore = cand.q + 0.30 * nextPotential;
+
+                if (verifiedScore > maxVerifiedValue) {
+                  maxVerifiedValue = verifiedScore;
+                  bestAction = cand.action;
+                }
+              }
+
+              a = bestAction;
+            }
+          } else if (temp > 0) {
             a = (typeof N.softmaxSample === "function")
               ? N.softmaxSample(qValues, m, temp, rng)
               : softmaxSample(qValues, m, temp, rng);
@@ -499,7 +547,7 @@
             ? (drawPenalty < 0 ? 0.30 : drawPenalty)
             : nextState?.winner === learnerSlot
               ? 1.0 * matchRewardMultiplier
-              : 0.05 + 0.85 * totalDamageDealtRatio // 90% LP damage = 0.815 reward!
+              : 0.05 + 0.85 * totalDamageDealtRatio
         )
         : 0;
 
@@ -661,6 +709,9 @@
           style: "reactive",
           frames: learnerFrames,
           temperature: options.temperature ?? (isEvaluation ? 0.08 : 0),
+          foresee: isEvaluation, // Enable 1-step Foresee Search during evaluations
+          state: state,          // Pass active match state for simulation lookahead
+          slot: learnerSlot,
           onQ: onStepQ
         }
       );
@@ -680,7 +731,10 @@
             )
           ),
           {
-            temperature: isEvaluation ? 0.08 : 0
+            temperature: isEvaluation ? 0.08 : 0,
+            foresee: isEvaluation,
+            state: state,
+            slot: enemySlot
           }
         );
 
