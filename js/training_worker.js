@@ -114,6 +114,7 @@ async function run(job) {
     old.version = VERSION;
     old.spec = spec;
   }
+
   if (
     old &&
     (
@@ -287,7 +288,7 @@ async function run(job) {
       transitions,
 
       loss: learner?.loss || 0,
-      replaySize: learner?.replay.items.length || 0,
+      replaySize: learner?.replay?.items?.length || 0,
       updateStats: learner?.updateStats || null,
       avgQ: latestAvgQ,
 
@@ -364,12 +365,13 @@ async function run(job) {
     const learnedGames = taskBaseGames + games;
     const rosterFactor = Math.max(1, opponents.length);
 
+    // Systematic Teacher Weaning: Guide probability decays down to a minimum floor of 0.00
     const guideProbability = !training
       ? 0
       : learnedGames < (5 * rosterFactor)
         ? 1
         : Math.max(
-            0.02,
+            0.00,
             0.50 * Math.exp(-learnedGames / (35 * rosterFactor))
           );
 
@@ -391,7 +393,7 @@ async function run(job) {
     currentImitation = imitation;
     currentEpsilon = epsilon;
 
-    // Ensure full search algorithm execution during both training and evaluation
+    // Run episode simulation pass
     const generator = SoulSim.episode({
       data,
       spec,
