@@ -396,12 +396,7 @@
 
       let humanShaping = 0;
 
-      // Penalize alternating move spam loops (e.g. W -> I -> W -> I)
-      if (pendingObj.prevAction2 === pendingObj.a || (pendingObj.prevAction1 === pendingObj.a && pendingObj.prevAction2 === pendingObj.a)) {
-        humanShaping -= 0.05;
-      }
-
-      // Correctly check combined stance + attack key on fainted opponents
+      // Point 1 Fix: Correctly evaluate combined stance + attack key on fainted opponents
       if (pendingObj.oppFainted && ["S+I", "S+L", "S+K", "W+I", "W+K"].includes(fullComboKey)) {
         humanShaping += 0.20;
       }
@@ -652,7 +647,7 @@
             selfLp: state[learnerSlot]?.lp ?? 0,
             oppLp: state[enemySlot]?.lp ?? 0,
             selfMaxLp: state[learnerSlot]?.maxLp ?? 1000,
-            oppMaxLp: state[enemySlot]?.oppMaxLp ?? 1000,
+            oppMaxLp: state[enemySlot]?.maxLp ?? 1000,
 
             selfChi: state[learnerSlot]?.chi ?? 0,
             oppChi: state[enemySlot]?.chi ?? 0,
