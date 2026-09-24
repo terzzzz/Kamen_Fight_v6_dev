@@ -137,6 +137,38 @@
     }
   }
 
+  /**
+   * Low-temperature Softmax sampling helper to maintain natural decision diversity
+   * and prevent rigid single-button locking during deterministic evaluations.
+   */
+  function softmaxSample(qValues, mask, temperature, rng) {
+    let maxQ = -Infinity;
+    for (let i = 0; i < qValues.length; i++) {
+      if (mask[i] && qValues[i] > maxQ) maxQ = qValues[i];
+    }
+    if (!Number.isFinite(maxQ)) return 0;
+
+    let sum = 0;
+    const exp = new Float32Array(qValues.length);
+    for (let i = 0; i < qValues.length; i++) {
+      if (mask[i]) {
+        exp[i] = Math.exp((qValues[i] - maxQ) / temperature);
+        sum += exp[i];
+      }
+    }
+
+    if (sum <= 0) return N.argmax(qValues, mask);
+
+    let r = rng() * sum;
+    for (let i = 0; i < qValues.length; i++) {
+      if (mask[i]) {
+        r -= exp[i];
+        if (r <= 0) return i;
+      }
+    }
+    return N.argmax(qValues, mask);
+  }
+
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
 
@@ -182,7 +214,16 @@
 
         } else {
           const qValues = net.predict(s);
-          a = N.argmax(qValues, m);
+          const temp = options.temperature ?? 0;
+
+          if (temp > 0) {
+            a = (typeof N.softmaxSample === "function")
+              ? N.softmaxSample(qValues, m, temp, rng)
+              : softmaxSample(qValues, m, temp, rng);
+          } else {
+            a = N.argmax(qValues, m);
+          }
+
           if (options.onQ) {
             options.onQ(qValues[a]);
           }
@@ -292,7 +333,8 @@
       damageDealtWeight = 1.0,
       damageTakenWeight = 1.0,
       drawPenalty = -1.0,
-      initialStateOverride = null
+      initialStateOverride = null,
+      isEvaluation = false
     } = options;
 
     if (!Number.isSafeInteger(spec.input) || spec.input < 1) {
@@ -613,6 +655,7 @@
           teacher: trainingTeacher,
           style: "reactive",
           frames: learnerFrames,
+          temperature: options.temperature ?? (isEvaluation ? 0.08 : 0),
           onQ: onStepQ
         }
       );
@@ -630,7 +673,10 @@
               state.round,
               enemySlot
             )
-          )
+          ),
+          {
+            temperature: isEvaluation ? 0.08 : 0
+          }
         );
 
         opponentAct = env =>
