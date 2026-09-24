@@ -23,8 +23,22 @@ importScripts(
 let busy = false;
 let cancelled = false;
 
-const pause = () =>
-  new Promise(resolve => setTimeout(resolve, 0));
+// NEW: MessageChannel bypasses background tab timer throttling
+const yieldChannel = new MessageChannel();
+let yieldResolver = null;
+
+yieldChannel.port1.onmessage = () => {
+  if (yieldResolver) {
+    const resolve = yieldResolver;
+    yieldResolver = null;
+    resolve();
+  }
+};
+
+const pause = () => new Promise(resolve => {
+  yieldResolver = resolve;
+  yieldChannel.port2.postMessage(null);
+});
 
 function send(type, payload = {}) {
   postMessage({
