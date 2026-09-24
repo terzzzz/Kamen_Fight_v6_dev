@@ -332,7 +332,7 @@
       guideProbability = 0,
       damageDealtWeight = 1.0,
       damageTakenWeight = 1.0,
-      drawPenalty = 0.20, // Re-anchored draw baseline to positive space
+      drawPenalty = 0.30,
       initialStateOverride = null,
       isEvaluation = false
     } = options;
@@ -487,24 +487,28 @@
 
       const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
 
-      // Re-anchored terminal reward calculation to keep Q-values in positive space
+      // Overall damage ratio dealt to the opponent over the entire match
+      const oppFinalLp = Math.max(0, nextState?.[enemySlot]?.lp ?? 0);
+      const oppMaxLpVal = Math.max(1, pendingObj.oppMaxLp ?? 1000);
+      const totalDamageDealtRatio = Math.min(1.0, Math.max(0.0, (oppMaxLpVal - oppFinalLp) / oppMaxLpVal));
+
+      // Dynamically scale terminal loss credit based on how close the match was
       const terminalReward = terminal
         ? (
           nextState?.winner === "draw"
-            ? (drawPenalty < 0 ? 0.20 : drawPenalty)
+            ? (drawPenalty < 0 ? 0.30 : drawPenalty)
             : nextState?.winner === learnerSlot
               ? 1.0 * matchRewardMultiplier
-              : 0.10 // Positive completion baseline for losses instead of -1.0 penalty
+              : 0.05 + 0.85 * totalDamageDealtRatio // 90% LP damage = 0.815 reward!
         )
         : 0;
 
       const selfMaxLp = Math.max(1, pendingObj.selfMaxLp ?? 1000);
-      const oppMaxLp = Math.max(1, pendingObj.oppMaxLp ?? 1000);
 
       const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
       const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
 
-      const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLp;
+      const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLpVal;
       const damageTaken = Math.max(0, pendingObj.selfLp - nextSelfLp) / selfMaxLp;
 
       const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
