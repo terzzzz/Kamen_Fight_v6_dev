@@ -1,5 +1,4 @@
-// this is soul_sim.js
-
+/* js/soul_sim.js */
 (function (g) {
   "use strict";
 
@@ -270,7 +269,7 @@
     const initialSelfLpPct = (state[learnerSlot]?.lp ?? 1000) / Math.max(1, state[learnerSlot]?.maxLp ?? 1000);
     const initialOppLpPct = (state[enemySlot]?.lp ?? 1000) / Math.max(1, state[enemySlot]?.maxLp ?? 1000);
     const initialLpRatio = initialSelfLpPct / Math.max(0.01, initialOppLpPct);
-    
+
     const matchRewardMultiplier = safeClamp(Math.pow(initialLpRatio, -0.8), 0.3, 2.5);
 
     const combatRng = K.rng(K.hash(seed, "combat"));
@@ -358,26 +357,14 @@
       assertObservationSize(spec, "Pending s", pendingObj.s);
       assertObservationSize(spec, "Next s1", s1);
 
-      assertMask(
-        "Pending action mask",
-        pendingObj.m,
-        m1.length
-      );
-
-      assertMask(
-        "Next-action mask",
-        m1,
-        pendingObj.m.length
-      );
+      assertMask("Pending action mask", pendingObj.m, m1.length);
+      assertMask("Next-action mask", m1, pendingObj.m.length);
 
       const elapsedRounds = Math.max(1, rounds - (pendingObj.completedRounds ?? rounds));
-
       const roundDiscount = Math.pow(E.GAMMA ?? 0.99, elapsedRounds);
       const discount = terminal ? 0 : roundDiscount;
 
-      const nextPotential = terminal
-        ? 0
-        : potential(nextState, learnerSlot);
+      const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
 
       const terminalReward = terminal
         ? (
@@ -395,40 +382,32 @@
       const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
       const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
 
-      const damageDealt =
-        Math.max(
-          0,
-          pendingObj.oppLp - nextOppLp
-        ) / oppMaxLp;
-
-      const damageTaken =
-        Math.max(
-          0,
-          pendingObj.selfLp - nextSelfLp
-        ) / selfMaxLp;
+      const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLp;
+      const damageTaken = Math.max(0, pendingObj.selfLp - nextSelfLp) / selfMaxLp;
 
       const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
-
       const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
 
-      const chiReward = 0;
-
       const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
+      const fullComboKey = (pendingObj.selfDir || "IDLE") + "+" + actionKey;
+
       const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
       const idlePenalty = isVoluntaryIdle ? -0.25 : 0;
 
       let humanShaping = 0;
 
-      if (pendingObj.prevAction1 === pendingObj.a && pendingObj.prevAction2 === pendingObj.a) {
+      // Penalize alternating move spam loops (e.g. W -> I -> W -> I)
+      if (pendingObj.prevAction2 === pendingObj.a || (pendingObj.prevAction1 === pendingObj.a && pendingObj.prevAction2 === pendingObj.a)) {
         humanShaping -= 0.05;
       }
 
-      if (pendingObj.oppFainted && ["S+I", "S+L", "S+K"].includes(actionKey)) {
+      // Correctly check combined stance + attack key on fainted opponents
+      if (pendingObj.oppFainted && ["S+I", "S+L", "S+K", "W+I", "W+K"].includes(fullComboKey)) {
         humanShaping += 0.20;
       }
 
       const riderMoves = data?.moves?.[pendingObj.learnerRiderId];
-      const move = riderMoves?.[actionKey];
+      const move = riderMoves?.[actionKey] || riderMoves?.[fullComboKey];
       if (move?.lpRecovery) {
         if (pendingObj.selfLp / selfMaxLp < 0.30) {
           humanShaping += 0.15;
@@ -439,18 +418,14 @@
 
       let r =
         terminalReward +
-        SHAPING_SCALE * (
-          discount * nextPotential - (pendingObj.phi ?? 0)
-        ) +
+        SHAPING_SCALE * (discount * nextPotential - (pendingObj.phi ?? 0)) +
         damageReward +
-        chiReward +
         idlePenalty +
         stallPenalty +
         humanShaping;
 
       if (!Number.isFinite(r)) r = 0;
       const finalDiscount = Number.isFinite(discount) ? discount : 0;
-
       const weightScale = (terminal && nextState?.winner === learnerSlot) ? matchRewardMultiplier : 1.0;
 
       let transitionDir = "IDLE";
@@ -501,12 +476,12 @@
           const envSim = E.create(simState, previousActions);
           const obsSim = E.observe(envSim, simSlot);
           const vec = E.vector(obsSim, spec);
-          
+
           const len = Math.min(vec.length, spec.input);
           const offset = spec.input - len;
           leafBuffer.fill(0);
           leafBuffer.set(vec.subarray(0, len), offset);
-          
+
           const q = net.predict(leafBuffer);
           let maxQ = -Infinity;
           for (let i = 0; i < q.length; i++) {
@@ -617,20 +592,19 @@
           throw new Error("Search AI modules are not loaded.");
         }
 
-        // FIXED: Disconnect search evaluator leak (Pass null instead of learner's neuralEval when effectiveOpponentNet is null)
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
           history,
           difficulty: K.difficulty(effectiveOpponentMode),
           disableAgent: true,
-          isTraining: isTrainingRun, // <--- Dynamically passes false during evaluation!
+          isTraining: isTrainingRun,
           evaluator: effectiveOpponentNet ? (simState, simSlot) => {
             try {
               const envSim = E.create(simState, previousActions);
               const obsSim = E.observe(envSim, simSlot);
               const vec = E.vector(obsSim, spec);
-              
+
               const len = Math.min(vec.length, spec.input);
               const offset = spec.input - len;
               oppLeafBuffer.fill(0);
@@ -678,7 +652,7 @@
             selfLp: state[learnerSlot]?.lp ?? 0,
             oppLp: state[enemySlot]?.lp ?? 0,
             selfMaxLp: state[learnerSlot]?.maxLp ?? 1000,
-            oppMaxLp: state[enemySlot]?.maxLp ?? 1000,
+            oppMaxLp: state[enemySlot]?.oppMaxLp ?? 1000,
 
             selfChi: state[learnerSlot]?.chi ?? 0,
             oppChi: state[enemySlot]?.chi ?? 0,
