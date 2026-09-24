@@ -23,7 +23,7 @@ importScripts(
 let busy = false;
 let cancelled = false;
 
-// NEW: MessageChannel bypasses background tab timer throttling
+// MessageChannel bypasses background tab timer throttling
 const yieldChannel = new MessageChannel();
 let yieldResolver = null;
 
@@ -105,7 +105,10 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
 
-  // Declared with 'let' to allow auto-healing baseline placeholders
+  // Read guidance decay percentiles passed from UI (defaulting to 20% and 80%)
+  const guideHoldPct = Number.isFinite(job.guideHoldPct) ? job.guideHoldPct : 20;
+  const guideZeroPct = Number.isFinite(job.guideZeroPct) ? job.guideZeroPct : 80;
+
   let old = job.checkpoint || null;
 
   const learnerId = job.learner || "ichigo";
@@ -124,7 +127,6 @@ async function run(job) {
       }
     }
 
-    // Auto-patch metadata so training continues seamlessly on top of existing matrix weights
     old.version = VERSION;
     old.spec = spec;
   }
@@ -376,31 +378,36 @@ async function run(job) {
       ];
     }
 
-    const learnedGames = taskBaseGames + games;
-    const rosterFactor = Math.max(1, opponents.length);
+    // Calculate current batch progress ratio (strictly 0.0 to 100.0% of the active job)
+    const batchProgressPct = (i / Math.max(1, job.matches)) * 100;
+    const batchProgressRatio = i / Math.max(1, job.matches);
 
-    // Systematic Teacher Weaning: Guide probability decays down to a minimum floor of 0.00
-    const guideProbability = !training
-      ? 0
-      : learnedGames < (5 * rosterFactor)
-        ? 1
-        : Math.max(
-            0.00,
-            0.50 * Math.exp(-learnedGames / (35 * rosterFactor))
-          );
+    // Compute piece-wise linear guidance probability based strictly on the current job index
+    let guideProbability = 0.0;
+    if (training) {
+      if (batchProgressPct <= guideHoldPct) {
+        guideProbability = 1.0;
+      } else if (batchProgressPct >= guideZeroPct) {
+        guideProbability = 0.0;
+      } else {
+        const pctRange = guideZeroPct - guideHoldPct;
+        if (pctRange > 0) {
+          const decayRatio = (batchProgressPct - guideHoldPct) / pctRange;
+          guideProbability = Math.max(0.0, Math.min(1.0, 1.0 - decayRatio));
+        } else {
+          guideProbability = 0.0;
+        }
+      }
+    }
 
+    // Anchor Epsilon exploration (0.15 -> 0.05) strictly to active batch progress
     const epsilon = training
-      ? Math.max(
-          0.05,
-          0.15 * Math.exp(-learnedGames / (50 * rosterFactor))
-        )
+      ? Math.max(0.05, 0.15 * Math.exp(-3.0 * batchProgressRatio))
       : 0;
 
+    // Anchor Imitation loss directly to current teacher guidance rate
     const imitation = training
-      ? Math.max(
-          MIN_IMITATION,
-          INITIAL_IMITATION * Math.exp(-learnedGames / (50 * rosterFactor))
-        )
+      ? Math.max(MIN_IMITATION, INITIAL_IMITATION * guideProbability)
       : 0;
 
     currentGuideProbability = guideProbability;
