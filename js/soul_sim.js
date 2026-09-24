@@ -74,6 +74,45 @@
     }
   }
 
+  function peekStackedObservation(framesObj, newVec, expectedSize) {
+    if (!framesObj) return new Float32Array(expectedSize);
+
+    if (typeof framesObj.peekWith === "function") {
+      return framesObj.peekWith(newVec);
+    }
+    if (typeof framesObj.clone === "function") {
+      return framesObj.clone().push(newVec);
+    }
+    if (typeof framesObj.peek === "function") {
+      return framesObj.peek(newVec);
+    }
+    if (typeof framesObj.get === "function") {
+      const cur = framesObj.get();
+      const vecLen = newVec.length;
+      const out = new Float32Array(expectedSize);
+      out.set(cur.subarray(vecLen), 0);
+      out.set(newVec, expectedSize - vecLen);
+      return out;
+    }
+    if (framesObj.buffer && framesObj.buffer instanceof Float32Array) {
+      const vecLen = newVec.length;
+      const out = new Float32Array(expectedSize);
+      out.set(framesObj.buffer.subarray(vecLen), 0);
+      out.set(newVec, expectedSize - vecLen);
+      return out;
+    }
+
+    // Fallback: If no non-mutating preview API exists, perform push & restore
+    const pushed = framesObj.push(newVec);
+    const copy = new Float32Array(pushed);
+    if (typeof framesObj.pop === "function") {
+      framesObj.pop();
+    } else if (typeof framesObj.rollback === "function") {
+      framesObj.rollback();
+    }
+    return copy;
+  }
+
   function applyRandomizedStartState(state, rng) {
     if (!state) return;
 
@@ -306,11 +345,13 @@
       try {
         const envAfter = E.create(nextState, previousActions);
         const obsAfter = E.observe(envAfter, learnerSlot);
+        const vecAfter = E.vector(obsAfter, spec);
 
+        // FIX: Construct s1 using non-mutating frame peek instead of learnerFrames.push()
         const stacked = assertObservationSize(
           spec,
           "Post-resolution s1",
-          learnerFrames.push(E.vector(obsAfter, spec))
+          peekStackedObservation(learnerFrames, vecAfter, spec.input)
         );
 
         const m1 = Uint8Array.from(
@@ -396,7 +437,6 @@
 
       let humanShaping = 0;
 
-      // Point 1 Fix: Correctly evaluate combined stance + attack key on fainted opponents
       if (pendingObj.oppFainted && ["S+I", "S+L", "S+K", "W+I", "W+K"].includes(fullComboKey)) {
         humanShaping += 0.20;
       }
