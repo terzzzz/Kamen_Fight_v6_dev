@@ -398,8 +398,8 @@
 
       if (r.wasdRatio && r.wasdRatio.counts) {
         const counts = r.wasdRatio.counts;
-        const totalActive = Math.max(1, counts.W + counts.A + counts.S + counts.D);
-        const pct = val => (100 * val / totalActive).toFixed(1) + "%";
+        const totalWasd = Math.max(1, counts.W + counts.A + counts.S + counts.D + counts.IDLE);
+        const pct = val => (100 * val / totalWasd).toFixed(1) + "%";
 
         lines.push(
           "",
@@ -598,8 +598,8 @@
       }
     }
 
-    host.querySelector('[data-field="learner"]').addEventListener("change", refresh);
-    host.querySelector('[data-field="opponent"]').addEventListener("change", refresh);
+    field("learner").addEventListener("change", refresh);
+    field("opponent").addEventListener("change", refresh);
 
     host.addEventListener("click", async event => {
       const button = event.target?.closest?.("[data-action]");
@@ -756,7 +756,6 @@
         opponentSelect.appendChild(oOption);
       }
 
-      // Default selection: Ichigo (001) vs Nigo (002)
       learnerSelect.value = readyData.data.riders[0]?.id || "ichigo";
       opponentSelect.value = readyData.data.riders[1]?.id || "nigo";
 
