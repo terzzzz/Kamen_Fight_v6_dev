@@ -90,6 +90,30 @@
         </label>
 
         <label>
+          Guide Hold Until %
+          <input
+            data-field="guide-hold-pct"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            value="20"
+          >
+        </label>
+
+        <label>
+          Guide Reaches 0% At
+          <input
+            data-field="guide-zero-pct"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            value="80"
+          >
+        </label>
+
+        <label>
           Seed
           <input
             data-field="seed"
@@ -520,6 +544,12 @@
         field("eval-count").value = count;
       }
 
+      const guideHoldPct = numberField("guide-hold-pct", 0, 100);
+      const guideZeroPct = numberField("guide-zero-pct", 0, 100);
+      if (guideHoldPct > guideZeroPct) {
+        throw new Error("Guide Hold Until % cannot be greater than Guide Reaches 0% At %.");
+      }
+
       const seed = numberField("seed", 0, 4294967295);
       if (location.protocol === "file:") {
         throw new Error("Serve the project over HTTP/HTTPS, not file://.");
@@ -588,7 +618,9 @@
             seed,
             learner: learnerVal,
             opponent: opponentVal,
-            mode: field("mode").value
+            mode: field("mode").value,
+            guideHoldPct,
+            guideZeroPct
           }
         });
 
