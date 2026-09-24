@@ -74,6 +74,9 @@
     }
   }
 
+  // Pre-allocated reusable buffer to prevent GC allocations in hot simulation loops
+  let reusablePeekBuffer = null;
+
   function peekStackedObservation(framesObj, newVec, expectedSize) {
     if (!framesObj) return new Float32Array(expectedSize);
 
@@ -86,31 +89,27 @@
     if (typeof framesObj.peek === "function") {
       return framesObj.peek(newVec);
     }
-    if (typeof framesObj.get === "function") {
-      const cur = framesObj.get();
-      const vecLen = newVec.length;
-      const out = new Float32Array(expectedSize);
-      out.set(cur.subarray(vecLen), 0);
-      out.set(newVec, expectedSize - vecLen);
-      return out;
-    }
-    if (framesObj.buffer && framesObj.buffer instanceof Float32Array) {
-      const vecLen = newVec.length;
-      const out = new Float32Array(expectedSize);
-      out.set(framesObj.buffer.subarray(vecLen), 0);
-      out.set(newVec, expectedSize - vecLen);
-      return out;
+
+    if (!reusablePeekBuffer || reusablePeekBuffer.length !== expectedSize) {
+      reusablePeekBuffer = new Float32Array(expectedSize);
     }
 
-    // Fallback: If no non-mutating preview API exists, perform push & restore
+    const curBuf = framesObj.get ? framesObj.get() : framesObj.buffer;
+    if (curBuf && curBuf instanceof Float32Array) {
+      const vecLen = newVec.length;
+      reusablePeekBuffer.set(curBuf.subarray(vecLen), 0);
+      reusablePeekBuffer.set(newVec, expectedSize - vecLen);
+      return reusablePeekBuffer;
+    }
+
     const pushed = framesObj.push(newVec);
-    const copy = new Float32Array(pushed);
+    reusablePeekBuffer.set(pushed);
     if (typeof framesObj.pop === "function") {
       framesObj.pop();
     } else if (typeof framesObj.rollback === "function") {
       framesObj.rollback();
     }
-    return copy;
+    return reusablePeekBuffer;
   }
 
   function applyRandomizedStartState(state, rng) {
@@ -211,15 +210,55 @@
     };
   }
 
+  /**
+   * Potential Function Φ(s): Evaluates total tactical position state.
+   * Incorporates LP ratio, Chi reserves, Chi engine thresholds (>14 bonus, <5 danger zone),
+   * and Faint/Stun state to align DDQN shaping directly with CombatCore mechanics.
+   */
   function potential(state, slot) {
     if (!state) return 0;
     const enemy = C.other(slot);
-    const selfLp = state[slot]?.lp ?? 0;
-    const selfMaxLp = Math.max(1, state[slot]?.maxLp ?? 1000);
-    const oppLp = state[enemy]?.lp ?? 0;
-    const oppMaxLp = Math.max(1, state[enemy]?.maxLp ?? 1000);
+    const self = state[slot];
+    const opp = state[enemy];
+    if (!self || !opp) return 0;
 
-    return (selfLp / selfMaxLp) - (oppLp / oppMaxLp);
+    const selfLp = self.lp ?? 0;
+    const selfMaxLp = Math.max(1, self.maxLp ?? 1000);
+    const oppLp = opp.lp ?? 0;
+    const oppMaxLp = Math.max(1, opp.maxLp ?? 1000);
+
+    // 1. Health Ratio Component
+    const lpTerm = (selfLp / selfMaxLp) - (oppLp / oppMaxLp);
+
+    // 2. Chi Reserves Component
+    const selfChi = K.clamp(self.chi ?? 0, 0, 20);
+    const oppChi = K.clamp(opp.chi ?? 0, 0, 20);
+    const chiTerm = (selfChi / 20) - (oppChi / 20);
+
+    // 3. Engine Chi Thresholds (>14 Empowered / <5 Vulnerable)
+    let selfChiThreshold = 0;
+    if (selfChi > 14) {
+      selfChiThreshold += 0.20; // +20% Damage & +20 Accuracy Bonus
+    } else if (selfChi < 5) {
+      selfChiThreshold -= 0.25; // +25% Extra Damage Taken, -25% Evasion, +25% Faint
+    }
+
+    let oppChiThreshold = 0;
+    if (oppChi > 14) {
+      oppChiThreshold += 0.20;
+    } else if (oppChi < 5) {
+      oppChiThreshold -= 0.25;
+    }
+
+    const thresholdTerm = selfChiThreshold - oppChiThreshold;
+
+    // 4. Stun & Faint Risk Component
+    const selfFaint = self.isFainted ? 1.0 : (self.faintMeter ?? 0) / 100;
+    const oppFaint = opp.isFainted ? 1.0 : (opp.faintMeter ?? 0) / 100;
+    const faintTerm = oppFaint - selfFaint;
+
+    // Composite Position Potential
+    return lpTerm + 0.35 * chiTerm + 0.30 * thresholdTerm + 0.25 * faintTerm;
   }
 
   function remember(history, state, selected) {
@@ -347,7 +386,6 @@
         const obsAfter = E.observe(envAfter, learnerSlot);
         const vecAfter = E.vector(obsAfter, spec);
 
-        // FIX: Construct s1 using non-mutating frame peek instead of learnerFrames.push()
         const stacked = assertObservationSize(
           spec,
           "Post-resolution s1",
@@ -437,8 +475,14 @@
 
       let humanShaping = 0;
 
+      // Stun convert reward
       if (pendingObj.oppFainted && ["S+I", "S+L", "S+K", "W+I", "W+K"].includes(fullComboKey)) {
         humanShaping += 0.20;
+      }
+
+      // High Chi Finisher Execution Shaping (>14 Chi)
+      if (pendingObj.selfChi > 14 && ["S+I", "S+L", "S+K"].includes(fullComboKey)) {
+        humanShaping += 0.15;
       }
 
       const riderMoves = data?.moves?.[pendingObj.learnerRiderId];
