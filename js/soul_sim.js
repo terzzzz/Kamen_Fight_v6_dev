@@ -254,7 +254,7 @@
   /**
    * Potential Function Φ(s): Evaluates total tactical position state.
    * Incorporates LP ratio, Chi reserves, Chi engine thresholds (>14 bonus, <5 danger zone),
-   * and Faint/Stun state to align DDQN shaping directly with CombatCore mechanics.
+   * and Faint/Stun state to align shaping directly with CombatCore mechanics.
    */
   function potential(state, slot) {
     if (!state) return 0;
@@ -332,7 +332,7 @@
       guideProbability = 0,
       damageDealtWeight = 1.0,
       damageTakenWeight = 1.0,
-      drawPenalty = -1.0,
+      drawPenalty = 0.20, // Re-anchored draw baseline to positive space
       initialStateOverride = null,
       isEvaluation = false
     } = options;
@@ -487,13 +487,14 @@
 
       const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
 
+      // Re-anchored terminal reward calculation to keep Q-values in positive space
       const terminalReward = terminal
         ? (
           nextState?.winner === "draw"
-            ? drawPenalty
+            ? (drawPenalty < 0 ? 0.20 : drawPenalty)
             : nextState?.winner === learnerSlot
               ? 1.0 * matchRewardMultiplier
-              : -1.0
+              : 0.10 // Positive completion baseline for losses instead of -1.0 penalty
         )
         : 0;
 
