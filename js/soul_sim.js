@@ -9,6 +9,8 @@
     SHAPING_SCALE: 0.2,
     SPAM_PENALTY: 0.20,
     SPAM_THRESHOLD: 0.28,
+    INTRA_STANCE_SHARE: 0.50, // 50% to same-stance moves
+    INTER_STANCE_SHARE: 0.50, // 50% across all other stances
     IDLE_PENALTY: -0.25,
     STALL_PENALTY: -0.02,
     CHI_WEIGHT: 0.35,
@@ -677,7 +679,7 @@
           stallPenalty +
           humanShaping;
 
-        // --- ZERO-SUM ACTION VALUE REDISTRIBUTION ---
+        // --- STANCE-AWARE 50/50 ZERO-SUM REDISTRIBUTION ---
         const recentHist = pendingObj.recentHistory || [];
         let spammedAction = null;
 
@@ -696,23 +698,47 @@
 
         if (spammedAction !== null && pendingObj.m) {
           const spamPenalty = REWARD_CONFIG.SPAM_PENALTY;
-          
-          // Proportional Redistribution across non-spammed legal moves
-          let altSum = 0;
-          const altIndices = [];
+          const spammedKey = E.INPUTS?.[spammedAction] || "";
+          const spammedDir = spammedKey.includes("+") 
+            ? spammedKey.split("+")[0] 
+            : (["W", "A", "S", "D"].includes(spammedKey) ? spammedKey : (pendingObj.selfDir || "D"));
+
+          const sameStanceIndices = [];
+          const otherStanceIndices = [];
+
           for (let i = 0; i < pendingObj.m.length; i++) {
             if (pendingObj.m[i] && i !== spammedAction) {
-              altIndices.push(i);
-              altSum += 1.0; // Standard legal weight
+              const key = E.INPUTS?.[i] || "";
+              const dir = key.includes("+") 
+                ? key.split("+")[0] 
+                : (["W", "A", "S", "D"].includes(key) ? key : (pendingObj.selfDir || "D"));
+
+              if (dir === spammedDir) {
+                sameStanceIndices.push(i);
+              } else {
+                otherStanceIndices.push(i);
+              }
             }
           }
 
-          if (altIndices.length > 0) {
-            if (pendingObj.a === spammedAction) {
-              r -= spamPenalty;
-            } else if (altIndices.includes(pendingObj.a)) {
-              r += (spamPenalty / altIndices.length);
-            }
+          let intraShare = REWARD_CONFIG.INTRA_STANCE_SHARE;
+          let interShare = REWARD_CONFIG.INTER_STANCE_SHARE;
+
+          // Fail-safe fallback if one bucket has zero legal options
+          if (sameStanceIndices.length === 0 && otherStanceIndices.length > 0) {
+            interShare = 1.0;
+            intraShare = 0.0;
+          } else if (otherStanceIndices.length === 0 && sameStanceIndices.length > 0) {
+            intraShare = 1.0;
+            interShare = 0.0;
+          }
+
+          if (pendingObj.a === spammedAction) {
+            r -= spamPenalty;
+          } else if (sameStanceIndices.includes(pendingObj.a)) {
+            r += (spamPenalty * intraShare) / sameStanceIndices.length;
+          } else if (otherStanceIndices.includes(pendingObj.a)) {
+            r += (spamPenalty * interShare) / otherStanceIndices.length;
           }
         }
 
@@ -975,7 +1001,7 @@
             selfLp: state[learnerSlot]?.lp ?? 0,
             oppLp: state[enemySlot]?.lp ?? 0,
             selfMaxLp: state[learnerSlot]?.maxLp ?? 1000,
-            oppMaxLp: state[enemySlot]?.maxLp ?? 1000, // FIXED: Property lookup bug corrected from oppMaxLp
+            oppMaxLp: state[enemySlot]?.maxLp ?? 1000,
 
             selfChi: state[learnerSlot]?.chi ?? 0,
             oppChi: state[enemySlot]?.chi ?? 0,
