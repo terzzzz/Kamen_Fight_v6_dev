@@ -238,12 +238,15 @@
               let bestAction = topCandidates[0].action;
               let maxVerifiedValue = -Infinity;
 
+              // Assume opponent defaults to defensive guard (A+L) during evaluation lookahead
+              const simulatedOpponentMove = "A+L";
+
               for (const cand of topCandidates) {
                 const simState = C.copyState(options.state);
                 const ownActionKey = E.INPUTS?.[cand.action] || "DO_NOTHING";
 
-                const p1Act = slot === "p1" ? ownActionKey : "DO_NOTHING";
-                const p2Act = slot === "p2" ? ownActionKey : "DO_NOTHING";
+                const p1Act = slot === "p1" ? ownActionKey : simulatedOpponentMove;
+                const p2Act = slot === "p2" ? ownActionKey : simulatedOpponentMove;
 
                 const outcome = C.resolve(
                   simState,
