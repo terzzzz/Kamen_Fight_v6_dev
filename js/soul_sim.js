@@ -304,8 +304,6 @@
 
   /**
    * Potential Function Φ(s): Evaluates total tactical position state.
-   * Incorporates LP ratio, Chi reserves, Chi engine thresholds (>14 bonus, <5 danger zone),
-   * and Faint/Stun state to align shaping directly with CombatCore mechanics.
    */
   function potential(state, slot) {
     if (!state) return 0;
@@ -319,20 +317,17 @@
     const oppLp = opp.lp ?? 0;
     const oppMaxLp = Math.max(1, opp.maxLp ?? 1000);
 
-    // 1. Health Ratio Component
     const lpTerm = (selfLp / selfMaxLp) - (oppLp / oppMaxLp);
 
-    // 2. Chi Reserves Component
     const selfChi = K.clamp(self.chi ?? 0, 0, 20);
     const oppChi = K.clamp(opp.chi ?? 0, 0, 20);
     const chiTerm = (selfChi / 20) - (oppChi / 20);
 
-    // 3. Engine Chi Thresholds (>14 Empowered / <5 Vulnerable)
     let selfChiThreshold = 0;
     if (selfChi > 14) {
-      selfChiThreshold += 0.20; // +20% Damage & +20 Accuracy Bonus
+      selfChiThreshold += 0.20;
     } else if (selfChi < 5) {
-      selfChiThreshold -= 0.25; // +25% Extra Damage Taken, -25% Evasion, +25% Faint
+      selfChiThreshold -= 0.25;
     }
 
     let oppChiThreshold = 0;
@@ -344,12 +339,10 @@
 
     const thresholdTerm = selfChiThreshold - oppChiThreshold;
 
-    // 4. Stun & Faint Risk Component
     const selfFaint = self.isFainted ? 1.0 : (self.faintMeter ?? 0) / 100;
     const oppFaint = opp.isFainted ? 1.0 : (opp.faintMeter ?? 0) / 100;
     const faintTerm = oppFaint - selfFaint;
 
-    // Composite Position Potential
     return lpTerm + 0.35 * chiTerm + 0.30 * thresholdTerm + 0.25 * faintTerm;
   }
 
@@ -368,7 +361,7 @@
     ].slice(-24);
   }
 
-  function* episode(options) {
+  function episode(options) {
     const {
       data,
       spec,
@@ -384,6 +377,7 @@
       damageDealtWeight = 1.0,
       damageTakenWeight = 1.0,
       drawPenalty = 0.30,
+      rewardMode = "standard", // "standard" (Dense/Shaping) OR "terminal_only" (Sparse Win/Loss)
       initialStateOverride = null,
       isEvaluation = false
     } = options;
@@ -536,79 +530,92 @@
       const roundDiscount = Math.pow(E.GAMMA ?? 0.99, elapsedRounds);
       const discount = terminal ? 0 : roundDiscount;
 
-      const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
+      let r = 0;
 
-      // Overall damage ratio dealt to the opponent over the entire match
-      const oppFinalLp = Math.max(0, nextState?.[enemySlot]?.lp ?? 0);
-      const oppMaxLpVal = Math.max(1, pendingObj.oppMaxLp ?? 1000);
-      const totalDamageDealtRatio = Math.min(1.0, Math.max(0.0, (oppMaxLpVal - oppFinalLp) / oppMaxLpVal));
-
-      // Dynamically scale terminal loss credit based on how close the match was
-      const terminalReward = terminal
-        ? (
-          nextState?.winner === "draw"
-            ? (drawPenalty < 0 ? 0.30 : drawPenalty)
-            : nextState?.winner === learnerSlot
-              ? 1.0 * matchRewardMultiplier
-              : 0.05 + 0.85 * totalDamageDealtRatio
-        )
-        : 0;
-
-      const selfMaxLp = Math.max(1, pendingObj.selfMaxLp ?? 1000);
-
-      const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
-      const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
-
-      const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLpVal;
-      const damageTaken = Math.max(0, pendingObj.selfLp - nextSelfLp) / selfMaxLp;
-
-      const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
-      const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
-
-      const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
-      const fullComboKey = (pendingObj.selfDir || "IDLE") + "+" + actionKey;
-
-      const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
-      const idlePenalty = isVoluntaryIdle ? -0.25 : 0;
-
-      let humanShaping = 0;
-
-      // Stun convert reward
-      if (pendingObj.oppFainted && ["S+I", "S+L", "S+K", "W+I", "W+K"].includes(fullComboKey)) {
-        humanShaping += 0.20;
-      }
-
-      // High Chi Finisher Execution Shaping (>14 Chi)
-      if (pendingObj.selfChi > 14 && ["S+I", "S+L", "S+K"].includes(fullComboKey)) {
-        humanShaping += 0.15;
-      }
-
-      const riderMoves = data?.moves?.[pendingObj.learnerRiderId];
-      const move = riderMoves?.[actionKey] || riderMoves?.[fullComboKey];
-      if (move?.lpRecovery) {
-        if (pendingObj.selfLp / selfMaxLp < 0.30) {
-          humanShaping += 0.15;
-        } else if (pendingObj.selfLp === selfMaxLp) {
-          humanShaping -= 0.10;
+      if (rewardMode === "terminal_only" || rewardMode === "sparse") {
+        // --- PURE TERMINAL WIN/LOSS REWARD ---
+        if (terminal) {
+          if (nextState?.winner === learnerSlot) {
+            r = 1.0;
+          } else if (nextState?.winner === "draw") {
+            r = 0.0;
+          } else {
+            r = -1.0;
+          }
+        } else {
+          r = 0.0;
         }
-      }
+      } else {
+        // --- STANDARD DENSE / SHAPED REWARD ---
+        const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
 
-      let r =
-        terminalReward +
-        SHAPING_SCALE * (discount * nextPotential - (pendingObj.phi ?? 0)) +
-        damageReward +
-        idlePenalty +
-        stallPenalty +
-        humanShaping;
+        const oppFinalLp = Math.max(0, nextState?.[enemySlot]?.lp ?? 0);
+        const oppMaxLpVal = Math.max(1, pendingObj.oppMaxLp ?? 1000);
+        const totalDamageDealtRatio = Math.min(1.0, Math.max(0.0, (oppMaxLpVal - oppFinalLp) / oppMaxLpVal));
+
+        const terminalReward = terminal
+          ? (
+            nextState?.winner === "draw"
+              ? (drawPenalty < 0 ? 0.30 : drawPenalty)
+              : nextState?.winner === learnerSlot
+                ? 1.0 * matchRewardMultiplier
+                : 0.05 + 0.85 * totalDamageDealtRatio
+          )
+          : 0;
+
+        const selfMaxLp = Math.max(1, pendingObj.selfMaxLp ?? 1000);
+        const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
+        const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
+
+        const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLpVal;
+        const damageTaken = Math.max(0, pendingObj.selfLp - nextSelfLp) / selfMaxLp;
+
+        const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
+        const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
+
+        const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
+        const fullComboKey = (pendingObj.selfDir || "IDLE") + "+" + actionKey;
+
+        const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
+        const idlePenalty = isVoluntaryIdle ? -0.25 : 0;
+
+        let humanShaping = 0;
+
+        if (pendingObj.oppFainted && ["S+I", "S+L", "S+K", "W+I", "W+K"].includes(fullComboKey)) {
+          humanShaping += 0.20;
+        }
+
+        if (pendingObj.selfChi > 14 && ["S+I", "S+L", "S+K"].includes(fullComboKey)) {
+          humanShaping += 0.15;
+        }
+
+        const riderMoves = data?.moves?.[pendingObj.learnerRiderId];
+        const move = riderMoves?.[actionKey] || riderMoves?.[fullComboKey];
+        if (move?.lpRecovery) {
+          if (pendingObj.selfLp / selfMaxLp < 0.30) {
+            humanShaping += 0.15;
+          } else if (pendingObj.selfLp === selfMaxLp) {
+            humanShaping -= 0.10;
+          }
+        }
+
+        r = terminalReward +
+          SHAPING_SCALE * (discount * nextPotential - (pendingObj.phi ?? 0)) +
+          damageReward +
+          idlePenalty +
+          stallPenalty +
+          humanShaping;
+      }
 
       if (!Number.isFinite(r)) r = 0;
       const finalDiscount = Number.isFinite(discount) ? discount : 0;
-      const weightScale = (terminal && nextState?.winner === learnerSlot) ? matchRewardMultiplier : 1.0;
+      const weightScale = (terminal && nextState?.winner === learnerSlot && rewardMode === "standard") ? matchRewardMultiplier : 1.0;
 
+      const actionKeyVal = E.INPUTS?.[pendingObj.a] || "IDLE";
       let transitionDir = "IDLE";
-      if (["W", "A", "S", "D"].includes(actionKey)) {
-        transitionDir = actionKey;
-      } else if (["I", "J", "K", "L"].includes(actionKey)) {
+      if (["W", "A", "S", "D"].includes(actionKeyVal)) {
+        transitionDir = actionKeyVal;
+      } else if (["I", "J", "K", "L"].includes(actionKeyVal)) {
         transitionDir = pendingObj.selfDir || "IDLE";
       }
 
@@ -618,8 +625,8 @@
         m: pendingObj.m,
         demo: pendingObj.demo,
         direction: transitionDir,
-        actionKey: actionKey,
-        resolvedActionKey: finalResolvedKey || actionKey,
+        actionKey: actionKeyVal,
+        resolvedActionKey: finalResolvedKey || actionKeyVal,
         isFinalRoundResolution: Boolean(isFinal),
         r,
         discount: finalDiscount,
@@ -712,8 +719,8 @@
           style: "reactive",
           frames: learnerFrames,
           temperature: options.temperature ?? (isEvaluation ? 0.08 : 0),
-          foresee: isEvaluation, // Enable 1-step Foresee Search during evaluations
-          state: state,          // Pass active match state for simulation lookahead
+          foresee: isEvaluation,
+          state: state,
           slot: learnerSlot,
           onQ: onStepQ
         }
