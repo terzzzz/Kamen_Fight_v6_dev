@@ -165,6 +165,55 @@
     return N.argmax(qValues, mask);
   }
 
+  // --- RECURSIVE C.RESOLVE SEARCH TREE EVALUATOR ---
+  function evaluateLookahead(baseState, slot, candidateAction, net, spec, maxDepth) {
+    const enemySlot = C.other(slot);
+    const simulatedOpponentMove = "A+L"; // Default defensive poke assumption
+
+    function search(currentState, currentDepth) {
+      if (currentDepth >= maxDepth || currentState.winner) {
+        const pot = potential(currentState, slot);
+        if (!net) return pot;
+
+        try {
+          const envSim = E.create(currentState, {});
+          const obsSim = E.observe(envSim, slot);
+          const vecSim = E.vector(obsSim, spec);
+
+          const leafBuffer = new Float32Array(spec.input);
+          const len = Math.min(vecSim.length, spec.input);
+          leafBuffer.set(vecSim.subarray(0, len), spec.input - len);
+
+          const qLeaf = net.predict(leafBuffer);
+          let maxQ = -Infinity;
+          for (let i = 0; i < qLeaf.length; i++) {
+            if (qLeaf[i] > maxQ) maxQ = qLeaf[i];
+          }
+          return pot + 0.35 * (Number.isFinite(maxQ) ? maxQ : 0);
+        } catch (_) {
+          return pot;
+        }
+      }
+
+      const simState = C.copyState(currentState);
+      const ownActionKey = E.INPUTS?.[candidateAction] || "DO_NOTHING";
+      const p1Act = slot === "p1" ? ownActionKey : simulatedOpponentMove;
+      const p2Act = slot === "p2" ? ownActionKey : simulatedOpponentMove;
+
+      const outcome = C.resolve(
+        simState,
+        p1Act,
+        p2Act,
+        K.rng(12345),
+        false
+      );
+
+      return search(outcome.state, currentDepth + 1);
+    }
+
+    return search(baseState, 1);
+  }
+
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
 
@@ -227,29 +276,21 @@
             if (candidates.length <= 1) {
               a = candidates[0]?.action ?? 0;
             } else {
-              const topCandidates = candidates.slice(0, 2);
+              // Extract Top 3 actions predicted by NN and run C.resolve lookahead
+              const topCandidates = candidates.slice(0, 3);
+              const lookaheadDepth = options.lookaheadDepth || 2;
               let bestAction = topCandidates[0].action;
               let maxVerifiedValue = -Infinity;
 
-              const simulatedOpponentMove = "A+L";
-
               for (const cand of topCandidates) {
-                const simState = C.copyState(options.state);
-                const ownActionKey = E.INPUTS?.[cand.action] || "DO_NOTHING";
-
-                const p1Act = slot === "p1" ? ownActionKey : simulatedOpponentMove;
-                const p2Act = slot === "p2" ? ownActionKey : simulatedOpponentMove;
-
-                const outcome = C.resolve(
-                  simState,
-                  p1Act,
-                  p2Act,
-                  K.rng(12345),
-                  false
+                const verifiedScore = cand.q + 0.35 * evaluateLookahead(
+                  options.state,
+                  slot,
+                  cand.action,
+                  net,
+                  spec,
+                  lookaheadDepth
                 );
-
-                const nextPotential = potential(outcome.state, slot);
-                const verifiedScore = cand.q + 0.30 * nextPotential;
 
                 if (verifiedScore > maxVerifiedValue) {
                   maxVerifiedValue = verifiedScore;
@@ -607,7 +648,8 @@
             counts[act] = (counts[act] || 0) + 1;
           }
           for (const [actStr, count] of Object.entries(counts)) {
-            if (count / recentHist.length > 0.35) {
+            // Lowered spam threshold from 0.35 to 0.28 to catch multi-stance clustering
+            if (count / recentHist.length > 0.28) {
               spammedAction = Number(actStr);
               break;
             }
@@ -632,12 +674,16 @@
           }
         }
 
-        // Determine explicit telemetry category for worker telemetry counters
+        // --- EXPLICIT TELEMETRY CATEGORY TAGGING ---
         if (terminal) {
-          if (nextState?.winner === learnerSlot) rewardCategory = "Win";
-          else if (nextState?.winner !== "draw") rewardCategory = "Loss";
-          else rewardCategory = "Neu";
-        } else if (damageDealt > 0 || damageTaken > 0) {
+          if (nextState?.winner === learnerSlot) {
+            rewardCategory = "Win";
+          } else if (nextState?.winner !== "draw") {
+            rewardCategory = "Loss";
+          } else {
+            rewardCategory = "Neu";
+          }
+        } else if (damageDealt > 0 || damageTaken > 0 || Math.abs(r) > 0.05) {
           rewardCategory = "Dmg";
         } else {
           rewardCategory = "Neu";
@@ -667,6 +713,7 @@
         isFinalRoundResolution: Boolean(isFinal),
         r,
         rewardCategory, // Tag required for training_worker.js telemetry tracking
+        category: rewardCategory,
         discount: finalDiscount,
         weightScale: Number.isFinite(weightScale) ? weightScale : 1.0,
         s1: new Float32Array(s1),
@@ -758,6 +805,7 @@
           frames: learnerFrames,
           temperature: options.temperature ?? (isEvaluation ? 0.08 : 0),
           foresee: isEvaluation,
+          lookaheadDepth: isEvaluation ? 2 : 0,
           state: state,
           slot: learnerSlot,
           onQ: onStepQ
@@ -781,6 +829,7 @@
           {
             temperature: isEvaluation ? 0.08 : 0,
             foresee: isEvaluation,
+            lookaheadDepth: isEvaluation ? 2 : 0,
             state: state,
             slot: enemySlot
           }
