@@ -4,7 +4,17 @@
 
   const BUILD = "round-discount-master-guide-v5";
   const TEACHER_DIFFICULTY = "master";
-  const SHAPING_SCALE = 0.2;
+
+  const REWARD_CONFIG = Object.freeze({
+    SHAPING_SCALE: 0.2,
+    SPAM_PENALTY: 0.20,
+    SPAM_THRESHOLD: 0.28,
+    IDLE_PENALTY: -0.25,
+    STALL_PENALTY: -0.02,
+    CHI_WEIGHT: 0.35,
+    THRESHOLD_WEIGHT: 0.30,
+    FAINT_WEIGHT: 0.25
+  });
 
   const E = g.SoulEnv;
   const N = g.SoulNN;
@@ -168,7 +178,15 @@
   // --- RECURSIVE C.RESOLVE SEARCH TREE EVALUATOR ---
   function evaluateLookahead(baseState, slot, candidateAction, net, spec, maxDepth) {
     const enemySlot = C.other(slot);
-    const simulatedOpponentMove = "A+L"; // Default defensive poke assumption
+
+    // Dynamic opponent response sampling based on opponent Chi state
+    function getOpponentResponses(currentState) {
+      const opp = currentState[enemySlot];
+      const oppChi = opp?.chi ?? 0;
+      if (oppChi >= 6) return ["S+L", "D+K", "A+J"];
+      if (oppChi >= 3) return ["S+J", "D+K", "A+J"];
+      return ["D+K", "D+J", "A+J"];
+    }
 
     function search(currentState, currentDepth) {
       if (currentDepth >= maxDepth || currentState.winner) {
@@ -195,20 +213,28 @@
         }
       }
 
-      const simState = C.copyState(currentState);
       const ownActionKey = E.INPUTS?.[candidateAction] || "DO_NOTHING";
-      const p1Act = slot === "p1" ? ownActionKey : simulatedOpponentMove;
-      const p2Act = slot === "p2" ? ownActionKey : simulatedOpponentMove;
+      const possibleOpponentMoves = getOpponentResponses(currentState);
+      let minScore = Infinity;
 
-      const outcome = C.resolve(
-        simState,
-        p1Act,
-        p2Act,
-        K.rng(12345),
-        false
-      );
+      for (const oppMove of possibleOpponentMoves) {
+        const simState = C.copyState(currentState);
+        const p1Act = slot === "p1" ? ownActionKey : oppMove;
+        const p2Act = slot === "p2" ? ownActionKey : oppMove;
 
-      return search(outcome.state, currentDepth + 1);
+        const outcome = C.resolve(
+          simState,
+          p1Act,
+          p2Act,
+          K.rng(12345),
+          false
+        );
+
+        const score = search(outcome.state, currentDepth + 1);
+        if (score < minScore) minScore = score;
+      }
+
+      return Number.isFinite(minScore) ? minScore : 0;
     }
 
     return search(baseState, 1);
@@ -276,8 +302,18 @@
             if (candidates.length <= 1) {
               a = candidates[0]?.action ?? 0;
             } else {
-              // Extract Top 3 actions predicted by NN and run C.resolve lookahead
+              // Force 0-Chi staples into candidate set if Chi is spent
+              const selfChi = options.state?.[slot]?.chi ?? 0;
               const topCandidates = candidates.slice(0, 3);
+
+              if (selfChi < 1) {
+                const hasKick = topCandidates.some(c => E.INPUTS?.[c.action] === "D+K" || E.INPUTS?.[c.action] === "K");
+                if (!hasKick) {
+                  const kickIdx = candidates.findIndex(c => E.INPUTS?.[c.action] === "D+K" || E.INPUTS?.[c.action] === "K");
+                  if (kickIdx !== -1) topCandidates.push(candidates[kickIdx]);
+                }
+              }
+
               const lookaheadDepth = options.lookaheadDepth || 2;
               let bestAction = topCandidates[0].action;
               let maxVerifiedValue = -Infinity;
@@ -373,7 +409,10 @@
     const oppFaint = opp.isFainted ? 1.0 : (opp.faintMeter ?? 0) / 100;
     const faintTerm = oppFaint - selfFaint;
 
-    return lpTerm + 0.35 * chiTerm + 0.30 * thresholdTerm + 0.25 * faintTerm;
+    return lpTerm +
+      REWARD_CONFIG.CHI_WEIGHT * chiTerm +
+      REWARD_CONFIG.THRESHOLD_WEIGHT * thresholdTerm +
+      REWARD_CONFIG.FAINT_WEIGHT * faintTerm;
   }
 
   function remember(history, state, selected) {
@@ -603,13 +642,13 @@
           : 0;
 
         const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
-        const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
+        const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? REWARD_CONFIG.STALL_PENALTY : 0;
 
         const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
         const fullComboKey = (pendingObj.selfDir || "IDLE") + "+" + actionKey;
 
         const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
-        const idlePenalty = isVoluntaryIdle ? -0.25 : 0;
+        const idlePenalty = isVoluntaryIdle ? REWARD_CONFIG.IDLE_PENALTY : 0;
 
         let humanShaping = 0;
 
@@ -632,7 +671,7 @@
         }
 
         r = terminalReward +
-          SHAPING_SCALE * (discount * nextPotential - (pendingObj.phi ?? 0)) +
+          REWARD_CONFIG.SHAPING_SCALE * (discount * nextPotential - (pendingObj.phi ?? 0)) +
           damageReward +
           idlePenalty +
           stallPenalty +
@@ -648,8 +687,7 @@
             counts[act] = (counts[act] || 0) + 1;
           }
           for (const [actStr, count] of Object.entries(counts)) {
-            // Lowered spam threshold from 0.35 to 0.28 to catch multi-stance clustering
-            if (count / recentHist.length > 0.28) {
+            if (count / recentHist.length > REWARD_CONFIG.SPAM_THRESHOLD) {
               spammedAction = Number(actStr);
               break;
             }
@@ -657,19 +695,23 @@
         }
 
         if (spammedAction !== null && pendingObj.m) {
-          const spamPenalty = 0.20;
-          let altCount = 0;
-
+          const spamPenalty = REWARD_CONFIG.SPAM_PENALTY;
+          
+          // Proportional Redistribution across non-spammed legal moves
+          let altSum = 0;
+          const altIndices = [];
           for (let i = 0; i < pendingObj.m.length; i++) {
-            if (pendingObj.m[i] && i !== spammedAction) altCount++;
+            if (pendingObj.m[i] && i !== spammedAction) {
+              altIndices.push(i);
+              altSum += 1.0; // Standard legal weight
+            }
           }
 
-          if (altCount > 0) {
-            const altBoost = spamPenalty / altCount;
+          if (altIndices.length > 0) {
             if (pendingObj.a === spammedAction) {
               r -= spamPenalty;
-            } else {
-              r += altBoost;
+            } else if (altIndices.includes(pendingObj.a)) {
+              r += (spamPenalty / altIndices.length);
             }
           }
         }
@@ -712,7 +754,7 @@
         resolvedActionKey: finalResolvedKey || actionKeyVal,
         isFinalRoundResolution: Boolean(isFinal),
         r,
-        rewardCategory, // Tag required for training_worker.js telemetry tracking
+        rewardCategory,
         category: rewardCategory,
         discount: finalDiscount,
         weightScale: Number.isFinite(weightScale) ? weightScale : 1.0,
@@ -933,7 +975,7 @@
             selfLp: state[learnerSlot]?.lp ?? 0,
             oppLp: state[enemySlot]?.lp ?? 0,
             selfMaxLp: state[learnerSlot]?.maxLp ?? 1000,
-            oppMaxLp: state[enemySlot]?.oppMaxLp ?? 1000,
+            oppMaxLp: state[enemySlot]?.maxLp ?? 1000, // FIXED: Property lookup bug corrected from oppMaxLp
 
             selfChi: state[learnerSlot]?.chi ?? 0,
             oppChi: state[enemySlot]?.chi ?? 0,
