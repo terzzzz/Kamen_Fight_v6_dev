@@ -137,10 +137,6 @@
     }
   }
 
-  /**
-   * Low-temperature Softmax sampling helper to maintain natural decision diversity
-   * and prevent rigid single-button locking during deterministic evaluations.
-   */
   function softmaxSample(qValues, mask, temperature, rng) {
     let maxQ = -Infinity;
     for (let i = 0; i < qValues.length; i++) {
@@ -216,14 +212,12 @@
           const qValues = net.predict(s);
           const temp = options.temperature ?? 0;
 
-          // Check if runtime 1-step Foresee Search filter is enabled (e.g. during evaluation)
           const useForesee = Boolean(options.foresee) &&
             typeof C !== "undefined" &&
             typeof C.resolve === "function" &&
             Boolean(options.state);
 
           if (useForesee) {
-            // 1. Gather all legal candidate actions sorted by Q-value (descending)
             const candidates = [];
             for (let i = 0; i < qValues.length; i++) {
               if (m[i]) candidates.push({ action: i, q: qValues[i] });
@@ -233,12 +227,10 @@
             if (candidates.length <= 1) {
               a = candidates[0]?.action ?? 0;
             } else {
-              // 2. Evaluate top candidate moves using 1-step CombatCore simulation lookahead
               const topCandidates = candidates.slice(0, 2);
               let bestAction = topCandidates[0].action;
               let maxVerifiedValue = -Infinity;
 
-              // Assume opponent defaults to defensive guard (A+L) during evaluation lookahead
               const simulatedOpponentMove = "A+L";
 
               for (const cand of topCandidates) {
@@ -302,9 +294,6 @@
     };
   }
 
-  /**
-   * Potential Function Φ(s): Evaluates total tactical position state.
-   */
   function potential(state, slot) {
     if (!state) return 0;
     const enemy = C.other(slot);
@@ -361,7 +350,7 @@
     ].slice(-24);
   }
 
-  function episode(options) {
+  function* episode(options) {
     const {
       data,
       spec,
@@ -377,7 +366,7 @@
       damageDealtWeight = 1.0,
       damageTakenWeight = 1.0,
       drawPenalty = 0.30,
-      rewardMode = "standard", // "standard" (Dense/Shaping) OR "terminal_only" (Sparse Win/Loss)
+      rewardMode = "standard",
       initialStateOverride = null,
       isEvaluation = false
     } = options;
@@ -533,7 +522,6 @@
       let r = 0;
 
       if (rewardMode === "terminal_only" || rewardMode === "sparse") {
-        // --- PURE TERMINAL WIN/LOSS REWARD ---
         if (terminal) {
           if (nextState?.winner === learnerSlot) {
             r = 1.0;
@@ -546,7 +534,6 @@
           r = 0.0;
         }
       } else {
-        // --- STANDARD DENSE / SHAPED REWARD ---
         const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
 
         const oppFinalLp = Math.max(0, nextState?.[enemySlot]?.lp ?? 0);
