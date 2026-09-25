@@ -592,6 +592,41 @@
           idlePenalty +
           stallPenalty +
           humanShaping;
+
+        // --- ZERO-SUM ACTION VALUE REDISTRIBUTION ---
+        const recentHist = pendingObj.recentHistory || [];
+        let spammedAction = null;
+
+        if (recentHist.length >= 6) {
+          const counts = {};
+          for (const act of recentHist) {
+            counts[act] = (counts[act] || 0) + 1;
+          }
+          for (const [actStr, count] of Object.entries(counts)) {
+            if (count / recentHist.length > 0.35) {
+              spammedAction = Number(actStr);
+              break;
+            }
+          }
+        }
+
+        if (spammedAction !== null && pendingObj.m) {
+          const spamPenalty = 0.20;
+          let altCount = 0;
+
+          for (let i = 0; i < pendingObj.m.length; i++) {
+            if (pendingObj.m[i] && i !== spammedAction) altCount++;
+          }
+
+          if (altCount > 0) {
+            const altBoost = spamPenalty / altCount;
+            if (pendingObj.a === spammedAction) {
+              r -= spamPenalty; // Deduct from spammed action
+            } else {
+              r += altBoost;    // Distribute equivalent boost across legal alternatives
+            }
+          }
+        }
       }
 
       if (!Number.isFinite(r)) r = 0;
@@ -833,7 +868,7 @@
             selfLp: state[learnerSlot]?.lp ?? 0,
             oppLp: state[enemySlot]?.lp ?? 0,
             selfMaxLp: state[learnerSlot]?.maxLp ?? 1000,
-            oppMaxLp: state[enemySlot]?.maxLp ?? 1000,
+            oppMaxLp: state[enemySlot]?.oppMaxLp ?? 1000,
 
             selfChi: state[learnerSlot]?.chi ?? 0,
             oppChi: state[enemySlot]?.chi ?? 0,
@@ -842,8 +877,7 @@
             oppFainted: Boolean(state[enemySlot]?.isFainted),
 
             learnerRiderId: learnerRider.id,
-            prevAction1: actionHistory[actionHistory.length - 1],
-            prevAction2: actionHistory[actionHistory.length - 2]
+            recentHistory: [...actionHistory]
           });
 
           actionHistory.push(ownDecision.a);
