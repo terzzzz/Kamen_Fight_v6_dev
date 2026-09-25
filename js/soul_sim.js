@@ -520,24 +520,35 @@
       const discount = terminal ? 0 : roundDiscount;
 
       let r = 0;
+      let rewardCategory = "Neu";
+
+      const selfMaxLp = Math.max(1, pendingObj.selfMaxLp ?? 1000);
+      const oppMaxLpVal = Math.max(1, pendingObj.oppMaxLp ?? 1000);
+      const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
+      const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
+
+      const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLpVal;
+      const damageTaken = Math.max(0, pendingObj.selfLp - nextSelfLp) / selfMaxLp;
 
       if (rewardMode === "terminal_only" || rewardMode === "sparse") {
         if (terminal) {
           if (nextState?.winner === learnerSlot) {
             r = 1.0;
+            rewardCategory = "Win";
           } else if (nextState?.winner === "draw") {
             r = 0.0;
+            rewardCategory = "Neu";
           } else {
             r = -1.0;
+            rewardCategory = "Loss";
           }
         } else {
           r = 0.0;
+          rewardCategory = "Neu";
         }
       } else {
         const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
-
         const oppFinalLp = Math.max(0, nextState?.[enemySlot]?.lp ?? 0);
-        const oppMaxLpVal = Math.max(1, pendingObj.oppMaxLp ?? 1000);
         const totalDamageDealtRatio = Math.min(1.0, Math.max(0.0, (oppMaxLpVal - oppFinalLp) / oppMaxLpVal));
 
         const terminalReward = terminal
@@ -549,13 +560,6 @@
                 : 0.05 + 0.85 * totalDamageDealtRatio
           )
           : 0;
-
-        const selfMaxLp = Math.max(1, pendingObj.selfMaxLp ?? 1000);
-        const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
-        const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
-
-        const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLpVal;
-        const damageTaken = Math.max(0, pendingObj.selfLp - nextSelfLp) / selfMaxLp;
 
         const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
         const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? -0.02 : 0;
@@ -621,11 +625,22 @@
           if (altCount > 0) {
             const altBoost = spamPenalty / altCount;
             if (pendingObj.a === spammedAction) {
-              r -= spamPenalty; // Deduct from spammed action
+              r -= spamPenalty;
             } else {
-              r += altBoost;    // Distribute equivalent boost across legal alternatives
+              r += altBoost;
             }
           }
+        }
+
+        // Determine explicit telemetry category for worker telemetry counters
+        if (terminal) {
+          if (nextState?.winner === learnerSlot) rewardCategory = "Win";
+          else if (nextState?.winner !== "draw") rewardCategory = "Loss";
+          else rewardCategory = "Neu";
+        } else if (damageDealt > 0 || damageTaken > 0) {
+          rewardCategory = "Dmg";
+        } else {
+          rewardCategory = "Neu";
         }
       }
 
@@ -651,6 +666,7 @@
         resolvedActionKey: finalResolvedKey || actionKeyVal,
         isFinalRoundResolution: Boolean(isFinal),
         r,
+        rewardCategory, // Tag required for training_worker.js telemetry tracking
         discount: finalDiscount,
         weightScale: Number.isFinite(weightScale) ? weightScale : 1.0,
         s1: new Float32Array(s1),
