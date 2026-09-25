@@ -66,6 +66,18 @@
         </label>
 
         <label>
+          Reward Strategy
+          <select data-field="reward-mode">
+            <option value="standard" selected>
+              Standard (Dense HP Delta & Shaping)
+            </option>
+            <option value="terminal_only">
+              Terminal Only (Sparse Match Win/Loss)
+            </option>
+          </select>
+        </label>
+
+        <label>
           Training matches
           <input
             data-field="train-count"
@@ -382,7 +394,12 @@
       );
 
       if (training) {
+        const rModeLabel = r.rewardMode === "terminal_only"
+          ? "Terminal Only (Sparse Match Win/Loss)"
+          : "Standard (Dense HP Delta & Shaping)";
+
         lines.push(
+          "Reward strategy: " + rModeLabel,
           "Teacher: " + (r.teacher || "none"),
           "Guided-round probability: " + (100 * r.guideProbability).toFixed(1) + "%",
           "Exploration probability: " + (100 * r.epsilon).toFixed(1) + "%",
@@ -519,6 +536,7 @@
 
       const learnerVal = field("learner").value;
       const opponentVal = field("opponent").value;
+      const rewardModeVal = field("reward-mode").value || "standard";
       const training = kind === "train";
 
       let checkpoint = training
@@ -619,6 +637,7 @@
             learner: learnerVal,
             opponent: opponentVal,
             mode: field("mode").value,
+            rewardMode: rewardModeVal,
             guideHoldPct,
             guideZeroPct
           }
