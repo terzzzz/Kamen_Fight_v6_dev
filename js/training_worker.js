@@ -109,6 +109,9 @@ async function run(job) {
   const guideHoldPct = Number.isFinite(job.guideHoldPct) ? job.guideHoldPct : 20;
   const guideZeroPct = Number.isFinite(job.guideZeroPct) ? job.guideZeroPct : 80;
 
+  // Read selected reward mode: "standard" (Dense/Shaping) vs. "terminal_only" (Sparse Win/Loss)
+  const rewardMode = job.rewardMode || "standard";
+
   let old = job.checkpoint || null;
 
   const learnerId = job.learner || "ichigo";
@@ -237,7 +240,6 @@ async function run(job) {
   let currentImitation = 0;
   let currentEpsilon = 0;
 
-  // Track WASD directional stances and JKIL attack action breakdown (Recorded 1 per combat round)
   const wasdCounts = { W: 0, A: 0, S: 0, D: 0, IDLE: 0 };
   const jkilCounts = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
   const moveMatrix = {
@@ -263,6 +265,7 @@ async function run(job) {
       trainerBuild: BUILD,
       learnerId,
       opponentId,
+      rewardMode,
       trainingTask: {
         key: taskKey,
         games: taskBaseGames + games
@@ -319,6 +322,7 @@ async function run(job) {
       guideProbability: currentGuideProbability,
       imitationCoefficient: currentImitation,
       epsilon: currentEpsilon,
+      rewardMode,
 
       seed,
       learner: learnerId,
@@ -327,7 +331,6 @@ async function run(job) {
       cancelled,
       breakdown,
 
-      // Stance Ratio Payload
       wasdRatio: {
         W: (100 * wasdCounts.W / totalWasd).toFixed(1) + "%",
         A: (100 * wasdCounts.A / totalWasd).toFixed(1) + "%",
@@ -337,7 +340,6 @@ async function run(job) {
         counts: { ...wasdCounts }
       },
 
-      // Executed Move Matrix Payload (ASDW x JKIL)
       moveBreakdown: {
         jkilCounts: { ...jkilCounts },
         moveMatrix: JSON.parse(JSON.stringify(moveMatrix))
@@ -378,11 +380,9 @@ async function run(job) {
       ];
     }
 
-    // Calculate current batch progress ratio (strictly 0.0 to 100.0% of the active job)
     const batchProgressPct = (i / Math.max(1, job.matches)) * 100;
     const batchProgressRatio = i / Math.max(1, job.matches);
 
-    // Compute piece-wise linear guidance probability based strictly on the current job index
     let guideProbability = 0.0;
     if (training) {
       if (batchProgressPct <= guideHoldPct) {
@@ -400,12 +400,10 @@ async function run(job) {
       }
     }
 
-    // Anchor Epsilon exploration (0.15 -> 0.05) strictly to active batch progress
     const epsilon = training
       ? Math.max(0.05, 0.15 * Math.exp(-3.0 * batchProgressRatio))
       : 0;
 
-    // Anchor Imitation loss directly to current teacher guidance rate
     const imitation = training
       ? Math.max(MIN_IMITATION, INITIAL_IMITATION * guideProbability)
       : 0;
@@ -414,7 +412,6 @@ async function run(job) {
     currentImitation = imitation;
     currentEpsilon = epsilon;
 
-    // Run episode simulation pass
     const generator = SoulSim.episode({
       data,
       spec,
@@ -427,6 +424,7 @@ async function run(job) {
       seed: matchSeed,
       epsilon,
       guideProbability,
+      rewardMode, // Passes "standard" or "terminal_only" to SoulSim
       isEvaluation: !training
     });
 
@@ -445,7 +443,6 @@ async function run(job) {
           );
         }
 
-        // Record Matrix Stats ONLY ONCE per completed combat round
         if (event.transition.isFinalRoundResolution) {
           const moveKey = event.transition.resolvedActionKey || event.transition.actionKey || "DO_NOTHING";
 
