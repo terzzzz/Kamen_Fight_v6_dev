@@ -150,6 +150,9 @@
     }
   }
 
+  /**
+   * Numerically safe Boltzmann Softmax action selection across legal action mask.
+   */
   function softmaxSample(qValues, mask, temperature, rng) {
     let maxQ = -Infinity;
     for (let i = 0; i < qValues.length; i++) {
@@ -872,9 +875,10 @@
           teacher: trainingTeacher,
           style: "reactive",
           frames: learnerFrames,
-          temperature: options.temperature ?? (isEvaluation ? 0.08 : 0),
-          foresee: isEvaluation,
-          lookaheadDepth: isEvaluation ? 2 : 0,
+          // Set temperature default to 0.20 when isEvaluation = true
+          temperature: options.temperature ?? (isEvaluation ? 0.20 : 0),
+          foresee: Boolean(options.foresee),
+          lookaheadDepth: options.lookaheadDepth || (isEvaluation && options.foresee ? 2 : 0),
           state: state,
           slot: learnerSlot,
           onQ: onStepQ
@@ -896,9 +900,9 @@
             )
           ),
           {
-            temperature: isEvaluation ? 0.08 : 0,
-            foresee: isEvaluation,
-            lookaheadDepth: isEvaluation ? 2 : 0,
+            temperature: options.temperature ?? (isEvaluation ? 0.20 : 0),
+            foresee: Boolean(options.foresee),
+            lookaheadDepth: options.lookaheadDepth || (isEvaluation && options.foresee ? 2 : 0),
             state: state,
             slot: enemySlot
           }
