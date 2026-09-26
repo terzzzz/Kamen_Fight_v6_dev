@@ -1,29 +1,23 @@
 // js/ai.js
-// Shared decision path for live play, simulation, and workers.
-
 (function (g) {
   "use strict";
 
-  const VERSION = "unified-agent-path-1";
+  const VERSION = "rider-v1";
   const K = g.KF;
   const C = g.CombatCore;
 
   function stamp(result) {
     return {
       ...result,
-      debug: {
-        ...(result.debug || {}),
-        engineVersion: VERSION
-      }
+      debug: { ...(result.debug || {}), engineVersion: VERSION }
     };
   }
 
   function choose(context) {
     const { state, slot } = context;
-    const difficulty = K.difficulty(context.difficulty);
+    const rawDiff = String(context.difficulty || context.mode || "").toLowerCase();
     const player = state?.[slot];
-    const oppSlot = slot === "p1" ? "p2" : "p1";
-    const opponent = state?.[oppSlot];
+    const opponent = state?.[slot === "p1" ? "p2" : "p1"];
 
     if (!player || !opponent || !state.moves?.[slot]) {
       throw new Error("Invalid AI planning context.");
@@ -32,67 +26,43 @@
     if (state.winner || player.isFainted) {
       return stamp({
         action: { key: "DO_NOTHING", charge: 0 },
-        debug: {
-          difficulty,
-          strategy: "Forced faint recovery / completed match",
-          completedHorizon: 0
-        }
+        debug: { strategy: "Faint recovery / match end" }
       });
     }
 
-    // Determine if Neural Agent is available for this rider in this matchup
-    const agentModel = (g.SoulAgent && typeof g.SoulAgent.getSection === "function")
-      ? g.SoulAgent.getSection(player.id, opponent.id, "active")
-      : null;
-
-    const useAgent =
-      context.disableAgent !== true &&
-      (
-        (difficulty === "soul" && Boolean(agentModel)) ||
-        context.policyWeights != null
-      );
-
-    if (useAgent) {
-      const model = context.policyWeights || agentModel;
-
-      if (!model || !g.SoulNN) {
-        throw new Error("Soul AI requires a loaded neural checkpoint.");
+    // --- 1. RIDER MODE ONLY: Monte Carlo Tree Search + Neural Matrix ---
+    if (rawDiff === "rider" || rawDiff === "mcts" || context.useMCTS === true) {
+      if (!g.MCTSEngine || typeof g.MCTSEngine.search !== "function") {
+        throw new Error("MCTSEngine module is not loaded.");
       }
 
-      // Execute Neural Decision directly from the 1v1 policy
-      const env = g.SoulEnv.create(state, context.previousActions || {});
-      const obs = g.SoulEnv.observe(env, slot);
-      const spec = g.SoulEnv.makeSpec(context.data || { riders: [player, opponent], moves: state.moves });
-      const frames = context.frames || new g.SoulEnv.Frames(spec);
-      const vector = g.SoulEnv.vector(obs, spec);
-      const stacked = frames.push(vector);
-      const mask = Uint8Array.from(g.SoulEnv.mask(env, slot));
-
-      const net = g.SoulNN.Network.fromJSON(model.net);
-      const qValues = net.predict(stacked);
-      const actionIdx = g.SoulNN.argmax(qValues, mask);
-      const actionKey = g.SoulEnv.INPUTS[actionIdx];
-
-      let actionObj = { key: "DO_NOTHING", charge: 0 };
-      if (actionKey !== "IDLE" && actionKey !== "DO_NOTHING" && actionKey !== "WAIT") {
-        const [dir, btn] = actionKey.split("+");
-        if (dir && btn) {
-          actionObj = {
-            key: actionKey,
-            charge: env.cells[slot].charge
-          };
-        }
-      }
+      const mctsResult = g.MCTSEngine.search({
+        state: C.copyState(state),
+        slot,
+        net: context.policyWeights ? g.SoulNN.Network.fromJSON(context.policyWeights.net) : null,
+        spec: g.SoulEnv ? g.SoulEnv.makeSpec(context.data || { riders: [player, opponent], moves: state.moves }) : null,
+        iterations: context.mctsIterations || 200,
+        cPUCT: context.cPUCT || 1.41,
+        seed: context.seed ?? 12345
+      });
 
       return stamp({
-        action: C.normalizeAction(state, slot, actionObj),
+        action: C.normalizeAction(state, slot, { key: mctsResult.actionKey, charge: player.charge || 0 }),
         debug: {
-          difficulty: "soul",
-          strategy: `Neural Master Matrix [${g.SoulAgent.getCanonicalKey(player.id, opponent.id)}]`,
-          qValue: qValues[actionIdx]
+          difficulty: "rider",
+          strategy: `RIDER AlphaZero [${mctsResult.visits} visits]`,
+          expectedValue: Number((mctsResult.expectedValue || 0).toFixed(3))
         }
       });
     }
+
+    // --- 2. NOVICE / BALANCED / MASTER / SOUL: ForeseeEngine Search Trees ---
+    if (!g.ForeseeEngine || typeof g.ForeseeEngine.search !== "function") {
+      throw new Error("ForeseeEngine search module is missing.");
+    }
+
+    // Maps "easy", "balanced", "master", or "soul" directly into ForeseeEngine
+    const difficulty = (rawDiff === "soul") ? "soul" : K.difficulty(context.difficulty);
 
     const result = g.ForeseeEngine.search({
       ...context,
@@ -100,48 +70,26 @@
     });
 
     const rows = result.rows;
-
     if (!Array.isArray(rows) || !rows.length) {
       throw new Error("ForeseeEngine returned no candidate actions.");
     }
 
     const bestScore = rows[0].score;
-    const tolerance = K.levels[difficulty].nearBest;
+    const tolerance = K?.levels?.[difficulty]?.nearBest ?? 0;
+    const close = rows.filter(row => bestScore - row.score <= tolerance);
+    const probabilities = close.map(row => Math.exp((row.score - bestScore) / Math.max(1, tolerance / 3)));
+    const total = probabilities.reduce((sum, v) => sum + v, 0);
 
-    const close = rows.filter(row =>
-      bestScore - row.score <= tolerance
-    );
-
-    const probabilities = close.map(row =>
-      Math.exp(
-        (row.score - bestScore) /
-        Math.max(1, tolerance / 3)
-      )
-    );
-
-    const total = probabilities.reduce(
-      (sum, value) => sum + value,
-      0
-    );
-
-    const rng = K.rng(
-      K.hash(context.seed ?? 1, "selection")
-    );
-
+    const rng = K ? K.rng(K.hash(context.seed ?? 1, "selection")) : Math.random;
     let cursor = rng() * total;
     let selected = close[close.length - 1];
 
-    for (let index = 0; index < close.length; index++) {
-      cursor -= probabilities[index];
-
+    for (let i = 0; i < close.length; i++) {
+      cursor -= probabilities[i];
       if (cursor <= 0) {
-        selected = close[index];
+        selected = close[i];
         break;
       }
-    }
-
-    if (!C.isLegal(state, slot, selected.action)) {
-      throw new Error("Search returned an illegal action.");
     }
 
     return stamp({
@@ -159,17 +107,10 @@
       {
         p1: { ...selected.p1 },
         p2: { ...selected.p2 },
-        fainted: {
-          p1: before.p1.isFainted,
-          p2: before.p2.isFainted
-        }
+        fainted: { p1: before.p1.isFainted, p2: before.p2.isFainted }
       }
     ].slice(-24);
   }
 
-  g.KF_AI = {
-    VERSION,
-    choose,
-    remember
-  };
+  g.KF_AI = { VERSION, choose, remember };
 })(globalThis);
