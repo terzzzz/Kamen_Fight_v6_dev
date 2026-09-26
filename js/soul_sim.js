@@ -2,7 +2,8 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v5";
+  // Updated BUILD metadata to lock v3 history simulation engine
+  const BUILD = "round-discount-master-guide-v3-history";
   const TEACHER_DIFFICULTY = "master";
 
   const REWARD_CONFIG = Object.freeze({
@@ -1049,7 +1050,8 @@
 
       history = remember(history, state, result.actions);
 
-      previousActions = result.actions;
+      // Pass history along with last round actions so SoulEnv.observe() can extract past 5 turns
+      previousActions = { ...result.actions, history };
       state = result.state;
 
       rounds++;
