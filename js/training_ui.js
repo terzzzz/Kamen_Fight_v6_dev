@@ -47,22 +47,25 @@
         <label>
           Opponent controller
           <select data-field="mode">
-            <option value="easy">
-              NOVICE search tree
-            </option>
-            <option value="balanced" selected>
-              BALANCED search tree
-            </option>
-            <option value="master">
-              MASTER search tree
-            </option>
-            <option value="soul">
-              SOUL search tree — peak lookahead
-            </option>
-            <option value="rider">
-              RIDER Mode — AlphaZero MCTS Matrix
-            </option>
-          </select>
+  <option value="mixed" selected>
+    Scripted Fast Trainer (Fastest — O(1) Rule Bot)
+  </option>
+  <option value="easy">
+    NOVICE search tree
+  </option>
+  <option value="balanced">
+    BALANCED search tree
+  </option>
+  <option value="master">
+    MASTER search tree
+  </option>
+  <option value="soul">
+    SOUL search tree — peak lookahead
+  </option>
+  <option value="rider">
+    RIDER Mode — AlphaZero MCTS Matrix
+  </option>
+</select>
         </label>
 
         <label>
@@ -269,15 +272,16 @@
     let busy = false;
     let evaluationTarget = null;
 
-    const modeLabels = {
-      easy: "NOVICE Search Tree",
-      balanced: "BALANCED Search Tree",
-      master: "MASTER Search Tree",
-      soul: "SOUL Search Tree",
-      rider: "RIDER Mode (AlphaZero MCTS Matrix)",
-      mcts: "RIDER Mode (AlphaZero MCTS Matrix)",
-      net: "Frozen Candidate Network"
-    };
+  const modeLabels = {
+  mixed: "Scripted Fast Trainer (O(1) Rule Bot)",
+  easy: "NOVICE Search Tree",
+  balanced: "BALANCED Search Tree",
+  master: "MASTER Search Tree",
+  soul: "SOUL Search Tree",
+  rider: "RIDER Mode (AlphaZero MCTS Matrix)",
+  mcts: "RIDER Mode (AlphaZero MCTS Matrix)",
+  net: "Frozen Candidate Network"
+};
 
     function output(text) {
       field("output").textContent = text;
