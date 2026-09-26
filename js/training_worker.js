@@ -55,21 +55,19 @@ function validateJob(job) {
   }
 
   // Auto-map UI mode strings and legacy aliases to valid worker modes
-  const rawMode = String(job.mode || "master").toLowerCase();
+  const rawMode = String(job.mode || "mixed").toLowerCase();
   const modeMap = {
+    mixed: "mixed",      // ✅ Fast O(1) scripted bot
     novice: "easy",
     easy: "easy",
     balanced: "balanced",
     master: "master",
     soul: "soul",
     rider: "mcts",
-    mcts: "mcts",
-    mixed: "master", // Legacy fallback
-    net: "mcts"      // Legacy fallback
+    mcts: "mcts"
   };
 
-  const normalizedMode = modeMap[rawMode] || "master";
-  job.mode = normalizedMode;
+  job.mode = modeMap[rawMode] || "mixed";
 
   // Ensure valid match count for evaluation runs
   if (!Number.isInteger(job.matches) || job.matches < 2) {
@@ -99,18 +97,22 @@ async function run(job) {
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
-  // ✅ RESOLVE HIDDEN LAYER DIMENSIONS FIRST (Fixes ReferenceError)
+  // Resolve hidden layer dimensions first
   const h1 = Array.isArray(job.hidden) ? job.hidden[0] : (spec.hidden ? spec.hidden[0] : 256);
   const h2 = Array.isArray(job.hidden) ? job.hidden[1] : (spec.hidden ? spec.hidden[1] : 128);
 
-  // Checkpoint architecture validation & reset safeguard
-  if (old) {
-    const inputMismatch = old.net?.sizes?.[0] !== spec.input;
-    const hiddenMismatch = old.net?.sizes?.[1] !== h1;
+  // Calculate expected total network parameters for [input, h1, h2, 10]
+  const expectedParams = (spec.input * h1 + h1) + (h1 * h2 + h2) + (h2 * 10 + 10);
 
-    if (inputMismatch || hiddenMismatch) {
-      console.warn(`Architecture mismatch detected (Input: ${old.net?.sizes?.[0]} vs ${spec.input}, Hidden: ${old.net?.sizes?.[1]} vs ${h1}). Initializing fresh 256-unit network.`);
-      old = null; // Reset to force fresh network instantiation
+  // Checkpoint architecture validation & stale model reset safeguard
+  if (old) {
+    const actualParams = old.net?.weights?.length || 0;
+    const inputMismatch = old.net?.sizes?.[0] !== spec.input;
+    const paramMismatch = actualParams !== expectedParams;
+
+    if (inputMismatch || paramMismatch) {
+      console.warn(`Obsolete checkpoint detected (Params: ${actualParams} vs ${expectedParams}). Discarding legacy RAM model and starting fresh.`);
+      old = null; // Auto-reset stale RAM model
     } else {
       old.version = VERSION;
       old.spec = spec;
