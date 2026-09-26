@@ -2,7 +2,6 @@
 (function (g) {
   "use strict";
 
-  // Updated BUILD constant to lock v3 history UI synchronization
   const BUILD = "round-discount-master-guide-v3-history";
   let initialized = false;
 
@@ -48,20 +47,20 @@
         <label>
           Opponent controller
           <select data-field="mode">
-            <option value="mixed">
-              Scripted warm-up — not difficulty AI
-            </option>
             <option value="easy">
-              Existing NOVICE search
+              NOVICE search tree
             </option>
             <option value="balanced" selected>
-              Existing BALANCED search
+              BALANCED search tree
             </option>
             <option value="master">
-              Existing MASTER search — slower
+              MASTER search tree
             </option>
             <option value="soul">
-              Existing SOUL search — slower
+              SOUL search tree — peak lookahead
+            </option>
+            <option value="rider">
+              RIDER Mode — AlphaZero MCTS Matrix
             </option>
           </select>
         </label>
@@ -271,11 +270,12 @@
     let evaluationTarget = null;
 
     const modeLabels = {
-      mixed: "Scripted warm-up — not difficulty AI",
-      easy: "Existing NOVICE search",
-      balanced: "Existing BALANCED search",
-      master: "Existing MASTER search",
-      soul: "Existing SOUL search",
+      easy: "NOVICE Search Tree",
+      balanced: "BALANCED Search Tree",
+      master: "MASTER Search Tree",
+      soul: "SOUL Search Tree",
+      rider: "RIDER Mode (AlphaZero MCTS Matrix)",
+      mcts: "RIDER Mode (AlphaZero MCTS Matrix)",
       net: "Frozen Candidate Network"
     };
 
@@ -668,8 +668,8 @@
             const opponentVal = field("opponent").value;
             const searchMode = field("mode").value;
 
-            if (searchMode !== "master" && searchMode !== "soul") {
-              output("ERROR\nSelect 'Existing MASTER search' or 'Existing SOUL search' in Opponent Controller first.");
+            if (!["easy", "balanced", "master", "soul"].includes(searchMode)) {
+              output("ERROR\nSelect a search tree option (NOVICE, BALANCED, MASTER, or SOUL) in Opponent Controller first.");
               break;
             }
 
