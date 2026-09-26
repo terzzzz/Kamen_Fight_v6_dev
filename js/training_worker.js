@@ -106,9 +106,9 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
 
-  // Read guidance decay percentiles passed from UI (defaulting to 20% and 80%)
-  const guideHoldPct = Number.isFinite(job.guideHoldPct) ? job.guideHoldPct : 20;
-  const guideZeroPct = Number.isFinite(job.guideZeroPct) ? job.guideZeroPct : 80;
+  // Read guidance decay percentiles passed from UI (defaulting to 3% and 5%)
+  const guideHoldPct = Number.isFinite(job.guideHoldPct) ? job.guideHoldPct : 3;
+  const guideZeroPct = Number.isFinite(job.guideZeroPct) ? job.guideZeroPct : 5;
 
   // Read selected reward mode: "standard" (Dense/Shaping) vs. "terminal_only" (Sparse Win/Loss)
   const rewardMode = job.rewardMode || "standard";
@@ -155,12 +155,16 @@ async function run(job) {
 
   const seed = Number(job.seed) >>> 0;
 
+  // Resolve hidden layer dimensions (Upgraded to 256 primary units)
+  const h1 = Array.isArray(job.hidden) ? job.hidden[0] : (spec.hidden ? spec.hidden[0] : 256);
+  const h2 = Array.isArray(job.hidden) ? job.hidden[1] : (spec.hidden ? spec.hidden[1] : 128);
+
   const net = old
     ? SoulNN.Network.fromJSON(old.net)
     : new SoulNN.Network(
         spec.input,
-        128,
-        128,
+        h1,
+        h2,
         10
       );
 
@@ -389,6 +393,10 @@ async function run(job) {
 
       teacher: training ? "master" : null,
       guideProbability: currentGuideProbability,
+      guideHoldPct,
+      guideZeroPct,
+      guideHoldMatch: Math.round(job.matches * (guideHoldPct / 100)),
+      guideZeroMatch: Math.round(job.matches * (guideZeroPct / 100)),
       imitationCoefficient: currentImitation,
       epsilon: currentEpsilon,
       rewardMode,
@@ -397,6 +405,7 @@ async function run(job) {
       learner: learnerId,
       opponent: opponentId,
       mode: job.mode,
+      hiddenSizes: net.sizes.slice(1, -1),
       cancelled,
       breakdown,
 
