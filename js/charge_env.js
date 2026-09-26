@@ -5,7 +5,8 @@
   const C = g.CombatCore;
   const K = g.KF;
 
-  const TAG = "kf-charge-v2";
+  // Bumped TAG to permanently lock v3 history architecture
+  const TAG = "kf-charge-v3-history";
   const STEP = 50;
   const DECISION = 100;
   const REACTION = 250;
@@ -200,6 +201,29 @@
       else break;
     }
 
+    // --- 5-TURN ACTION HISTORY EXTRACTION (SELF & OPPONENT) ---
+    const selfHistory = [];
+    const oppHistory = [];
+    const rawHistory = e.previousActions?.history || e.state?.history || [];
+
+    if (Array.isArray(rawHistory) && rawHistory.length > 0) {
+      for (let i = rawHistory.length - 1; i >= 0 && selfHistory.length < 5; i--) {
+        const entry = rawHistory[i];
+        const selfAct = entry?.[slot] || entry?.actions?.[slot];
+        const oppAct = entry?.[opponent] || entry?.actions?.[opponent];
+
+        if (selfAct) selfHistory.unshift({ ...selfAct });
+        if (oppAct) oppHistory.unshift({ ...oppAct });
+      }
+    }
+
+    // Fallbacks if match history contains fewer than 5 turns
+    const fallbackSelf = e.previousActions[slot] ? { ...e.previousActions[slot] } : idle();
+    const fallbackOpp = e.previousActions[opponent] ? { ...e.previousActions[opponent] } : idle();
+
+    while (selfHistory.length < 5) selfHistory.unshift({ ...fallbackSelf });
+    while (oppHistory.length < 5) oppHistory.unshift({ ...fallbackOpp });
+
     return {
       round: e.state.round,
       time: e.t,
@@ -211,7 +235,9 @@
       moves: e.state.moves[slot],
       enemyMoves: e.state.moves[opponent],
       lastOwn: { ...(e.previousActions[slot] || idle()) },
-      lastOpp: { ...(e.previousActions[opponent] || idle()) }
+      lastOpp: { ...(e.previousActions[opponent] || idle()) },
+      selfHistory,
+      oppHistory
     };
   }
 
@@ -356,10 +382,12 @@
     }
 
     function previous(a) {
-      const parts = a.key.split("+");
+      const safeA = a || idle();
+      const key = safeA.key || "DO_NOTHING";
+      const parts = key.split("+");
       for (const d of DIRS) values.push(Number(parts[0] === d));
       for (const b of BUTTONS) values.push(Number(parts[1] === b));
-      values.push(a.charge / 100);
+      values.push((safeA.charge || 0) / 100);
     }
 
     fighter(o.self);
@@ -369,6 +397,44 @@
     control(o.opp);
     previous(o.lastOwn);
     previous(o.lastOpp);
+
+    // Backward-compatibility slice guard for legacy v2 models
+    const isLegacySpec = spec && spec.tag === "kf-charge-v2";
+
+    if (!isLegacySpec) {
+      // --- 5-TURN SELF ACTION HISTORY VECTOR (45 FLOATS) ---
+      const sHistory = o.selfHistory || Array(5).fill(o.lastOwn);
+      for (let i = 0; i < 5; i++) {
+        previous(sHistory[i]);
+      }
+
+      // --- 5-TURN OPPONENT ACTION HISTORY VECTOR (45 FLOATS) ---
+      const oHistory = o.oppHistory || Array(5).fill(o.lastOpp);
+      for (let i = 0; i < 5; i++) {
+        previous(oHistory[i]);
+      }
+
+      // --- DYNAMIC OPPONENT BEHAVIORAL STYLE METRICS (4 FLOATS) ---
+      let oppGuardCount = 0;
+      let oppAttackCount = 0;
+      let oppSpecialCount = 0;
+      let oppHeavyCount = 0;
+
+      for (const act of oHistory) {
+        const key = act?.key || "";
+        if (key.startsWith("A+")) oppGuardCount++;
+        if (key.includes("+")) oppAttackCount++;
+        if (key.endsWith("+I")) oppSpecialCount++;
+        if (key.endsWith("+L")) oppHeavyCount++;
+      }
+
+      values.push(
+        oppGuardCount / 5,   // Guard frequency (SOUL signature)
+        oppAttackCount / 5,  // Aggression frequency
+        oppSpecialCount / 5, // Chi special frequency
+        oppHeavyCount / 5    // Heavy sweep frequency
+      );
+    }
 
     values.push(
       o.remaining / limit(),
@@ -415,6 +481,7 @@
       data.moves
     );
 
+    // Automatically measures and locks frame dimension for v3
     spec.frame = vector(observe(create(sample), "p1"), spec).length;
     spec.input = spec.frame * HISTORY;
 
