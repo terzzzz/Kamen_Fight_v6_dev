@@ -2,7 +2,8 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v5";
+  // Updated BUILD constant to lock v3 history UI synchronization
+  const BUILD = "round-discount-master-guide-v3-history";
   let initialized = false;
 
   async function initialize() {
