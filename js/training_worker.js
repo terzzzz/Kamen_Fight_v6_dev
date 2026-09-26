@@ -105,30 +105,20 @@ async function run(job) {
   const expectedParams = (spec.input * h1 + h1) + (h1 * h2 + h2) + (h2 * 10 + 10);
 
   // Checkpoint architecture validation & stale model reset safeguard
-  if (old) {
-    const actualParams = old.net?.weights?.length || 0;
-    const inputMismatch = old.net?.sizes?.[0] !== spec.input;
-    const paramMismatch = actualParams !== expectedParams;
+ // Checkpoint architecture validation & stale model reset safeguard
+  if (old && old.net) {
+    const sizes = old.net.sizes || [];
+    const inputMismatch = sizes[0] !== spec.input;
+    const hidden1Mismatch = sizes[1] !== h1;
+    const hidden2Mismatch = sizes[2] !== h2;
 
-    if (inputMismatch || paramMismatch) {
-      console.warn(`Obsolete checkpoint detected (Params: ${actualParams} vs ${expectedParams}). Discarding legacy RAM model and starting fresh.`);
-      old = null; // Auto-reset stale RAM model
+    if (inputMismatch || hidden1Mismatch || hidden2Mismatch) {
+      console.warn(`[Worker] Checkpoint architecture mismatch [${sizes.join(", ")}] vs expected [${spec.input}, ${h1}, ${h2}, 10]. Discarding checkpoint.`);
+      old = null; // Auto-reset stale model
     } else {
       old.version = VERSION;
       old.spec = spec;
     }
-  }
-
-  if (
-    old &&
-    (
-      !Number.isSafeInteger(old.games) ||
-      old.games < 0 ||
-      !Number.isSafeInteger(old.steps) ||
-      old.steps < 0
-    )
-  ) {
-    throw new Error("Invalid checkpoint counters.");
   }
 
   if (!training && !old) {
