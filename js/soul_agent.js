@@ -2,10 +2,11 @@
 (function (g) {
   "use strict";
 
-  const VERSION = "round-discount-master-guide-v5";
-  const MASTER_VERSION = "kf-soul-matrix-v1";
-  const WORKER_VERSION = "kf-soul-ddqn-v2";
-  const STORAGE_KEY = "kf_soul_agent_data_v2";
+  // Updated version constants to lock v3 history matrix metadata
+  const VERSION = "round-discount-master-guide-v3-history";
+  const MASTER_VERSION = "kf-soul-matrix-v3";
+  const WORKER_VERSION = "kf-soul-ddqn-v3";
+  const STORAGE_KEY = "kf_soul_agent_data_v3";
 
   const RIDER_CODES = {
     ichigo: "001",
@@ -270,7 +271,7 @@
     if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
 
     const spec = g.SoulEnv.makeSpec(cachedData);
-    const inputDim = Number.isFinite(spec?.input) ? spec.input : (spec?.inputSize || spec?.inputs || 128);
+    const inputDim = Number.isFinite(spec?.input) ? spec.input : (spec?.inputSize || spec?.inputs || 832);
     const net = new g.SoulNN.Network(inputDim, 128, 128, 10);
     const targetKey = getCanonicalKey(learnerId, opponentId);
 
