@@ -99,22 +99,18 @@ async function run(job) {
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
-  if (old) {
-    const inputMismatch = old.net?.sizes?.[0] !== spec.input;
+ if (old) {
+  const inputMismatch = old.net?.sizes?.[0] !== spec.input;
+  const hiddenMismatch = old.net?.sizes?.[1] !== h1;
 
-    if (inputMismatch) {
-      if (training) {
-        throw new Error(
-          `Network input size mismatch: checkpoint expects ${old.net?.sizes?.[0]}, current spec requires ${spec.input}.`
-        );
-      } else {
-        throw new Error("Worker network input size mismatch.");
-      }
-    }
-
+  if (inputMismatch || hiddenMismatch) {
+    console.warn(`Architecture mismatch detected (Input: ${old.net?.sizes?.[0]} vs ${spec.input}, Hidden: ${old.net?.sizes?.[1]} vs ${h1}). Initializing fresh 256-unit network.`);
+    old = null; // Reset to force fresh network instantiation
+  } else {
     old.version = VERSION;
     old.spec = spec;
   }
+}
 
   if (
     old &&
