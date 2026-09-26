@@ -46,6 +46,18 @@
     return `${toCode(rider1)}_${toCode(rider2)}`;
   }
 
+  function resetRAMStores() {
+    store.candidate = { matchups: {}, legacy: null };
+    store.active = { matchups: {}, legacy: null };
+    if (g.localStorage) {
+      try {
+        g.localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
+    }
+    lastStorageWarning = "";
+    console.log("[SoulAgent] RAM stores and LocalStorage successfully cleared.");
+  }
+
   function validateCheckpoint(checkpoint, expectedLearner = null, expectedOpponent = null) {
     if (!checkpoint || typeof checkpoint !== "object") {
       return { valid: false, error: "Checkpoint is empty or invalid object." };
@@ -54,18 +66,20 @@
       return { valid: false, error: "Missing or corrupted neural network layers ('net.layers')." };
     }
 
+    // Architecture safeguard check for upgraded 256-unit hidden layer shape
+    if (checkpoint.net.sizes && checkpoint.net.sizes[1] !== 256) {
+      return { valid: false, error: `Obsolete architecture sizes [${checkpoint.net.sizes.join(", ")}]. Expected 256 primary hidden units.` };
+    }
+
     let weightCount = 0;
     for (let lIdx = 0; lIdx < checkpoint.net.layers.length; lIdx++) {
       const layer = checkpoint.net.layers[lIdx];
-      
-      // Support layer.weights, layer.w, layer.W, or layer.data
       const rawWeights = layer.weights || layer.w || layer.W || layer.data;
 
       if (!rawWeights) {
         return { valid: false, error: `Layer ${lIdx} is missing weight data.` };
       }
 
-      // Handle 2D arrays or 1D TypedArrays
       const flatWeights = Array.isArray(rawWeights) ? rawWeights.flat(Infinity) : rawWeights;
 
       if (!flatWeights || (typeof flatWeights.length !== "number" && typeof flatWeights.byteLength !== "number")) {
@@ -145,11 +159,6 @@
     return false;
   }
 
-  /**
-   * AUTO-MAPS ALL 36 FILES FROM data/matrix/ ON STARTUP
-   * Iterates through 001_001.json -> 006_006.json in parallel.
-   * If found, populates game counts; if 404, returns 0g.
-   */
   async function scanAllMatchupsFromRepo() {
     const codes = ["001", "002", "003", "004", "005", "006"];
     const fetchPromises = [];
@@ -173,6 +182,8 @@
                     store.candidate.matchups[key] = JSON.parse(JSON.stringify(checkpoint));
                   }
                   foundCount++;
+                } else {
+                  console.warn(`[SoulAgent] Ignored legacy file '${key}.json': ${val.error}`);
                 }
               }
             })
@@ -271,8 +282,10 @@
     if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
 
     const spec = g.SoulEnv.makeSpec(cachedData);
-    const inputDim = Number.isFinite(spec?.input) ? spec.input : (spec?.inputSize || spec?.inputs || 832);
-    const net = new g.SoulNN.Network(inputDim, 128, 128, 10);
+    const inputDim = Number.isFinite(spec?.input) ? spec.input : 108;
+    
+    // UPDATED: Instantiates upgraded [256, 128] matrix shape
+    const net = new g.SoulNN.Network(inputDim, 256, 128, 10);
     const targetKey = getCanonicalKey(learnerId, opponentId);
 
     for (const [key, section] of Object.entries(store.active.matchups)) {
@@ -408,6 +421,7 @@
     MASTER_VERSION,
     WORKER_VERSION,
     ready,
+    resetRAMStores,
     scanAllMatchupsFromRepo,
     fetchMatchupFromCDN,
     toCode,
