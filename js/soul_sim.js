@@ -63,7 +63,7 @@
           a = customTeacher ? options.teacher(e, slot) : scriptedTeacher(observation, m);
         } else if ((options.mode === "rider" || options.mode === "mcts") && g.MCTSEngine) {
           const mctsResult = g.MCTSEngine.search({
-            state: options.state,
+            state: options.state ? C.copyState(options.state) : null,
             slot,
             net,
             spec,
@@ -89,7 +89,8 @@
       data, spec, net, learnerSlot, learnerId = "ichigo",
       opponent, opponentMode = "mixed", opponentNet = null,
       seed = 1, epsilon = 0, guideProbability = 0,
-      rewardMode = "standard", initialStateOverride = null
+      rewardMode = "standard", initialStateOverride = null,
+      learnerMode = null
     } = options;
 
     const enemySlot = C.other(learnerSlot);
@@ -114,8 +115,14 @@
       const e = E.create(state, previousActions);
       const guidedRound = choices() < guideProbability;
 
+      const activeLearnerMode = learnerMode || (options.isEvaluation && opponentMode === "rider" ? "rider" : null);
+
       const learner = reactor(spec, net, K.rng(K.hash(seed, "ctrl", state.round, learnerSlot)), {
-        epsilon, guide: guidedRound, mode: options.learnerMode, frames: learnerFrames, state
+        epsilon,
+        guide: guidedRound,
+        mode: activeLearnerMode,
+        frames: learnerFrames,
+        state
       });
 
       let opponentAct;
@@ -129,7 +136,8 @@
               slot: enemySlot,
               net: opponentNet,
               spec,
-              iterations: 150
+              iterations: 150,
+              seed: K.rng(K.hash(seed, "mcts-opp", state.round))() * 1000000
             });
             return mctsRes.actionIdx;
           };
@@ -151,7 +159,8 @@
             slot: enemySlot,
             net: null,
             spec,
-            iterations: 150
+            iterations: 150,
+            seed: K.rng(K.hash(seed, "mcts-opp", state.round))() * 1000000
           });
           return mctsRes.actionIdx;
         };
