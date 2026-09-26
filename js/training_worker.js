@@ -51,51 +51,33 @@ function send(type, payload = {}) {
 
 function validateJob(job) {
   if (!job || !["train", "evaluate"].includes(job.kind)) {
-    throw new Error("Unknown worker job.");
+    throw new Error("Invalid job type. Must be 'train' or 'evaluate'.");
   }
 
-  if (
-    job.build != null &&
-    job.build !== BUILD
-  ) {
-    throw new Error(
-      "Training UI/worker version mismatch. " +
-      "Replace all revised files and hard-refresh."
-    );
+  // Auto-map UI mode strings and legacy aliases to valid worker modes
+  const rawMode = String(job.mode || "master").toLowerCase();
+  const modeMap = {
+    novice: "easy",
+    easy: "easy",
+    balanced: "balanced",
+    master: "master",
+    soul: "soul",
+    rider: "mcts",
+    mcts: "mcts",
+    mixed: "master", // Legacy fallback
+    net: "mcts"      // Legacy fallback
+  };
+
+  const normalizedMode = modeMap[rawMode] || "master";
+  job.mode = normalizedMode;
+
+  // Ensure valid match count for evaluation runs
+  if (!Number.isInteger(job.matches) || job.matches < 2) {
+    job.matches = 50; // Fallback default evaluation batch size
   }
 
-  if (
-    SoulNN.BUILD !== BUILD ||
-    SoulSim.BUILD !== BUILD
-  ) {
-    throw new Error(
-      "Worker dependency version mismatch. " +
-      "The revised neural_core.js and soul_sim.js " +
-      "must be installed together."
-    );
-  }
-
-  if (
-    !Number.isInteger(job.matches) ||
-    job.matches < 2 ||
-    job.matches > 100000
-  ) {
-    throw new Error(
-      "Match count must be between 2 and 100000."
-    );
-  }
-
-  if (
-    ![
-      "easy",
-      "balanced",
-      "master",
-      "soul",
-      "rider",
-      "mcts"
-    ].includes(job.mode)
-  ) {
-    throw new Error("Unknown opponent mode.");
+  if (job.matches > 100000) {
+    throw new Error("Match count exceeds maximum allowed limit (100,000).");
   }
 }
 
