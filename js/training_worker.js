@@ -99,18 +99,23 @@ async function run(job) {
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
- if (old) {
-  const inputMismatch = old.net?.sizes?.[0] !== spec.input;
-  const hiddenMismatch = old.net?.sizes?.[1] !== h1;
+  // ✅ RESOLVE HIDDEN LAYER DIMENSIONS FIRST (Fixes ReferenceError)
+  const h1 = Array.isArray(job.hidden) ? job.hidden[0] : (spec.hidden ? spec.hidden[0] : 256);
+  const h2 = Array.isArray(job.hidden) ? job.hidden[1] : (spec.hidden ? spec.hidden[1] : 128);
 
-  if (inputMismatch || hiddenMismatch) {
-    console.warn(`Architecture mismatch detected (Input: ${old.net?.sizes?.[0]} vs ${spec.input}, Hidden: ${old.net?.sizes?.[1]} vs ${h1}). Initializing fresh 256-unit network.`);
-    old = null; // Reset to force fresh network instantiation
-  } else {
-    old.version = VERSION;
-    old.spec = spec;
+  // Checkpoint architecture validation & reset safeguard
+  if (old) {
+    const inputMismatch = old.net?.sizes?.[0] !== spec.input;
+    const hiddenMismatch = old.net?.sizes?.[1] !== h1;
+
+    if (inputMismatch || hiddenMismatch) {
+      console.warn(`Architecture mismatch detected (Input: ${old.net?.sizes?.[0]} vs ${spec.input}, Hidden: ${old.net?.sizes?.[1]} vs ${h1}). Initializing fresh 256-unit network.`);
+      old = null; // Reset to force fresh network instantiation
+    } else {
+      old.version = VERSION;
+      old.spec = spec;
+    }
   }
-}
 
   if (
     old &&
@@ -131,10 +136,6 @@ async function run(job) {
   }
 
   const seed = Number(job.seed) >>> 0;
-
-  // Resolve hidden layer dimensions (Default: 256 primary units)
-  const h1 = Array.isArray(job.hidden) ? job.hidden[0] : (spec.hidden ? spec.hidden[0] : 256);
-  const h2 = Array.isArray(job.hidden) ? job.hidden[1] : (spec.hidden ? spec.hidden[1] : 128);
 
   const net = old
     ? SoulNN.Network.fromJSON(old.net)
