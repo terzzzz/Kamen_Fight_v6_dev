@@ -8,7 +8,6 @@
   const BUILD = "round-discount-master-guide-v3-history";
   const C = g.CombatCore;
   const E = g.SoulEnv;
-  const N = g.SoulNN;
   const B = g.RiderBrains;
   const K = g.KF;
 
@@ -17,9 +16,6 @@
     return Math.max(min, Math.min(max, val));
   }
 
-  /**
-   * Evaluates terminal/leaf state using normalized RiderBrains score.
-   */
   function evaluateLeaf(state, slot) {
     if (!state) return 0;
     if (state.winner) {
@@ -35,6 +31,26 @@
     const selfLp = state[slot]?.lp ?? 0;
     const oppLp = state[enemySlot]?.lp ?? 0;
     return safeClamp((selfLp - oppLp) / 1000.0, -1.0, 1.0);
+  }
+
+  // Converts action index (0-9) + active stance into valid CombatCore move key
+  function actionIdxToMoveKey(actionIdx, state, slot) {
+    const inputName = E.INPUTS?.[actionIdx] || "IDLE";
+    if (inputName === "WAIT" || inputName === "IDLE") return "IDLE";
+
+    const DIRS = ["W", "A", "S", "D"];
+    const BUTTONS = ["I", "J", "K", "L"];
+
+    if (DIRS.includes(inputName)) {
+      return "IDLE"; // Direction shift without attack trigger
+    }
+
+    if (BUTTONS.includes(inputName)) {
+      const currentStance = state[slot]?.direction || "D";
+      return currentStance + "+" + inputName;
+    }
+
+    return "IDLE";
   }
 
   class MCTSNode {
@@ -59,16 +75,13 @@
     }
   }
 
-  /**
-   * Main MCTS Search Routine
-   */
   function search(context = {}) {
     const {
       state,
       slot = "p1",
       net = null,
       spec = null,
-      iterations = 200,
+      iterations = 150,
       cPUCT = 1.41,
       maxDepth = 6,
       seed = 12345
@@ -88,7 +101,6 @@
 
     const env = E.create(state, context.previousActions || {});
     const obs = E.observe(env, slot);
-    const oppObs = E.observe(env, enemySlot);
 
     const mask1 = Uint8Array.from(E.mask(env, slot));
     const mask2 = Uint8Array.from(E.mask(env, enemySlot));
@@ -96,7 +108,6 @@
     const numActions = mask1.length;
     const root = new MCTSNode(C.copyState(state));
 
-    // Initialize root priors for P1 (learner) using SoulNN or RiderBrains.prior
     if (net && spec && typeof net.predict === "function") {
       try {
         const vec = E.vector(obs, spec);
@@ -125,10 +136,8 @@
       netPriorsFallback(root.priorsP1, mask1, state, slot);
     }
 
-    // Initialize root priors for P2 (opponent)
     netPriorsFallback(root.priorsP2, mask2, state, enemySlot);
 
-    // MCTS Iteration Loop
     for (let iter = 0; iter < iterations; iter++) {
       let node = root;
       let simState = C.copyState(state);
@@ -136,7 +145,6 @@
 
       const path = [];
 
-      // --- 1. SELECTION ---
       while (node.isExpanded && node.children.length > 0 && !simState.winner && depth < maxDepth) {
         let bestAct1 = 0;
         let maxUcb1 = -Infinity;
@@ -153,22 +161,20 @@
           }
         }
 
-        // Sample opponent action using prior distribution
         let bestAct2 = sampleActionFromPriors(node.priorsP2, mask2, rng);
 
         path.push({ node, action1: bestAct1, action2: bestAct2 });
 
-        // Find existing child or create next state branch
         let child = node.children.find(c => c.actionP1 === bestAct1 && c.actionP2 === bestAct2);
         if (!child) {
-          const p1Key = E.INPUTS?.[bestAct1] || "DO_NOTHING";
-          const p2Key = E.INPUTS?.[bestAct2] || "DO_NOTHING";
+          const p1MoveKey = actionIdxToMoveKey(bestAct1, simState, slot);
+          const p2MoveKey = actionIdxToMoveKey(bestAct2, simState, enemySlot);
 
           const nextSim = C.copyState(simState);
           const outcome = C.resolve(
             nextSim,
-            slot === "p1" ? p1Key : p2Key,
-            slot === "p2" ? p1Key : p2Key,
+            slot === "p1" ? p1MoveKey : p2MoveKey,
+            slot === "p2" ? p1MoveKey : p2MoveKey,
             rng,
             false
           );
@@ -182,11 +188,9 @@
         depth++;
       }
 
-      // --- 2. EXPANSION & EVALUATION ---
       node.isExpanded = true;
       const leafValue = evaluateLeaf(simState, slot);
 
-      // --- 3. BACKPROPAGATION ---
       for (let i = path.length - 1; i >= 0; i--) {
         const step = path[i];
         step.node.visits++;
@@ -196,7 +200,6 @@
       root.visits++;
     }
 
-    // Select action with highest visit count
     let bestAction = 0;
     let maxVisits = -1;
     for (let a = 0; a < numActions; a++) {
