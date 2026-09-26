@@ -1,7 +1,6 @@
 /* js/training_worker.js */
 "use strict";
 
-// Updated BUILD and VERSION metadata to match permanent v3 history architecture
 const BUILD = "round-discount-master-guide-v3-history";
 const VERSION = "kf-soul-ddqn-v3";
 
@@ -17,6 +16,7 @@ importScripts(
     "ai.js",
     "charge_env.js",
     "neural_core.js",
+    "mcts_engine.js",
     "soul_sim.js"
   ].map(file => file + "?v=" + BUILD)
 );
@@ -87,12 +87,12 @@ function validateJob(job) {
 
   if (
     ![
-      "mixed",
       "easy",
       "balanced",
       "master",
       "soul",
-      "net"
+      "rider",
+      "mcts"
     ].includes(job.mode)
   ) {
     throw new Error("Unknown opponent mode.");
@@ -106,11 +106,10 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
 
-  // Read guidance decay percentiles passed from UI (defaulting to 3% and 5%)
+  // Read guidance decay percentiles passed from UI
   const guideHoldPct = Number.isFinite(job.guideHoldPct) ? job.guideHoldPct : 3;
   const guideZeroPct = Number.isFinite(job.guideZeroPct) ? job.guideZeroPct : 5;
 
-  // Read selected reward mode: "standard" (Dense/Shaping) vs. "terminal_only" (Sparse Win/Loss)
   const rewardMode = job.rewardMode || "standard";
 
   let old = job.checkpoint || null;
@@ -155,7 +154,7 @@ async function run(job) {
 
   const seed = Number(job.seed) >>> 0;
 
-  // Resolve hidden layer dimensions (Upgraded to 256 primary units)
+  // Resolve hidden layer dimensions (Default: 256 primary units)
   const h1 = Array.isArray(job.hidden) ? job.hidden[0] : (spec.hidden ? spec.hidden[0] : 256);
   const h2 = Array.isArray(job.hidden) ? job.hidden[1] : (spec.hidden ? spec.hidden[1] : 128);
 
@@ -188,9 +187,7 @@ async function run(job) {
       )
     : null;
 
-  // Patch Learner accept method to log update categories cleanly based on transition tags
   if (learner && typeof learner.accept === "function") {
-    const originalAccept = learner.accept.bind(learner);
     learner.accept = function (transition, imitation = 0.03) {
       this.steps++;
       this.queue.push(transition);
@@ -223,7 +220,6 @@ async function run(job) {
             this.target.predict(t.s1)[nextAction];
         }
 
-        // Accurately log update category directly from transition telemetry
         const cat = t.rewardCategory || t.category || "Neu";
         if (cat === "Win") this.updateStats.win++;
         else if (cat === "Dmg") this.updateStats.damage++;
