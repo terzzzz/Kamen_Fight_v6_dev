@@ -135,26 +135,6 @@
     };
   }
 
-  function potential(state, slot) {
-    if (!state) return 0;
-    const enemy = C.other(slot);
-    const self = state[slot];
-    const opp = state[enemy];
-    if (!self || !opp) return 0;
-
-    const selfLp = self.lp ?? 0;
-    const selfMaxLp = Math.max(1, self.maxLp ?? 1000);
-    const oppLp = opp.lp ?? 0;
-    const oppMaxLp = Math.max(1, opp.maxLp ?? 1000);
-
-    const lpTerm = (selfLp / selfMaxLp) - (oppLp / oppMaxLp);
-    const selfChi = K.clamp(self.chi ?? 0, 0, 20);
-    const oppChi = K.clamp(opp.chi ?? 0, 0, 20);
-    const chiTerm = (selfChi / 20) - (oppChi / 20);
-
-    return lpTerm + REWARD_CONFIG.CHI_WEIGHT * chiTerm;
-  }
-
   function* episode(options) {
     const {
       data, spec, net, learnerSlot, learnerId = "ichigo",
@@ -190,19 +170,41 @@
       });
 
       let opponentAct;
+      const isRiderOpponent = (opponentMode === "rider" || opponentMode === "mcts");
+
       if (opponentNet) {
-        // Frozen self-play or policy pool check
-        const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
-        opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
-      } else if ((opponentMode === "rider" || opponentMode === "mcts") && g.MCTSEngine) {
-        // Level 5: RIDER Mode (AlphaZero MCTS)
+        if (isRiderOpponent && g.MCTSEngine) {
+          // RIDER Mode against a frozen candidate / pool network using MCTS priors
+          opponentAct = env => {
+            const mctsRes = g.MCTSEngine.search({
+              state: C.copyState(state),
+              slot: enemySlot,
+              net: opponentNet,
+              spec,
+              iterations: 150
+            });
+            return mctsRes.actionIdx;
+          };
+        } else {
+          // Direct forward pass actor
+          const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
+          opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
+        }
+      } else if (isRiderOpponent && g.MCTSEngine) {
+        // Level 5: RIDER Mode (AlphaZero MCTS without network priors)
         opponentAct = env => {
-          const mctsRes = g.MCTSEngine.search({ state, slot: enemySlot, net: null, spec, iterations: 150 });
+          const mctsRes = g.MCTSEngine.search({
+            state: C.copyState(state),
+            slot: enemySlot,
+            net: null,
+            spec,
+            iterations: 150
+          });
           return mctsRes.actionIdx;
         };
       } else {
         // Levels 1-4: NOVICE (easy), BALANCED, MASTER, SOUL (ForeseeEngine Search Trees)
-        const diff = (opponentMode === "rider" || opponentMode === "mcts") ? "master" : opponentMode;
+        const diff = isRiderOpponent ? "master" : opponentMode;
         opponentAct = env => {
           const decision = g.KF_AI.choose({
             state: C.copyState(state),
