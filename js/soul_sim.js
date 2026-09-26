@@ -1,7 +1,4 @@
-/* js/soul_sim.js
- * Simulation runner & controller factory supporting ForeseeEngine search levels (easy, balanced, master, soul)
- * and RIDER mode (AlphaZero MCTSEngine + Neural Matrix).
- */
+/* js/soul_sim.js */
 (function (g) {
   "use strict";
 
@@ -24,11 +21,6 @@
   const N = g.SoulNN;
   const C = g.CombatCore;
   const K = g.KF;
-
-  function safeClamp(val, min, max) {
-    if (!Number.isFinite(val)) return min;
-    return Math.max(min, Math.min(max, val));
-  }
 
   function assertObservationSize(spec, name, vector) {
     if (!(vector instanceof Float32Array)) {
@@ -58,31 +50,6 @@
     if (!net.sizes || net.sizes[0] !== spec.input) {
       throw new Error(name + " observation size mismatch.");
     }
-  }
-
-  function softmaxSample(qValues, mask, temperature, rng) {
-    let maxQ = -Infinity;
-    for (let i = 0; i < qValues.length; i++) {
-      if (mask[i] && qValues[i] > maxQ) maxQ = qValues[i];
-    }
-    if (!Number.isFinite(maxQ)) return 0;
-    let sum = 0;
-    const exp = new Float32Array(qValues.length);
-    for (let i = 0; i < qValues.length; i++) {
-      if (mask[i]) {
-        exp[i] = Math.exp((qValues[i] - maxQ) / temperature);
-        sum += exp[i];
-      }
-    }
-    if (sum <= 0) return N.argmax(qValues, mask);
-    let r = rng() * sum;
-    for (let i = 0; i < qValues.length; i++) {
-      if (mask[i]) {
-        r -= exp[i];
-        if (r <= 0) return i;
-      }
-    }
-    return N.argmax(qValues, mask);
   }
 
   function reactor(spec, net, rng, options = {}) {
@@ -121,12 +88,7 @@
           a = N.randomAction(m, rng);
         } else {
           const qValues = net.predict(s);
-          const temp = options.temperature ?? 0;
-          if (temp > 0) {
-            a = N.softmaxSample ? N.softmaxSample(qValues, m, temp, rng) : softmaxSample(qValues, m, temp, rng);
-          } else {
-            a = N.argmax(qValues, m);
-          }
+          a = N.argmax(qValues, m);
           if (options.onQ) options.onQ(qValues[a]);
         }
 
@@ -138,9 +100,9 @@
   function* episode(options) {
     const {
       data, spec, net, learnerSlot, learnerId = "ichigo",
-      opponent, opponentMode = "master", opponentNet = null,
+      opponent, opponentMode = "mixed", opponentNet = null,
       seed = 1, epsilon = 0, guideProbability = 0,
-      rewardMode = "standard", initialStateOverride = null, isEvaluation = false
+      rewardMode = "standard", initialStateOverride = null
     } = options;
 
     const enemySlot = C.other(learnerSlot);
@@ -174,7 +136,6 @@
 
       if (opponentNet) {
         if (isRiderOpponent && g.MCTSEngine) {
-          // RIDER Mode against a frozen candidate / pool network using MCTS priors
           opponentAct = env => {
             const mctsRes = g.MCTSEngine.search({
               state: C.copyState(state),
@@ -186,12 +147,18 @@
             return mctsRes.actionIdx;
           };
         } else {
-          // Direct forward pass actor
           const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
           opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
         }
+      } else if (opponentMode === "mixed") {
+        // --- INSTANT SCRIPTED TRAINER PATH (FAST O(1) EXECUTION) ---
+        const fastScripted = E.scripted(K.rng(K.hash(seed, "fast-opp", state.round)), "reactive");
+        opponentAct = env => {
+          const obs = E.observe(env, enemySlot);
+          const mask = Uint8Array.from(E.mask(env, enemySlot));
+          return fastScripted(obs, mask);
+        };
       } else if (isRiderOpponent && g.MCTSEngine) {
-        // Level 5: RIDER Mode (AlphaZero MCTS without network priors)
         opponentAct = env => {
           const mctsRes = g.MCTSEngine.search({
             state: C.copyState(state),
@@ -203,14 +170,13 @@
           return mctsRes.actionIdx;
         };
       } else {
-        // Levels 1-4: NOVICE (easy), BALANCED, MASTER, SOUL (ForeseeEngine Search Trees)
-        const diff = isRiderOpponent ? "master" : opponentMode;
+        // Search tree lookahead path (easy, balanced, master, soul)
         opponentAct = env => {
           const decision = g.KF_AI.choose({
             state: C.copyState(state),
             slot: enemySlot,
             history,
-            difficulty: diff,
+            difficulty: opponentMode,
             disableAgent: true
           });
           const planned = E.planned(decision.action);
@@ -224,8 +190,7 @@
 
         if (ownDecision) {
           pending.push({
-            ...ownDecision, selfLp: state[learnerSlot]?.lp ?? 0, oppLp: state[enemySlot]?.lp ?? 0,
-            selfMaxLp: state[learnerSlot]?.maxLp ?? 1000, oppMaxLp: state[enemySlot]?.maxLp ?? 1000
+            ...ownDecision, selfLp: state[learnerSlot]?.lp ?? 0, oppLp: state[enemySlot]?.lp ?? 0
           });
         }
 
