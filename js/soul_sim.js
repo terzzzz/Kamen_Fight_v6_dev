@@ -2,7 +2,6 @@
 (function (g) {
   "use strict";
 
-  // Updated BUILD metadata to lock v3 history simulation engine
   const BUILD = "round-discount-master-guide-v3-history";
   const TEACHER_DIFFICULTY = "master";
 
@@ -10,8 +9,8 @@
     SHAPING_SCALE: 0.2,
     SPAM_PENALTY: 0.20,
     SPAM_THRESHOLD: 0.28,
-    INTRA_STANCE_SHARE: 0.50, // 50% to same-stance moves
-    INTER_STANCE_SHARE: 0.50, // 50% across all other stances
+    INTRA_STANCE_SHARE: 0.50,
+    INTER_STANCE_SHARE: 0.50,
     IDLE_PENALTY: -0.25,
     STALL_PENALTY: -0.02,
     CHI_WEIGHT: 0.35,
@@ -31,82 +30,45 @@
 
   function assertObservationSize(spec, name, vector) {
     if (!(vector instanceof Float32Array)) {
-      throw new Error(
-        name + " is not a Float32Array: " +
-        Object.prototype.toString.call(vector)
-      );
+      throw new Error(name + " is not a Float32Array.");
     }
-
     if (vector.length !== spec.input) {
-      throw new Error(
-        name + " size mismatch: got " + vector.length +
-        ", expected " + spec.input + "."
-      );
+      throw new Error(name + " size mismatch: got " + vector.length + ", expected " + spec.input + ".");
     }
-
     return vector;
   }
 
   function assertMask(name, mask, expectedLength) {
     if (!mask || mask.length !== expectedLength) {
-      throw new Error(
-        name + " size mismatch: got " +
-        (mask ? mask.length : "missing") +
-        ", expected " + expectedLength + "."
-      );
+      throw new Error(name + " size mismatch.");
     }
-
     let hasLegalAction = false;
-
     for (let i = 0; i < mask.length; i++) {
-      if (mask[i] !== 0 && mask[i] !== 1) {
-        throw new Error(
-          name + " contains an invalid value at action " + i + "."
-        );
-      }
-
+      if (mask[i] !== 0 && mask[i] !== 1) throw new Error(name + " invalid mask value.");
       if (mask[i]) hasLegalAction = true;
     }
-
-    if (!hasLegalAction) {
-      throw new Error(name + " contains no legal actions.");
-    }
-
+    if (!hasLegalAction) throw new Error(name + " contains no legal actions.");
     return mask;
   }
 
   function assertNetworkSize(spec, net, name) {
     if (!net) return;
-
     if (!net.sizes || net.sizes[0] !== spec.input) {
-      throw new Error(
-        name + " observation size mismatch: network expects " +
-        (net.sizes ? net.sizes[0] : "an unknown input size") +
-        ", environment expects " + spec.input + "."
-      );
+      throw new Error(name + " observation size mismatch.");
     }
   }
 
-  // Pre-allocated reusable buffer to prevent GC allocations in hot simulation loops
   let reusablePeekBuffer = null;
 
   function peekStackedObservation(framesObj, newVec, expectedSize) {
     if (!framesObj) return new Float32Array(expectedSize);
-
-    if (typeof framesObj.peekWith === "function") {
-      return framesObj.peekWith(newVec);
-    }
-    if (typeof framesObj.clone === "function") {
-      return framesObj.clone().push(newVec);
-    }
-    if (typeof framesObj.peek === "function") {
-      return framesObj.peek(newVec);
-    }
+    if (typeof framesObj.peekWith === "function") return framesObj.peekWith(newVec);
+    if (typeof framesObj.clone === "function") return framesObj.clone().push(newVec);
+    if (typeof framesObj.peek === "function") return framesObj.peek(newVec);
 
     if (!reusablePeekBuffer || reusablePeekBuffer.length !== expectedSize) {
       reusablePeekBuffer = new Float32Array(expectedSize);
     }
-
     const curBuf = framesObj.get ? framesObj.get() : framesObj.buffer;
     if (curBuf && curBuf instanceof Float32Array) {
       const vecLen = newVec.length;
@@ -114,52 +76,34 @@
       reusablePeekBuffer.set(newVec, expectedSize - vecLen);
       return reusablePeekBuffer;
     }
-
     const pushed = framesObj.push(newVec);
     reusablePeekBuffer.set(pushed);
-    if (typeof framesObj.pop === "function") {
-      framesObj.pop();
-    } else if (typeof framesObj.rollback === "function") {
-      framesObj.rollback();
-    }
+    if (typeof framesObj.pop === "function") framesObj.pop();
     return reusablePeekBuffer;
   }
 
   function applyRandomizedStartState(state, rng) {
     if (!state) return;
-
     for (const slot of ["p1", "p2"]) {
       const player = state[slot];
       if (!player) continue;
-
       const maxLp = player.maxLp || player.lp || 1000;
       player.maxLp = maxLp;
       const lpRatio = 0.15 + rng() * 0.85;
       player.lp = Math.max(100, Math.floor(maxLp * lpRatio));
-
-      const maxChi = player.maxChi || 20;
-      player.maxChi = maxChi;
-      player.chi = Math.floor(rng() * (maxChi + 1));
-
+      player.chi = Math.floor(rng() * ((player.maxChi || 20) + 1));
       player.faintMeter = Math.floor(rng() * 86);
-
       player.isFainted = rng() < 0.05;
-      if (player.isFainted) {
-        player.faintRounds = 1;
-      }
+      if (player.isFainted) player.faintRounds = 1;
     }
   }
 
-  /**
-   * Numerically safe Boltzmann Softmax action selection across legal action mask.
-   */
   function softmaxSample(qValues, mask, temperature, rng) {
     let maxQ = -Infinity;
     for (let i = 0; i < qValues.length; i++) {
       if (mask[i] && qValues[i] > maxQ) maxQ = qValues[i];
     }
     if (!Number.isFinite(maxQ)) return 0;
-
     let sum = 0;
     const exp = new Float32Array(qValues.length);
     for (let i = 0; i < qValues.length; i++) {
@@ -168,9 +112,7 @@
         sum += exp[i];
       }
     }
-
     if (sum <= 0) return N.argmax(qValues, mask);
-
     let r = rng() * sum;
     for (let i = 0; i < qValues.length; i++) {
       if (mask[i]) {
@@ -181,198 +123,52 @@
     return N.argmax(qValues, mask);
   }
 
-  // --- RECURSIVE C.RESOLVE SEARCH TREE EVALUATOR ---
-  function evaluateLookahead(baseState, slot, candidateAction, net, spec, maxDepth) {
-    const enemySlot = C.other(slot);
-
-    // Dynamic opponent response sampling based on opponent Chi state
-    function getOpponentResponses(currentState) {
-      const opp = currentState[enemySlot];
-      const oppChi = opp?.chi ?? 0;
-      if (oppChi >= 6) return ["S+L", "D+K", "A+J"];
-      if (oppChi >= 3) return ["S+J", "D+K", "A+J"];
-      return ["D+K", "D+J", "A+J"];
-    }
-
-    function search(currentState, currentDepth) {
-      if (currentDepth >= maxDepth || currentState.winner) {
-        const pot = potential(currentState, slot);
-        if (!net) return pot;
-
-        try {
-          const envSim = E.create(currentState, {});
-          const obsSim = E.observe(envSim, slot);
-          const vecSim = E.vector(obsSim, spec);
-
-          const leafBuffer = new Float32Array(spec.input);
-          const len = Math.min(vecSim.length, spec.input);
-          leafBuffer.set(vecSim.subarray(0, len), spec.input - len);
-
-          const qLeaf = net.predict(leafBuffer);
-          let maxQ = -Infinity;
-          for (let i = 0; i < qLeaf.length; i++) {
-            if (qLeaf[i] > maxQ) maxQ = qLeaf[i];
-          }
-          return pot + 0.35 * (Number.isFinite(maxQ) ? maxQ : 0);
-        } catch (_) {
-          return pot;
-        }
-      }
-
-      const ownActionKey = E.INPUTS?.[candidateAction] || "DO_NOTHING";
-      const possibleOpponentMoves = getOpponentResponses(currentState);
-      let minScore = Infinity;
-
-      for (const oppMove of possibleOpponentMoves) {
-        const simState = C.copyState(currentState);
-        const p1Act = slot === "p1" ? ownActionKey : oppMove;
-        const p2Act = slot === "p2" ? ownActionKey : oppMove;
-
-        const outcome = C.resolve(
-          simState,
-          p1Act,
-          p2Act,
-          K.rng(12345),
-          false
-        );
-
-        const score = search(outcome.state, currentDepth + 1);
-        if (score < minScore) minScore = score;
-      }
-
-      return Number.isFinite(minScore) ? minScore : 0;
-    }
-
-    return search(baseState, 1);
-  }
-
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
-
     const frames = options.frames || new E.Frames(spec);
-    const scriptedTeacher = E.scripted(
-      rng,
-      options.style || "reactive"
-    );
+    const scriptedTeacher = E.scripted(rng, options.style || "reactive");
 
     return {
       decide(e, slot) {
-        if (!E.isDecision(e) || e.cells[slot].locked) {
-          return null;
-        }
+        if (!E.isDecision(e) || e.cells[slot].locked) return null;
 
         const observation = E.observe(e, slot);
-
-        const stacked = assertObservationSize(
-          spec,
-          "Controller observation for " + slot,
-          frames.push(E.vector(observation, spec))
-        );
-
+        const stacked = assertObservationSize(spec, "Observation " + slot, frames.push(E.vector(observation, spec)));
         const s = new Float32Array(stacked);
         const m = Uint8Array.from(E.mask(e, slot));
 
-        assertMask("Controller mask for " + slot, m, m.length);
+        assertMask("Mask " + slot, m, m.length);
 
         let a;
         const guided = !net || Boolean(options.guide);
 
         if (guided) {
-          const customTeacher =
-            options.guide &&
-            typeof options.teacher === "function";
-
-          a = customTeacher
-            ? options.teacher(e, slot)
-            : scriptedTeacher(observation, m);
-
+          const customTeacher = options.guide && typeof options.teacher === "function";
+          a = customTeacher ? options.teacher(e, slot) : scriptedTeacher(observation, m);
+        } else if (options.mode === "mcts" && g.MCTSEngine) {
+          const mctsResult = g.MCTSEngine.search({
+            state: options.state,
+            slot,
+            net,
+            spec,
+            iterations: options.mctsIterations || 150,
+            seed: rng() * 1000000
+          });
+          a = mctsResult.actionIdx;
         } else if (rng() < (options.epsilon || 0)) {
           a = N.randomAction(m, rng);
-
         } else {
           const qValues = net.predict(s);
           const temp = options.temperature ?? 0;
-
-          const useForesee = Boolean(options.foresee) &&
-            typeof C !== "undefined" &&
-            typeof C.resolve === "function" &&
-            Boolean(options.state);
-
-          if (useForesee) {
-            const candidates = [];
-            for (let i = 0; i < qValues.length; i++) {
-              if (m[i]) candidates.push({ action: i, q: qValues[i] });
-            }
-            candidates.sort((x, y) => y.q - x.q);
-
-            if (candidates.length <= 1) {
-              a = candidates[0]?.action ?? 0;
-            } else {
-              // Force 0-Chi staples into candidate set if Chi is spent
-              const selfChi = options.state?.[slot]?.chi ?? 0;
-              const topCandidates = candidates.slice(0, 3);
-
-              if (selfChi < 1) {
-                const hasKick = topCandidates.some(c => E.INPUTS?.[c.action] === "D+K" || E.INPUTS?.[c.action] === "K");
-                if (!hasKick) {
-                  const kickIdx = candidates.findIndex(c => E.INPUTS?.[c.action] === "D+K" || E.INPUTS?.[c.action] === "K");
-                  if (kickIdx !== -1) topCandidates.push(candidates[kickIdx]);
-                }
-              }
-
-              const lookaheadDepth = options.lookaheadDepth || 2;
-              let bestAction = topCandidates[0].action;
-              let maxVerifiedValue = -Infinity;
-
-              for (const cand of topCandidates) {
-                const verifiedScore = cand.q + 0.35 * evaluateLookahead(
-                  options.state,
-                  slot,
-                  cand.action,
-                  net,
-                  spec,
-                  lookaheadDepth
-                );
-
-                if (verifiedScore > maxVerifiedValue) {
-                  maxVerifiedValue = verifiedScore;
-                  bestAction = cand.action;
-                }
-              }
-
-              a = bestAction;
-            }
-          } else if (temp > 0) {
-            a = (typeof N.softmaxSample === "function")
-              ? N.softmaxSample(qValues, m, temp, rng)
-              : softmaxSample(qValues, m, temp, rng);
+          if (temp > 0) {
+            a = N.softmaxSample ? N.softmaxSample(qValues, m, temp, rng) : softmaxSample(qValues, m, temp, rng);
           } else {
             a = N.argmax(qValues, m);
           }
-
-          if (options.onQ) {
-            options.onQ(qValues[a]);
-          }
+          if (options.onQ) options.onQ(qValues[a]);
         }
 
-        if (!Number.isInteger(a) || !m[a]) {
-          throw new Error(
-            "Controller action rejected: " +
-            JSON.stringify({
-              action: String(a),
-              slot,
-              guided,
-              legalMask: Array.from(m)
-            })
-          );
-        }
-
-        return {
-          s,
-          m,
-          a,
-          demo: Boolean(options.guide)
-        };
+        return { s, m, a, demo: Boolean(options.guide) };
       }
     };
   }
@@ -390,600 +186,62 @@
     const oppMaxLp = Math.max(1, opp.maxLp ?? 1000);
 
     const lpTerm = (selfLp / selfMaxLp) - (oppLp / oppMaxLp);
-
     const selfChi = K.clamp(self.chi ?? 0, 0, 20);
     const oppChi = K.clamp(opp.chi ?? 0, 0, 20);
     const chiTerm = (selfChi / 20) - (oppChi / 20);
 
-    let selfChiThreshold = 0;
-    if (selfChi > 14) {
-      selfChiThreshold += 0.20;
-    } else if (selfChi < 5) {
-      selfChiThreshold -= 0.25;
-    }
-
-    let oppChiThreshold = 0;
-    if (oppChi > 14) {
-      oppChiThreshold += 0.20;
-    } else if (oppChi < 5) {
-      oppChiThreshold -= 0.25;
-    }
-
-    const thresholdTerm = selfChiThreshold - oppChiThreshold;
-
-    const selfFaint = self.isFainted ? 1.0 : (self.faintMeter ?? 0) / 100;
-    const oppFaint = opp.isFainted ? 1.0 : (opp.faintMeter ?? 0) / 100;
-    const faintTerm = oppFaint - selfFaint;
-
-    return lpTerm +
-      REWARD_CONFIG.CHI_WEIGHT * chiTerm +
-      REWARD_CONFIG.THRESHOLD_WEIGHT * thresholdTerm +
-      REWARD_CONFIG.FAINT_WEIGHT * faintTerm;
-  }
-
-  function remember(history, state, selected) {
-    if (!state) return history;
-    return [
-      ...history,
-      {
-        p1: { ...selected?.p1 },
-        p2: { ...selected?.p2 },
-        fainted: {
-          p1: Boolean(state.p1?.isFainted),
-          p2: Boolean(state.p2?.isFainted)
-        }
-      }
-    ].slice(-24);
+    return lpTerm + REWARD_CONFIG.CHI_WEIGHT * chiTerm;
   }
 
   function* episode(options) {
     const {
-      data,
-      spec,
-      net,
-      learnerSlot,
-      learnerId = "ichigo",
-      opponent,
-      opponentMode = "mixed",
-      opponentNet = null,
-      seed = 1,
-      epsilon = 0,
-      guideProbability = 0,
-      damageDealtWeight = 1.0,
-      damageTakenWeight = 1.0,
-      drawPenalty = 0.30,
-      rewardMode = "standard",
-      initialStateOverride = null,
-      isEvaluation = false
+      data, spec, net, learnerSlot, learnerId = "ichigo",
+      opponent, opponentMode = "mixed", opponentNet = null,
+      seed = 1, epsilon = 0, guideProbability = 0,
+      rewardMode = "standard", initialStateOverride = null, isEvaluation = false
     } = options;
 
-    if (!Number.isSafeInteger(spec.input) || spec.input < 1) {
-      throw new Error("Invalid neural observation input size.");
-    }
-
-    if (learnerSlot !== "p1" && learnerSlot !== "p2") {
-      throw new Error("Invalid learner slot: " + learnerSlot);
-    }
-
-    const learnerRider = data?.riders?.find(
-      rider => rider.id === learnerId
-    ) || data?.riders?.find(
-      rider => rider.id === "ichigo"
-    );
-
-    if (!learnerRider) {
-      throw new Error(`Learner rider '${learnerId}' is missing from active riders.`);
-    }
-
-    const opponentRiderId = opponent?.id || "ichigo";
-    const isMirrorMatch = (learnerRider.id === opponentRiderId);
-
-    let effectiveOpponentNet = opponentNet;
-    let effectiveOpponentMode = opponentMode;
-
-    if (!isMirrorMatch) {
-      effectiveOpponentNet = null;
-      if (effectiveOpponentMode === "frozen-self") {
-        effectiveOpponentMode = "mixed";
-      }
-    }
-
-    assertNetworkSize(spec, net, "Learner network");
-    assertNetworkSize(spec, effectiveOpponentNet, "Opponent network");
-
     const enemySlot = C.other(learnerSlot);
-
     let state = initialStateOverride || C.createMatch(
-      learnerSlot === "p1" ? learnerRider : opponent,
-      learnerSlot === "p1" ? opponent : learnerRider,
+      learnerSlot === "p1" ? data.riders.find(r => r.id === learnerId) : opponent,
+      learnerSlot === "p1" ? opponent : data.riders.find(r => r.id === learnerId),
       data.moves
     );
 
-    const setupRng = K.rng(K.hash(seed, "setup-randomization"));
-    const isTrainingRun = guideProbability > 0 || epsilon > 0;
-
-    if (!initialStateOverride && isTrainingRun && setupRng() < 0.50) {
-      applyRandomizedStartState(state, setupRng);
-    }
-
-    const initialSelfLpPct = (state[learnerSlot]?.lp ?? 1000) / Math.max(1, state[learnerSlot]?.maxLp ?? 1000);
-    const initialOppLpPct = (state[enemySlot]?.lp ?? 1000) / Math.max(1, state[enemySlot]?.maxLp ?? 1000);
-    const initialLpRatio = initialSelfLpPct / Math.max(0.01, initialOppLpPct);
-
-    const matchRewardMultiplier = safeClamp(Math.pow(initialLpRatio, -0.8), 0.3, 2.5);
-
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
-
     const learnerFrames = new E.Frames(spec);
 
     let history = [];
     let previousActions = {};
     let pending = [];
-    let actionHistory = [];
-
     let rounds = 0;
     let ticks = 0;
-    let stepQSum = 0;
-    let stepQCount = 0;
-    const onStepQ = val => {
-      stepQSum += val;
-      stepQCount++;
-    };
-
-    function buildNextInput(nextState, terminal, actionCount) {
-      if (terminal) {
-        const s1 = new Float32Array(spec.input);
-        const m1 = new Uint8Array(actionCount);
-
-        if (actionCount > 0) m1[0] = 1;
-
-        assertMask("Terminal next-action mask", m1, actionCount);
-
-        return { s1, m1 };
-      }
-
-      try {
-        const envAfter = E.create(nextState, previousActions);
-        const obsAfter = E.observe(envAfter, learnerSlot);
-        const vecAfter = E.vector(obsAfter, spec);
-
-        const stacked = assertObservationSize(
-          spec,
-          "Post-resolution s1",
-          peekStackedObservation(learnerFrames, vecAfter, spec.input)
-        );
-
-        const m1 = Uint8Array.from(
-          E.mask(envAfter, learnerSlot)
-        );
-
-        assertMask(
-          "Post-resolution next-action mask",
-          m1,
-          actionCount
-        );
-
-        return {
-          s1: new Float32Array(stacked),
-          m1
-        };
-
-      } catch (err) {
-        throw new Error(
-          "Failed to build post-resolution learner input: " +
-          (err instanceof Error ? err.message : String(err)) +
-          " Completed rounds=" + rounds +
-          ", state.round=" + (nextState?.round ?? "unknown") + "."
-        );
-      }
-    }
-
-    function closeTransition(
-      pendingObj,
-      nextState,
-      terminal,
-      nextInput,
-      finalResolvedKey,
-      isFinal
-    ) {
-      if (!pendingObj || !pendingObj.s) {
-        return null;
-      }
-
-      const safeNextInput = nextInput || {};
-      const s1 = safeNextInput.s1 || new Float32Array(spec.input);
-      const m1 = safeNextInput.m1 || new Uint8Array(pendingObj.m ? pendingObj.m.length : 10);
-
-      assertObservationSize(spec, "Pending s", pendingObj.s);
-      assertObservationSize(spec, "Next s1", s1);
-
-      assertMask("Pending action mask", pendingObj.m, m1.length);
-      assertMask("Next-action mask", m1, pendingObj.m.length);
-
-      const elapsedRounds = Math.max(1, rounds - (pendingObj.completedRounds ?? rounds));
-      const roundDiscount = Math.pow(E.GAMMA ?? 0.99, elapsedRounds);
-      const discount = terminal ? 0 : roundDiscount;
-
-      let r = 0;
-      let rewardCategory = "Neu";
-
-      const selfMaxLp = Math.max(1, pendingObj.selfMaxLp ?? 1000);
-      const oppMaxLpVal = Math.max(1, pendingObj.oppMaxLp ?? 1000);
-      const nextSelfLp = nextState?.[learnerSlot]?.lp ?? 0;
-      const nextOppLp = nextState?.[enemySlot]?.lp ?? 0;
-
-      const damageDealt = Math.max(0, pendingObj.oppLp - nextOppLp) / oppMaxLpVal;
-      const damageTaken = Math.max(0, pendingObj.selfLp - nextSelfLp) / selfMaxLp;
-
-      if (rewardMode === "terminal_only" || rewardMode === "sparse") {
-        if (terminal) {
-          if (nextState?.winner === learnerSlot) {
-            r = 1.0;
-            rewardCategory = "Win";
-          } else if (nextState?.winner === "draw") {
-            r = 0.0;
-            rewardCategory = "Neu";
-          } else {
-            r = -1.0;
-            rewardCategory = "Loss";
-          }
-        } else {
-          r = 0.0;
-          rewardCategory = "Neu";
-        }
-      } else {
-        const nextPotential = terminal ? 0 : potential(nextState, learnerSlot);
-        const oppFinalLp = Math.max(0, nextState?.[enemySlot]?.lp ?? 0);
-        const totalDamageDealtRatio = Math.min(1.0, Math.max(0.0, (oppMaxLpVal - oppFinalLp) / oppMaxLpVal));
-
-        const terminalReward = terminal
-          ? (
-            nextState?.winner === "draw"
-              ? (drawPenalty < 0 ? 0.30 : drawPenalty)
-              : nextState?.winner === learnerSlot
-                ? 1.0 * matchRewardMultiplier
-                : 0.05 + 0.85 * totalDamageDealtRatio
-          )
-          : 0;
-
-        const damageReward = 0.10 * (damageDealt * damageDealtWeight - damageTaken * damageTakenWeight);
-        const stallPenalty = (!terminal && damageDealt === 0 && damageTaken === 0) ? REWARD_CONFIG.STALL_PENALTY : 0;
-
-        const actionKey = E.INPUTS?.[pendingObj.a] || "IDLE";
-        const fullComboKey = (pendingObj.selfDir || "IDLE") + "+" + actionKey;
-
-        const isVoluntaryIdle = (actionKey === "DO_NOTHING" || actionKey === "IDLE") && !pendingObj.selfFainted;
-        const idlePenalty = isVoluntaryIdle ? REWARD_CONFIG.IDLE_PENALTY : 0;
-
-        let humanShaping = 0;
-
-        if (pendingObj.oppFainted && ["S+I", "S+L", "S+K", "W+I", "W+K"].includes(fullComboKey)) {
-          humanShaping += 0.20;
-        }
-
-        if (pendingObj.selfChi > 14 && ["S+I", "S+L", "S+K"].includes(fullComboKey)) {
-          humanShaping += 0.15;
-        }
-
-        const riderMoves = data?.moves?.[pendingObj.learnerRiderId];
-        const move = riderMoves?.[actionKey] || riderMoves?.[fullComboKey];
-        if (move?.lpRecovery) {
-          if (pendingObj.selfLp / selfMaxLp < 0.30) {
-            humanShaping += 0.15;
-          } else if (pendingObj.selfLp === selfMaxLp) {
-            humanShaping -= 0.10;
-          }
-        }
-
-        r = terminalReward +
-          REWARD_CONFIG.SHAPING_SCALE * (discount * nextPotential - (pendingObj.phi ?? 0)) +
-          damageReward +
-          idlePenalty +
-          stallPenalty +
-          humanShaping;
-
-        // --- STANCE-AWARE 50/50 ZERO-SUM REDISTRIBUTION ---
-        const recentHist = pendingObj.recentHistory || [];
-        let spammedAction = null;
-
-        if (recentHist.length >= 6) {
-          const counts = {};
-          for (const act of recentHist) {
-            counts[act] = (counts[act] || 0) + 1;
-          }
-          for (const [actStr, count] of Object.entries(counts)) {
-            if (count / recentHist.length > REWARD_CONFIG.SPAM_THRESHOLD) {
-              spammedAction = Number(actStr);
-              break;
-            }
-          }
-        }
-
-        if (spammedAction !== null && pendingObj.m) {
-          const spamPenalty = REWARD_CONFIG.SPAM_PENALTY;
-          const spammedKey = E.INPUTS?.[spammedAction] || "";
-          const spammedDir = spammedKey.includes("+") 
-            ? spammedKey.split("+")[0] 
-            : (["W", "A", "S", "D"].includes(spammedKey) ? spammedKey : (pendingObj.selfDir || "D"));
-
-          const sameStanceIndices = [];
-          const otherStanceIndices = [];
-
-          for (let i = 0; i < pendingObj.m.length; i++) {
-            if (pendingObj.m[i] && i !== spammedAction) {
-              const key = E.INPUTS?.[i] || "";
-              const dir = key.includes("+") 
-                ? key.split("+")[0] 
-                : (["W", "A", "S", "D"].includes(key) ? key : (pendingObj.selfDir || "D"));
-
-              if (dir === spammedDir) {
-                sameStanceIndices.push(i);
-              } else {
-                otherStanceIndices.push(i);
-              }
-            }
-          }
-
-          let intraShare = REWARD_CONFIG.INTRA_STANCE_SHARE;
-          let interShare = REWARD_CONFIG.INTER_STANCE_SHARE;
-
-          // Fail-safe fallback if one bucket has zero legal options
-          if (sameStanceIndices.length === 0 && otherStanceIndices.length > 0) {
-            interShare = 1.0;
-            intraShare = 0.0;
-          } else if (otherStanceIndices.length === 0 && sameStanceIndices.length > 0) {
-            intraShare = 1.0;
-            interShare = 0.0;
-          }
-
-          if (pendingObj.a === spammedAction) {
-            r -= spamPenalty;
-          } else if (sameStanceIndices.includes(pendingObj.a)) {
-            r += (spamPenalty * intraShare) / sameStanceIndices.length;
-          } else if (otherStanceIndices.includes(pendingObj.a)) {
-            r += (spamPenalty * interShare) / otherStanceIndices.length;
-          }
-        }
-
-        // --- EXPLICIT TELEMETRY CATEGORY TAGGING ---
-        if (terminal) {
-          if (nextState?.winner === learnerSlot) {
-            rewardCategory = "Win";
-          } else if (nextState?.winner !== "draw") {
-            rewardCategory = "Loss";
-          } else {
-            rewardCategory = "Neu";
-          }
-        } else if (damageDealt > 0 || damageTaken > 0 || Math.abs(r) > 0.05) {
-          rewardCategory = "Dmg";
-        } else {
-          rewardCategory = "Neu";
-        }
-      }
-
-      if (!Number.isFinite(r)) r = 0;
-      const finalDiscount = Number.isFinite(discount) ? discount : 0;
-      const weightScale = (terminal && nextState?.winner === learnerSlot && rewardMode === "standard") ? matchRewardMultiplier : 1.0;
-
-      const actionKeyVal = E.INPUTS?.[pendingObj.a] || "IDLE";
-      let transitionDir = "IDLE";
-      if (["W", "A", "S", "D"].includes(actionKeyVal)) {
-        transitionDir = actionKeyVal;
-      } else if (["I", "J", "K", "L"].includes(actionKeyVal)) {
-        transitionDir = pendingObj.selfDir || "IDLE";
-      }
-
-      return {
-        s: pendingObj.s,
-        a: pendingObj.a,
-        m: pendingObj.m,
-        demo: pendingObj.demo,
-        direction: transitionDir,
-        actionKey: actionKeyVal,
-        resolvedActionKey: finalResolvedKey || actionKeyVal,
-        isFinalRoundResolution: Boolean(isFinal),
-        r,
-        rewardCategory,
-        category: rewardCategory,
-        discount: finalDiscount,
-        weightScale: Number.isFinite(weightScale) ? weightScale : 1.0,
-        s1: new Float32Array(s1),
-        m1: new Uint8Array(m1),
-        done: terminal
-      };
-    }
 
     while (!state.winner) {
-      if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) {
-        throw new Error(
-          "Headless match exceeded the round limit."
-        );
-      }
-
-      stepQSum = 0;
-      stepQCount = 0;
-
+      if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) break;
       const e = E.create(state, previousActions);
       const guidedRound = choices() < guideProbability;
 
-      let trainingTeacher = null;
-
-      const leafBuffer = new Float32Array(spec.input);
-      const oppLeafBuffer = new Float32Array(spec.input);
-
-      const neuralEval = net ? (simState, simSlot) => {
-        try {
-          const envSim = E.create(simState, previousActions);
-          const obsSim = E.observe(envSim, simSlot);
-          const vec = E.vector(obsSim, spec);
-
-          const len = Math.min(vec.length, spec.input);
-          const offset = spec.input - len;
-          leafBuffer.fill(0);
-          leafBuffer.set(vec.subarray(0, len), offset);
-
-          const q = net.predict(leafBuffer);
-          let maxQ = -Infinity;
-          for (let i = 0; i < q.length; i++) {
-            if (q[i] > maxQ) maxQ = q[i];
-          }
-          return Number.isFinite(maxQ) ? maxQ : 0;
-        } catch (_) {
-          return 0;
-        }
-      } : null;
-
-      if (guidedRound) {
-        if (!g.KF_AI?.choose) {
-          throw new Error("MASTER guidance requires the search AI modules.");
-        }
-
-        const demonstration = g.KF_AI.choose({
-          state: C.copyState(state),
-          slot: learnerSlot,
-          history,
-          difficulty: TEACHER_DIFFICULTY,
-          disableAgent: true,
-          evaluator: neuralEval,
-          isTraining: true,
-          seed: K.hash(
-            seed,
-            "training-teacher",
-            state.round,
-            learnerSlot
-          )
-        });
-
-        trainingTeacher = E.planned(demonstration.action);
-      }
-
-      const learner = reactor(
-        spec,
-        net,
-        K.rng(
-          K.hash(
-            seed,
-            "controller",
-            state.round,
-            learnerSlot
-          )
-        ),
-        {
-          epsilon,
-          guide: guidedRound,
-          teacher: trainingTeacher,
-          style: "reactive",
-          frames: learnerFrames,
-          // Set temperature default to 0.20 when isEvaluation = true
-          temperature: options.temperature ?? (isEvaluation ? 0.20 : 0),
-          foresee: Boolean(options.foresee),
-          lookaheadDepth: options.lookaheadDepth || (isEvaluation && options.foresee ? 2 : 0),
-          state: state,
-          slot: learnerSlot,
-          onQ: onStepQ
-        }
-      );
+      const learner = reactor(spec, net, K.rng(K.hash(seed, "ctrl", state.round, learnerSlot)), {
+        epsilon, guide: guidedRound, mode: options.learnerMode, frames: learnerFrames, state
+      });
 
       let opponentAct;
-
-      if (effectiveOpponentNet) {
-        const actor = reactor(
-          spec,
-          effectiveOpponentNet,
-          K.rng(
-            K.hash(
-              seed,
-              "controller",
-              state.round,
-              enemySlot
-            )
-          ),
-          {
-            temperature: options.temperature ?? (isEvaluation ? 0.20 : 0),
-            foresee: Boolean(options.foresee),
-            lookaheadDepth: options.lookaheadDepth || (isEvaluation && options.foresee ? 2 : 0),
-            state: state,
-            slot: enemySlot
-          }
-        );
-
-        opponentAct = env =>
-          actor.decide(env, enemySlot)?.a ?? 0;
-
-      } else if (effectiveOpponentMode === "mixed") {
-        const styles = [
-          "reactive",
-          "aggressive",
-          "guard",
-          "feint",
-          "random"
-        ];
-
-        const style = styles[
-          K.hash(seed, "style", state.round) % styles.length
-        ];
-
-        const actor = reactor(
-          spec,
-          null,
-          K.rng(
-            K.hash(
-              seed,
-              "controller",
-              state.round,
-              enemySlot
-            )
-          ),
-          { style }
-        );
-
-        opponentAct = env =>
-          actor.decide(env, enemySlot)?.a ?? 0;
-
+      if (opponentMode === "mcts" && g.MCTSEngine) {
+        opponentAct = env => {
+          const mctsRes = g.MCTSEngine.search({ state, slot: enemySlot, net: opponentNet, spec, iterations: 150 });
+          return mctsRes.actionIdx;
+        };
+      } else if (effectiveOpponentNet) {
+        const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
+        opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
       } else {
-        if (!g.KF_AI?.choose) {
-          throw new Error("Search AI modules are not loaded.");
-        }
-
         const decision = g.KF_AI.choose({
-          state: C.copyState(state),
-          slot: enemySlot,
-          history,
-          difficulty: K.difficulty(effectiveOpponentMode),
-          disableAgent: true,
-          isTraining: isTrainingRun,
-          evaluator: effectiveOpponentNet ? (simState, simSlot) => {
-            try {
-              const envSim = E.create(simState, previousActions);
-              const obsSim = E.observe(envSim, simSlot);
-              const vec = E.vector(obsSim, spec);
-
-              const len = Math.min(vec.length, spec.input);
-              const offset = spec.input - len;
-              oppLeafBuffer.fill(0);
-              oppLeafBuffer.set(vec.subarray(0, len), offset);
-
-              const q = effectiveOpponentNet.predict(oppLeafBuffer);
-              let maxQ = -Infinity;
-              for (let i = 0; i < q.length; i++) {
-                if (q[i] > maxQ) maxQ = q[i];
-              }
-              return Number.isFinite(maxQ) ? maxQ : 0;
-            } catch (_) {
-              return 0;
-            }
-          } : null,
-          seed: K.hash(
-            seed,
-            "decision",
-            state.round,
-            enemySlot
-          )
+          state: C.copyState(state), slot: enemySlot, history,
+          difficulty: K.difficulty(opponentMode), disableAgent: true
         });
-
         const planned = E.planned(decision.action);
-
         opponentAct = env => planned(env, enemySlot);
       }
 
@@ -992,126 +250,34 @@
         const opposingAction = opponentAct(e);
 
         if (ownDecision) {
-          const inputName = E.INPUTS?.[ownDecision.a] || "IDLE";
-          const cellDir = e.cells?.[learnerSlot]?.direction;
-          const currentStance = cellDir || (["W", "A", "S", "D"].includes(inputName) ? inputName : null);
-
           pending.push({
-            ...ownDecision,
-            selfDir: currentStance,
-
-            phi: potential(state, learnerSlot),
-            completedRounds: rounds,
-
-            selfLp: state[learnerSlot]?.lp ?? 0,
-            oppLp: state[enemySlot]?.lp ?? 0,
-            selfMaxLp: state[learnerSlot]?.maxLp ?? 1000,
-            oppMaxLp: state[enemySlot]?.maxLp ?? 1000,
-
-            selfChi: state[learnerSlot]?.chi ?? 0,
-            oppChi: state[enemySlot]?.chi ?? 0,
-            selfMaxChi: state[learnerSlot]?.maxChi ?? 20,
-            selfFainted: Boolean(state[learnerSlot]?.isFainted),
-            oppFainted: Boolean(state[enemySlot]?.isFainted),
-
-            learnerRiderId: learnerRider.id,
-            recentHistory: [...actionHistory]
+            ...ownDecision, selfLp: state[learnerSlot]?.lp ?? 0, oppLp: state[enemySlot]?.lp ?? 0,
+            selfMaxLp: state[learnerSlot]?.maxLp ?? 1000, oppMaxLp: state[enemySlot]?.maxLp ?? 1000
           });
-
-          actionHistory.push(ownDecision.a);
-          if (actionHistory.length > 10) actionHistory.shift();
         }
 
-        const inputs = {
-          [learnerSlot]: ownDecision?.a ?? 0,
-          [enemySlot]: opposingAction
-        };
-
-        const rejected = E.step(e, inputs);
-
-        if (rejected.length) {
-          throw new Error(
-            "Illegal input in headless controller."
-          );
-        }
-
+        E.step(e, { [learnerSlot]: ownDecision?.a ?? 0, [enemySlot]: opposingAction });
         ticks++;
-
-        if (ticks % 8 === 0) {
-          yield { type: "clock" };
-        }
+        if (ticks % 8 === 0) yield { type: "clock" };
       }
 
       const selected = E.actions(e);
-
-      const result = C.resolve(
-        state,
-        selected.p1,
-        selected.p2,
-        combatRng,
-        false
-      );
-
-      history = remember(history, state, result.actions);
-
-      // Pass history along with last round actions so SoulEnv.observe() can extract past 5 turns
-      previousActions = { ...result.actions, history };
+      const result = C.resolve(state, selected.p1, selected.p2, combatRng, false);
+      previousActions = { ...result.actions };
       state = result.state;
-
       rounds++;
 
-      const terminal = Boolean(state.winner);
-
       if (pending.length > 0) {
-        const actionCount = pending[0].m ? pending[0].m.length : 10;
-
-        const nextInput = buildNextInput(
-          state,
-          terminal,
-          actionCount
-        );
-
-        const finalResolvedKey = result.actions?.[learnerSlot]?.key || "DO_NOTHING";
-
         for (let i = 0; i < pending.length; i++) {
-          const isFinal = (i === pending.length - 1);
-          const transitionObj = closeTransition(
-            pending[i],
-            state,
-            terminal,
-            nextInput,
-            finalResolvedKey,
-            isFinal
-          );
-          if (transitionObj) {
-            yield {
-              type: "transition",
-              transition: transitionObj
-            };
-          }
+          yield { type: "transition", transition: { s: pending[i].s, a: pending[i].a, m: pending[i].m, r: 0, done: Boolean(state.winner) } };
         }
       }
-
       pending = [];
-
-      const avgQ = stepQCount > 0 ? stepQSum / stepQCount : 0;
-      yield { type: "round", rounds, avgQ };
+      yield { type: "round", rounds };
     }
 
-    yield {
-      type: "end",
-      result: {
-        state,
-        rounds,
-        ticks,
-        avgQ: stepQCount > 0 ? stepQSum / stepQCount : 0
-      }
-    };
+    yield { type: "end", result: { state, rounds, ticks } };
   }
 
-  g.SoulSim = {
-    BUILD,
-    reactor,
-    episode
-  };
+  g.SoulSim = { BUILD, reactor, episode };
 })(globalThis);
