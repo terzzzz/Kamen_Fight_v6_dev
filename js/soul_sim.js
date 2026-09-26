@@ -4,19 +4,6 @@
 
   const BUILD = "round-discount-master-guide-v3-history";
 
-  const REWARD_CONFIG = Object.freeze({
-    SHAPING_SCALE: 0.2,
-    SPAM_PENALTY: 0.20,
-    SPAM_THRESHOLD: 0.28,
-    INTRA_STANCE_SHARE: 0.50,
-    INTER_STANCE_SHARE: 0.50,
-    IDLE_PENALTY: -0.25,
-    STALL_PENALTY: -0.02,
-    CHI_WEIGHT: 0.35,
-    THRESHOLD_WEIGHT: 0.30,
-    FAINT_WEIGHT: 0.25
-  });
-
   const E = g.SoulEnv;
   const N = g.SoulNN;
   const C = g.CombatCore;
@@ -151,7 +138,6 @@
           opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
         }
       } else if (opponentMode === "mixed") {
-        // --- INSTANT SCRIPTED TRAINER PATH (FAST O(1) EXECUTION) ---
         const fastScripted = E.scripted(K.rng(K.hash(seed, "fast-opp", state.round)), "reactive");
         opponentAct = env => {
           const obs = E.observe(env, enemySlot);
@@ -170,7 +156,6 @@
           return mctsRes.actionIdx;
         };
       } else {
-        // Search tree lookahead path (easy, balanced, master, soul)
         opponentAct = env => {
           const decision = g.KF_AI.choose({
             state: C.copyState(state),
@@ -184,13 +169,16 @@
         };
       }
 
+      const preSelfLp = state[learnerSlot]?.lp ?? 0;
+      const preOppLp = state[enemySlot]?.lp ?? 0;
+
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
         const opposingAction = opponentAct(e);
 
         if (ownDecision) {
           pending.push({
-            ...ownDecision, selfLp: state[learnerSlot]?.lp ?? 0, oppLp: state[enemySlot]?.lp ?? 0
+            ...ownDecision
           });
         }
 
@@ -206,9 +194,45 @@
       history = g.KF_AI.remember(history, result.before || state, result.actions);
       rounds++;
 
+      // Compute round reward signal from HP deltas & win/loss outcome
+      const postSelfLp = state[learnerSlot]?.lp ?? 0;
+      const postOppLp = state[enemySlot]?.lp ?? 0;
+
+      const selfDmg = Math.max(0, preSelfLp - postSelfLp);
+      const oppDmg = Math.max(0, preOppLp - postOppLp);
+
+      let roundReward = (oppDmg - selfDmg) / 100.0;
+
+      if (state.winner === learnerSlot) {
+        roundReward += 1.0;
+      } else if (state.winner && state.winner !== "draw") {
+        roundReward -= 1.0;
+      }
+
       if (pending.length > 0) {
+        const nextEnv = E.create(state, previousActions);
+        const nextObs = E.observe(nextEnv, learnerSlot);
+        const s1 = new Float32Array(learnerFrames.push(E.vector(nextObs, spec)));
+        const m1 = Uint8Array.from(E.mask(nextEnv, learnerSlot));
+
+        const isMatchDone = Boolean(state.winner);
+        const discount = isMatchDone ? 0.0 : 0.99;
+
         for (let i = 0; i < pending.length; i++) {
-          yield { type: "transition", transition: { s: pending[i].s, a: pending[i].a, m: pending[i].m, r: 0, done: Boolean(state.winner) } };
+          yield {
+            type: "transition",
+            transition: {
+              s: pending[i].s,
+              a: pending[i].a,
+              m: pending[i].m,
+              s1,
+              m1,
+              r: roundReward / pending.length,
+              discount,
+              done: isMatchDone,
+              demo: pending[i].demo
+            }
+          };
         }
       }
       pending = [];
