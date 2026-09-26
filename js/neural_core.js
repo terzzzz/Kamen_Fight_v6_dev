@@ -1,10 +1,11 @@
 /* js/neural_core.js
  * CPU neural network + Adam + Double DQN with asymmetric weighting & update stats.
+ * Updated for v3 history-aware matrix architectures.
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v5";
+  const BUILD = "round-discount-master-guide-v3-history";
   const K = g.KF;
 
   function argmax(q, mask) {

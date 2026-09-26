@@ -1,8 +1,9 @@
 /* js/training_worker.js */
 "use strict";
 
-const BUILD = "round-discount-master-guide-v5";
-const VERSION = "kf-soul-ddqn-v2";
+// Updated BUILD and VERSION metadata to match permanent v3 history architecture
+const BUILD = "round-discount-master-guide-v3-history";
+const VERSION = "kf-soul-ddqn-v3";
 
 const MIN_IMITATION = 0.01;
 const INITIAL_IMITATION = 0.05;
@@ -424,7 +425,7 @@ async function run(job) {
       seed: matchSeed,
       epsilon,
       guideProbability,
-      rewardMode, // Passes "standard" or "terminal_only" to SoulSim
+      rewardMode,
       isEvaluation: !training
     });
 
