@@ -1,9 +1,11 @@
-/* js/soul_sim.js */
+/* js/soul_sim.js
+ * Simulation runner & controller factory supporting ForeseeEngine search levels (easy, balanced, master, soul)
+ * and RIDER mode (AlphaZero MCTSEngine + Neural Matrix).
+ */
 (function (g) {
   "use strict";
 
   const BUILD = "round-discount-master-guide-v3-history";
-  const TEACHER_DIFFICULTY = "master";
 
   const REWARD_CONFIG = Object.freeze({
     SHAPING_SCALE: 0.2,
@@ -58,46 +60,6 @@
     }
   }
 
-  let reusablePeekBuffer = null;
-
-  function peekStackedObservation(framesObj, newVec, expectedSize) {
-    if (!framesObj) return new Float32Array(expectedSize);
-    if (typeof framesObj.peekWith === "function") return framesObj.peekWith(newVec);
-    if (typeof framesObj.clone === "function") return framesObj.clone().push(newVec);
-    if (typeof framesObj.peek === "function") return framesObj.peek(newVec);
-
-    if (!reusablePeekBuffer || reusablePeekBuffer.length !== expectedSize) {
-      reusablePeekBuffer = new Float32Array(expectedSize);
-    }
-    const curBuf = framesObj.get ? framesObj.get() : framesObj.buffer;
-    if (curBuf && curBuf instanceof Float32Array) {
-      const vecLen = newVec.length;
-      reusablePeekBuffer.set(curBuf.subarray(vecLen), 0);
-      reusablePeekBuffer.set(newVec, expectedSize - vecLen);
-      return reusablePeekBuffer;
-    }
-    const pushed = framesObj.push(newVec);
-    reusablePeekBuffer.set(pushed);
-    if (typeof framesObj.pop === "function") framesObj.pop();
-    return reusablePeekBuffer;
-  }
-
-  function applyRandomizedStartState(state, rng) {
-    if (!state) return;
-    for (const slot of ["p1", "p2"]) {
-      const player = state[slot];
-      if (!player) continue;
-      const maxLp = player.maxLp || player.lp || 1000;
-      player.maxLp = maxLp;
-      const lpRatio = 0.15 + rng() * 0.85;
-      player.lp = Math.max(100, Math.floor(maxLp * lpRatio));
-      player.chi = Math.floor(rng() * ((player.maxChi || 20) + 1));
-      player.faintMeter = Math.floor(rng() * 86);
-      player.isFainted = rng() < 0.05;
-      if (player.isFainted) player.faintRounds = 1;
-    }
-  }
-
   function softmaxSample(qValues, mask, temperature, rng) {
     let maxQ = -Infinity;
     for (let i = 0; i < qValues.length; i++) {
@@ -145,7 +107,7 @@
         if (guided) {
           const customTeacher = options.guide && typeof options.teacher === "function";
           a = customTeacher ? options.teacher(e, slot) : scriptedTeacher(observation, m);
-        } else if (options.mode === "mcts" && g.MCTSEngine) {
+        } else if ((options.mode === "rider" || options.mode === "mcts") && g.MCTSEngine) {
           const mctsResult = g.MCTSEngine.search({
             state: options.state,
             slot,
@@ -196,7 +158,7 @@
   function* episode(options) {
     const {
       data, spec, net, learnerSlot, learnerId = "ichigo",
-      opponent, opponentMode = "mixed", opponentNet = null,
+      opponent, opponentMode = "master", opponentNet = null,
       seed = 1, epsilon = 0, guideProbability = 0,
       rewardMode = "standard", initialStateOverride = null, isEvaluation = false
     } = options;
@@ -228,21 +190,30 @@
       });
 
       let opponentAct;
-      if (opponentMode === "mcts" && g.MCTSEngine) {
-        opponentAct = env => {
-          const mctsRes = g.MCTSEngine.search({ state, slot: enemySlot, net: opponentNet, spec, iterations: 150 });
-          return mctsRes.actionIdx;
-        };
-      } else if (effectiveOpponentNet) {
+      if (opponentNet) {
+        // Frozen self-play or policy pool check
         const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
         opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
+      } else if ((opponentMode === "rider" || opponentMode === "mcts") && g.MCTSEngine) {
+        // Level 5: RIDER Mode (AlphaZero MCTS)
+        opponentAct = env => {
+          const mctsRes = g.MCTSEngine.search({ state, slot: enemySlot, net: null, spec, iterations: 150 });
+          return mctsRes.actionIdx;
+        };
       } else {
-        const decision = g.KF_AI.choose({
-          state: C.copyState(state), slot: enemySlot, history,
-          difficulty: K.difficulty(opponentMode), disableAgent: true
-        });
-        const planned = E.planned(decision.action);
-        opponentAct = env => planned(env, enemySlot);
+        // Levels 1-4: NOVICE (easy), BALANCED, MASTER, SOUL (ForeseeEngine Search Trees)
+        const diff = (opponentMode === "rider" || opponentMode === "mcts") ? "master" : opponentMode;
+        opponentAct = env => {
+          const decision = g.KF_AI.choose({
+            state: C.copyState(state),
+            slot: enemySlot,
+            history,
+            difficulty: diff,
+            disableAgent: true
+          });
+          const planned = E.planned(decision.action);
+          return planned(env, enemySlot);
+        };
       }
 
       while (!e.done) {
@@ -265,6 +236,7 @@
       const result = C.resolve(state, selected.p1, selected.p2, combatRng, false);
       previousActions = { ...result.actions };
       state = result.state;
+      history = g.KF_AI.remember(history, result.before || state, result.actions);
       rounds++;
 
       if (pending.length > 0) {
