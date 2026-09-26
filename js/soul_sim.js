@@ -194,7 +194,6 @@
       history = g.KF_AI.remember(history, result.before || state, result.actions);
       rounds++;
 
-      // Compute round reward signal from HP deltas & win/loss outcome
       const postSelfLp = state[learnerSlot]?.lp ?? 0;
       const postOppLp = state[enemySlot]?.lp ?? 0;
 
@@ -217,8 +216,10 @@
 
         const isMatchDone = Boolean(state.winner);
         const discount = isMatchDone ? 0.0 : 0.99;
+        const resolvedMove = previousActions[learnerSlot]?.key || "DO_NOTHING";
 
         for (let i = 0; i < pending.length; i++) {
+          const isLastInRound = (i === pending.length - 1);
           yield {
             type: "transition",
             transition: {
@@ -230,7 +231,10 @@
               r: roundReward / pending.length,
               discount,
               done: isMatchDone,
-              demo: pending[i].demo
+              demo: pending[i].demo,
+              isFinalRoundResolution: isLastInRound,
+              actionKey: resolvedMove,
+              resolvedActionKey: resolvedMove
             }
           };
         }
