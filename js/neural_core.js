@@ -44,6 +44,25 @@
     return legal[Math.floor(rng() * legal.length)];
   }
 
+  // Helper to split actions by WASD stance for loss credit redistribution
+  function getStanceGroups(actionIndex, outputSize) {
+    const stanceSize = outputSize >= 16 ? 4 : Math.max(1, Math.floor(outputSize / 4));
+    const stanceIndex = Math.floor(actionIndex / stanceSize);
+    const sameStance = [];
+    const otherStances = [];
+
+    for (let i = 0; i < outputSize; i++) {
+      if (i === actionIndex) continue;
+      if (Math.floor(i / stanceSize) === stanceIndex) {
+        sameStance.push(i);
+      } else {
+        otherStances.push(i);
+      }
+    }
+
+    return { sameStance, otherStances };
+  }
+
   class Network {
     constructor(...sizes) {
       if (sizes.length === 1 && Array.isArray(sizes[0])) {
@@ -178,6 +197,8 @@
     train(rows, learningRate = 0.0003, imitation = 0) {
       if (!rows.length) return 0;
 
+      const outputSize = this.sizes[this.sizes.length - 1];
+
       const gradients = this.layers.map(layer => ({
         w: new Float32Array(layer.w.length),
         b: new Float32Array(layer.b.length)
@@ -188,39 +209,61 @@
       for (const row of rows) {
         const tape = this.forward(row.s);
         const q = tape[tape.length - 1];
-        const error = q[row.a] - row.y;
 
-        if (!Number.isFinite(error)) {
-          throw new Error("Neural training diverged.");
+        let delta = new Float32Array(outputSize);
+
+        if (row.yVector) {
+          // Multi-target backpropagation (supports 50/50 loss redistribution across target vector)
+          for (let a = 0; a < outputSize; a++) {
+            const error = q[a] - row.yVector[a];
+
+            if (!Number.isFinite(error)) {
+              throw new Error("Neural training diverged.");
+            }
+
+            if (a === row.a) {
+              loss += Math.abs(error) <= 1
+                ? 0.5 * error * error
+                : Math.abs(error) - 0.5;
+            }
+
+            delta[a] = K.clamp(error, -1, 1) * (row.weightScale || 1.0);
+          }
+        } else {
+          // Single action backpropagation fallback
+          const error = q[row.a] - row.y;
+
+          if (!Number.isFinite(error)) {
+            throw new Error("Neural training diverged.");
+          }
+
+          loss += Math.abs(error) <= 1
+            ? 0.5 * error * error
+            : Math.abs(error) - 0.5;
+
+          delta[row.a] = K.clamp(error, -1, 1) * (row.weightScale || 1.0);
         }
-
-        loss += Math.abs(error) <= 1
-          ? 0.5 * error * error
-          : Math.abs(error) - 0.5;
-
-        let delta = new Float32Array(10);
-        delta[row.a] = K.clamp(error, -1, 1) * (row.weightScale || 1.0);
 
         if (row.demo && imitation > 0) {
           let maximum = -Infinity;
 
-          for (let a = 0; a < 10; a++) {
+          for (let a = 0; a < outputSize; a++) {
             if (row.m[a]) {
               maximum = Math.max(maximum, q[a]);
             }
           }
 
-          const probabilities = new Float32Array(10);
+          const probabilities = new Float32Array(outputSize);
           let total = 0;
 
-          for (let a = 0; a < 10; a++) {
+          for (let a = 0; a < outputSize; a++) {
             if (!row.m[a]) continue;
 
             probabilities[a] = Math.exp(q[a] - maximum);
             total += probabilities[a];
           }
 
-          for (let a = 0; a < 10; a++) {
+          for (let a = 0; a < outputSize; a++) {
             if (!row.m[a]) continue;
 
             delta[a] += imitation * (
@@ -388,7 +431,9 @@
         discount,
         weightScale: transition.weightScale || 1.0,
         s1: transition.s1,
-        m1: transition.m1
+        m1: transition.m1,
+        rewardCategory: transition.rewardCategory || transition.category || null,
+        isLoss: transition.isLoss || transition.r < 0
       });
     }
 
@@ -411,7 +456,12 @@
         return;
       }
 
+      const outputSize = this.net.sizes[this.net.sizes.length - 1];
+
       const rows = this.replay.sample(32, this.rng).map(t => {
+        const currentQ = this.net.predict(t.s);
+        const targetVector = Float32Array.from(currentQ);
+
         let target = t.r;
 
         if (t.discount > 0) {
@@ -424,10 +474,38 @@
             this.target.predict(t.s1)[nextAction];
         }
 
-        const scale = t.weightScale || 1.0;
-        if (scale === 2.0) this.updateStats.win++;
-        else if (scale === 1.5) this.updateStats.damage++;
-        else if (scale === 0.5) this.updateStats.loss++;
+        // Set primary target for the chosen action
+        targetVector[t.a] = target;
+
+        // --- 50/50 LOSS REDISTRIBUTION RULE ---
+        if (t.r < 0 || t.isLoss || t.rewardCategory === "Loss") {
+          const penalty = Math.abs(t.r);
+          const { sameStance, otherStances } = getStanceGroups(t.a, outputSize);
+
+          // Distribute 50% penalty across other attacks in SAME WASD stance
+          if (sameStance.length > 0) {
+            const samePenalty = (0.50 * penalty) / sameStance.length;
+            sameStance.forEach(aIdx => {
+              targetVector[aIdx] -= samePenalty;
+            });
+          }
+
+          // Distribute 50% penalty across all attacks in OTHER WASD stances
+          if (otherStances.length > 0) {
+            const otherPenalty = (0.50 * penalty) / otherStances.length;
+            otherStances.forEach(aIdx => {
+              targetVector[aIdx] -= otherPenalty;
+            });
+          }
+        }
+
+        // Accurately log telemetry update categories
+        const cat = t.rewardCategory ||
+          (t.weightScale === 2.0 ? "Win" : t.weightScale === 1.5 ? "Dmg" : t.weightScale === 0.5 ? "Loss" : "Neu");
+
+        if (cat === "Win") this.updateStats.win++;
+        else if (cat === "Dmg") this.updateStats.damage++;
+        else if (cat === "Loss") this.updateStats.loss++;
         else this.updateStats.neutral++;
 
         return {
@@ -436,7 +514,8 @@
           m: t.m,
           demo: t.demo,
           y: target,
-          weightScale: scale
+          yVector: targetVector,
+          weightScale: t.weightScale || 1.0
         };
       });
 
@@ -460,6 +539,7 @@
     Learner,
     Replay,
     argmax,
-    randomAction
+    randomAction,
+    getStanceGroups
   };
 })(globalThis);
