@@ -1,11 +1,11 @@
 /* js/neural_core.js
  * CPU neural network + Adam + Double DQN with asymmetric weighting & update stats.
- * Updated for v3 history-aware matrix architectures.
+ * Streamlined snapshot architecture optimized for ForeseeEngine leaf evaluation.
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3-history";
+  const BUILD = "foresee-rider-snapshot-v4";
   const K = g.KF;
 
   function argmax(q, mask) {
@@ -44,7 +44,7 @@
     return legal[Math.floor(rng() * legal.length)];
   }
 
-  // Helper to split actions by WASD stance for loss credit redistribution
+  /** Helper to split actions by WASD stance for loss credit redistribution */
   function getStanceGroups(actionIndex, outputSize) {
     const stanceSize = outputSize >= 16 ? 4 : Math.max(1, Math.floor(outputSize / 4));
     const stanceIndex = Math.floor(actionIndex / stanceSize);
@@ -61,6 +61,18 @@
     }
 
     return { sameStance, otherStances };
+  }
+
+  /** Utility to return top K action indices by highest Q-value */
+  function topKIndices(qValues, mask, k = 3) {
+    const legal = [];
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i]) {
+        legal.push({ index: i, value: qValues[i] });
+      }
+    }
+    legal.sort((a, b) => b.value - a.value);
+    return legal.slice(0, k).map(item => item.index);
   }
 
   class Network {
@@ -213,7 +225,7 @@
         let delta = new Float32Array(outputSize);
 
         if (row.yVector) {
-          // Multi-target backpropagation (supports 50/50 loss redistribution across target vector)
+          // Multi-target backpropagation
           for (let a = 0; a < outputSize; a++) {
             const error = q[a] - row.yVector[a];
 
@@ -474,15 +486,14 @@
             this.target.predict(t.s1)[nextAction];
         }
 
-        // Set primary target for the chosen action
+        // Primary target for chosen action
         targetVector[t.a] = target;
 
-        // --- 50/50 LOSS REDISTRIBUTION RULE ---
+        // 50/50 Loss credit redistribution rule
         if (t.r < 0 || t.isLoss || t.rewardCategory === "Loss") {
           const penalty = Math.abs(t.r);
           const { sameStance, otherStances } = getStanceGroups(t.a, outputSize);
 
-          // Distribute 50% penalty across other attacks in SAME WASD stance
           if (sameStance.length > 0) {
             const samePenalty = (0.50 * penalty) / sameStance.length;
             sameStance.forEach(aIdx => {
@@ -490,7 +501,6 @@
             });
           }
 
-          // Distribute 50% penalty across all attacks in OTHER WASD stances
           if (otherStances.length > 0) {
             const otherPenalty = (0.50 * penalty) / otherStances.length;
             otherStances.forEach(aIdx => {
@@ -499,7 +509,6 @@
           }
         }
 
-        // Accurately log telemetry update categories
         const cat = t.rewardCategory ||
           (t.weightScale === 2.0 ? "Win" : t.weightScale === 1.5 ? "Dmg" : t.weightScale === 0.5 ? "Loss" : "Neu");
 
@@ -540,6 +549,7 @@
     Replay,
     argmax,
     randomAction,
-    getStanceGroups
+    getStanceGroups,
+    topKIndices
   };
 })(globalThis);
