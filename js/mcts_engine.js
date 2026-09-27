@@ -81,7 +81,7 @@
       slot = "p1",
       net = null,
       spec = null,
-      iterations = 150,
+      iterations = 50,
       cPUCT = 1.41,
       maxDepth = 6,
       seed = 12345
