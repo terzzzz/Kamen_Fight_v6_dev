@@ -2,7 +2,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-foresee-rider-v4-snapshot";
+  const BUILD = "round-discount-master-guide-v3-history";
 
   const E = g.SoulEnv;
   const N = g.SoulNN;
@@ -52,7 +52,9 @@
       }
       const env = E.create(state, {});
       const obs = E.observe(env, slot);
-      const vec = E.vector(obs, spec);
+      const rawVec = E.vector(obs, spec);
+      const frames = new E.Frames(spec);
+      const vec = frames.push(rawVec);
       const mask = Uint8Array.from(E.mask(env, slot));
       const qValues = net.predict(vec);
 
@@ -69,10 +71,11 @@
   /**
    * Helper to extract top K candidate action keys using neural network Q-values.
    */
-  function getTopCandidates(net, spec, env, slot, topKCount = 3) {
+  function getTopCandidates(net, spec, env, slot, topKCount = 3, frames = null) {
     if (!net) return null;
     const obs = E.observe(env, slot);
-    const vec = E.vector(obs, spec);
+    const rawVec = E.vector(obs, spec);
+    const vec = frames ? frames.push(rawVec) : new E.Frames(spec).push(rawVec);
     const mask = Uint8Array.from(E.mask(env, slot));
     const qValues = net.predict(vec);
 
@@ -97,6 +100,7 @@
 
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
+    const frames = options.frames || new E.Frames(spec);
     const scriptedTeacher = E.scripted(rng, options.style || "reactive");
 
     return {
@@ -104,9 +108,12 @@
         if (!E.isDecision(e) || e.cells[slot].locked) return null;
 
         const observation = E.observe(e, slot);
-        // Single-frame snapshot evaluation without historical frame-stacking
-        const rawVector = E.vector(observation, spec);
-        const s = assertObservationSize(spec, "Observation " + slot, new Float32Array(rawVector));
+        const stacked = assertObservationSize(
+          spec,
+          "Observation " + slot,
+          frames.push(E.vector(observation, spec))
+        );
+        const s = new Float32Array(stacked);
         const m = Uint8Array.from(E.mask(e, slot));
 
         assertMask("Mask " + slot, m, m.length);
@@ -119,7 +126,7 @@
           a = customTeacher ? options.teacher(e, slot) : scriptedTeacher(observation, m);
         } else if (options.mode === "rider" && g.ForeseeEngine) {
           // RIDER Mode: Neural candidate filtering + ForeseeEngine horizon lookahead
-          const topKeys = getTopCandidates(net, spec, e, slot, 3);
+          const topKeys = getTopCandidates(net, spec, e, slot, 3, frames);
           const searchResult = g.ForeseeEngine.search({
             state: options.state ? C.copyState(options.state) : C.copyState(e.state),
             slot,
@@ -163,6 +170,7 @@
 
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
+    const learnerFrames = new E.Frames(spec);
 
     let history = [];
     let previousActions = {};
@@ -181,6 +189,7 @@
         epsilon,
         guide: guidedRound,
         mode: activeLearnerMode,
+        frames: learnerFrames,
         state,
         history,
         isTraining: !options.isEvaluation
@@ -191,8 +200,9 @@
 
       if (opponentNet) {
         if (isRiderOpponent && g.ForeseeEngine) {
+          const opponentFrames = new E.Frames(spec);
           opponentAct = env => {
-            const topKeys = getTopCandidates(opponentNet, spec, env, enemySlot, 3);
+            const topKeys = getTopCandidates(opponentNet, spec, env, enemySlot, 3, opponentFrames);
             const res = g.ForeseeEngine.search({
               state: C.copyState(state),
               slot: enemySlot,
@@ -284,7 +294,11 @@
       if (pending.length > 0) {
         const nextEnv = E.create(state, previousActions);
         const nextObs = E.observe(nextEnv, learnerSlot);
-        const s1 = assertObservationSize(spec, "Next Observation " + learnerSlot, new Float32Array(E.vector(nextObs, spec)));
+        const s1 = assertObservationSize(
+          spec,
+          "Next Observation " + learnerSlot,
+          new Float32Array(learnerFrames.push(E.vector(nextObs, spec)))
+        );
         const m1 = Uint8Array.from(E.mask(nextEnv, learnerSlot));
 
         const isMatchDone = Boolean(state.winner);
