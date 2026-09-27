@@ -178,7 +178,7 @@
       const e = E.create(state, previousActions);
       const guidedRound = choices() < guideProbability;
 
-      const activeLearnerMode = learnerMode || (options.isEvaluation && (opponentMode === "rider" || opponentMode === "mcts") ? "rider" : null);
+      const activeLearnerMode = learnerMode || (options.isEvaluation  ? "rider" : null);
 
       const learner = reactor(spec, net, K.rng(K.hash(seed, "ctrl", state.round, learnerSlot)), {
         epsilon,
