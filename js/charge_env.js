@@ -10,7 +10,7 @@
   const DECISION = 100;
   const REACTION = 250;
   const DELAY = 250;
-  const HISTORY = 1; // Single-frame snapshot for ForeseeEngine leaf evaluation
+  const HISTORY = 1; // Streamlined single-frame snapshot
   const GAMMA = 0.999;
 
   const SLOTS = ["p1", "p2"];
@@ -414,7 +414,7 @@
     );
 
     spec.frame = vector(observe(create(sample), "p1"), spec).length;
-    spec.input = spec.frame * HISTORY; // spec.input === spec.frame
+    spec.input = spec.frame * HISTORY; // Single-frame size
 
     return spec;
   }
