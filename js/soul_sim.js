@@ -2,7 +2,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3-history";
+  const BUILD = "round-discount-foresee-rider-v4-snapshot";
 
   const E = g.SoulEnv;
   const N = g.SoulNN;
@@ -39,9 +39,64 @@
     }
   }
 
+  /**
+   * Wraps a SoulNN network instance into a leaf state evaluator function for ForeseeEngine.
+   */
+  function makeNeuralEvaluator(net, spec) {
+    if (!net) return null;
+    return function (state, slot) {
+      if (state.winner) {
+        if (state.winner === slot) return 100.0;
+        if (state.winner === "draw") return 0.0;
+        return -100.0;
+      }
+      const env = E.create(state, {});
+      const obs = E.observe(env, slot);
+      const vec = E.vector(obs, spec);
+      const mask = Uint8Array.from(E.mask(env, slot));
+      const qValues = net.predict(vec);
+
+      let maxQ = -Infinity;
+      for (let i = 0; i < mask.length; i++) {
+        if (mask[i] && qValues[i] > maxQ) {
+          maxQ = qValues[i];
+        }
+      }
+      return maxQ === -Infinity ? 0 : maxQ;
+    };
+  }
+
+  /**
+   * Helper to extract top K candidate action keys using neural network Q-values.
+   */
+  function getTopCandidates(net, spec, env, slot, topKCount = 3) {
+    if (!net) return null;
+    const obs = E.observe(env, slot);
+    const vec = E.vector(obs, spec);
+    const mask = Uint8Array.from(E.mask(env, slot));
+    const qValues = net.predict(vec);
+
+    const candidates = [];
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i]) {
+        candidates.push({ index: i, score: qValues[i] });
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const topIndices = candidates.slice(0, topKCount).map(c => c.index);
+
+    const keys = [];
+    for (const idx of topIndices) {
+      const actionObj = E.actionFromIndex ? E.actionFromIndex(env, slot, idx) : null;
+      if (actionObj && actionObj.key) {
+        keys.push(actionObj.key);
+      }
+    }
+    return keys.length > 0 ? keys : null;
+  }
+
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
-    const frames = options.frames || new E.Frames(spec);
     const scriptedTeacher = E.scripted(rng, options.style || "reactive");
 
     return {
@@ -49,8 +104,9 @@
         if (!E.isDecision(e) || e.cells[slot].locked) return null;
 
         const observation = E.observe(e, slot);
-        const stacked = assertObservationSize(spec, "Observation " + slot, frames.push(E.vector(observation, spec)));
-        const s = new Float32Array(stacked);
+        // Single-frame snapshot evaluation without historical frame-stacking
+        const rawVector = E.vector(observation, spec);
+        const s = assertObservationSize(spec, "Observation " + slot, new Float32Array(rawVector));
         const m = Uint8Array.from(E.mask(e, slot));
 
         assertMask("Mask " + slot, m, m.length);
@@ -61,16 +117,21 @@
         if (guided) {
           const customTeacher = options.guide && typeof options.teacher === "function";
           a = customTeacher ? options.teacher(e, slot) : scriptedTeacher(observation, m);
-        } else if ((options.mode === "rider" || options.mode === "mcts") && g.MCTSEngine) {
-          const mctsResult = g.MCTSEngine.search({
-            state: options.state ? C.copyState(options.state) : null,
+        } else if (options.mode === "rider" && g.ForeseeEngine) {
+          // RIDER Mode: Neural candidate filtering + ForeseeEngine horizon lookahead
+          const topKeys = getTopCandidates(net, spec, e, slot, 3);
+          const searchResult = g.ForeseeEngine.search({
+            state: options.state ? C.copyState(options.state) : C.copyState(e.state),
             slot,
-            net,
-            spec,
-            iterations: options.mctsIterations || 150,
-            seed: rng() * 1000000
+            history: options.history || [],
+            difficulty: options.difficulty || "soul",
+            candidates: topKeys,
+            evaluator: makeNeuralEvaluator(net, spec),
+            isTraining: Boolean(options.isTraining)
           });
-          a = mctsResult.actionIdx;
+
+          const bestAction = searchResult.rows[0]?.action;
+          a = E.planned(bestAction)(e, slot);
         } else if (rng() < (options.epsilon || 0)) {
           a = N.randomAction(m, rng);
         } else {
@@ -102,7 +163,6 @@
 
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
-    const learnerFrames = new E.Frames(spec);
 
     let history = [];
     let previousActions = {};
@@ -121,25 +181,29 @@
         epsilon,
         guide: guidedRound,
         mode: activeLearnerMode,
-        frames: learnerFrames,
-        state
+        state,
+        history,
+        isTraining: !options.isEvaluation
       });
 
       let opponentAct;
-      const isRiderOpponent = (opponentMode === "rider" || opponentMode === "mcts");
+      const isRiderOpponent = (opponentMode === "rider");
 
       if (opponentNet) {
-        if (isRiderOpponent && g.MCTSEngine) {
+        if (isRiderOpponent && g.ForeseeEngine) {
           opponentAct = env => {
-            const mctsRes = g.MCTSEngine.search({
+            const topKeys = getTopCandidates(opponentNet, spec, env, enemySlot, 3);
+            const res = g.ForeseeEngine.search({
               state: C.copyState(state),
               slot: enemySlot,
-              net: opponentNet,
-              spec,
-              iterations: 150,
-              seed: K.rng(K.hash(seed, "mcts-opp", state.round))() * 1000000
+              history,
+              difficulty: "soul",
+              candidates: topKeys,
+              evaluator: makeNeuralEvaluator(opponentNet, spec),
+              isTraining: !options.isEvaluation
             });
-            return mctsRes.actionIdx;
+            const best = res.rows[0]?.action;
+            return E.planned(best)(env, enemySlot);
           };
         } else {
           const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
@@ -152,17 +216,17 @@
           const mask = Uint8Array.from(E.mask(env, enemySlot));
           return fastScripted(obs, mask);
         };
-      } else if (isRiderOpponent && g.MCTSEngine) {
+      } else if (isRiderOpponent && g.ForeseeEngine) {
         opponentAct = env => {
-          const mctsRes = g.MCTSEngine.search({
+          const res = g.ForeseeEngine.search({
             state: C.copyState(state),
             slot: enemySlot,
-            net: null,
-            spec,
-            iterations: 150,
-            seed: K.rng(K.hash(seed, "mcts-opp", state.round))() * 1000000
+            history,
+            difficulty: "soul",
+            isTraining: !options.isEvaluation
           });
-          return mctsRes.actionIdx;
+          const best = res.rows[0]?.action;
+          return E.planned(best)(env, enemySlot);
         };
       } else {
         opponentAct = env => {
@@ -220,7 +284,7 @@
       if (pending.length > 0) {
         const nextEnv = E.create(state, previousActions);
         const nextObs = E.observe(nextEnv, learnerSlot);
-        const s1 = new Float32Array(learnerFrames.push(E.vector(nextObs, spec)));
+        const s1 = assertObservationSize(spec, "Next Observation " + learnerSlot, new Float32Array(E.vector(nextObs, spec)));
         const m1 = Uint8Array.from(E.mask(nextEnv, learnerSlot));
 
         const isMatchDone = Boolean(state.winner);
