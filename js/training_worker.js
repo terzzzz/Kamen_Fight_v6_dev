@@ -1,8 +1,8 @@
 /* js/training_worker.js */
 "use strict";
 
-const BUILD = "round-discount-foresee-rider-v4-snapshot";
-const VERSION = "kf-soul-ddqn-v4";
+const BUILD = "round-discount-master-guide-v3-history";
+const VERSION = "kf-soul-ddqn-v3";
 
 const MIN_IMITATION = 0.01;
 const INITIAL_IMITATION = 0.05;
@@ -53,7 +53,6 @@ function validateJob(job) {
     throw new Error("Invalid job type. Must be 'train' or 'evaluate'.");
   }
 
-  // Auto-map UI mode strings and legacy aliases to valid worker modes
   const rawMode = String(job.mode || "mixed").toLowerCase();
   const modeMap = {
     mixed: "mixed",      // Fast O(1) scripted bot
@@ -68,9 +67,8 @@ function validateJob(job) {
 
   job.mode = modeMap[rawMode] || "mixed";
 
-  // Ensure valid match count for evaluation runs
   if (!Number.isInteger(job.matches) || job.matches < 2) {
-    job.matches = 50; // Fallback default evaluation batch size
+    job.matches = 50;
   }
 
   if (job.matches > 100000) {
@@ -85,7 +83,6 @@ async function run(job) {
   const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
 
-  // Read guidance decay percentiles passed from UI
   const guideHoldPct = Number.isFinite(job.guideHoldPct) ? job.guideHoldPct : 3;
   const guideZeroPct = Number.isFinite(job.guideZeroPct) ? job.guideZeroPct : 5;
 
@@ -96,7 +93,6 @@ async function run(job) {
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
-  // Resolve hidden layer dimensions first
   const h1 = Array.isArray(job.hidden) ? job.hidden[0] : (spec.hidden ? spec.hidden[0] : 256);
   const h2 = Array.isArray(job.hidden) ? job.hidden[1] : (spec.hidden ? spec.hidden[1] : 128);
 
