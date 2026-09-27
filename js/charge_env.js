@@ -5,13 +5,12 @@
   const C = g.CombatCore;
   const K = g.KF;
 
-  // Bumped TAG to permanently lock v3 history architecture
   const TAG = "kf-charge-v3-history";
   const STEP = 50;
   const DECISION = 100;
   const REACTION = 250;
   const DELAY = 250;
-  const HISTORY = 4;
+  const HISTORY = 1; // Single-frame snapshot for ForeseeEngine leaf evaluation
   const GAMMA = 0.999;
 
   const SLOTS = ["p1", "p2"];
@@ -201,29 +200,6 @@
       else break;
     }
 
-    // --- 5-TURN ACTION HISTORY EXTRACTION (SELF & OPPONENT) ---
-    const selfHistory = [];
-    const oppHistory = [];
-    const rawHistory = e.previousActions?.history || e.state?.history || [];
-
-    if (Array.isArray(rawHistory) && rawHistory.length > 0) {
-      for (let i = rawHistory.length - 1; i >= 0 && selfHistory.length < 5; i--) {
-        const entry = rawHistory[i];
-        const selfAct = entry?.[slot] || entry?.actions?.[slot];
-        const oppAct = entry?.[opponent] || entry?.actions?.[opponent];
-
-        if (selfAct) selfHistory.unshift({ ...selfAct });
-        if (oppAct) oppHistory.unshift({ ...oppAct });
-      }
-    }
-
-    // Fallbacks if match history contains fewer than 5 turns
-    const fallbackSelf = e.previousActions[slot] ? { ...e.previousActions[slot] } : idle();
-    const fallbackOpp = e.previousActions[opponent] ? { ...e.previousActions[opponent] } : idle();
-
-    while (selfHistory.length < 5) selfHistory.unshift({ ...fallbackSelf });
-    while (oppHistory.length < 5) oppHistory.unshift({ ...fallbackOpp });
-
     return {
       round: e.state.round,
       time: e.t,
@@ -235,9 +211,7 @@
       moves: e.state.moves[slot],
       enemyMoves: e.state.moves[opponent],
       lastOwn: { ...(e.previousActions[slot] || idle()) },
-      lastOpp: { ...(e.previousActions[opponent] || idle()) },
-      selfHistory,
-      oppHistory
+      lastOpp: { ...(e.previousActions[opponent] || idle()) }
     };
   }
 
@@ -245,7 +219,7 @@
     const m = new Uint8Array(INPUTS.length);
     const c = e.cells[slot];
 
-    m[0] = 1; // WAIT (Index 0) is legal for charging/holding state
+    m[0] = 1;
 
     if (
       c.locked ||
@@ -255,12 +229,10 @@
       return m;
     }
 
-    // Legal stance direction changes
     DIRS.forEach((d, i) => {
       m[i + 1] = Number(d !== c.direction);
     });
 
-    // Legal attack button triggers
     if (c.direction) {
       BUTTONS.forEach((b, i) => {
         const isLegal = C.isLegal(e.state, slot, {
@@ -271,9 +243,7 @@
       });
     }
 
-    // IDLE (Index 9) is legal as a standard turn-pass option
     m[9] = 1;
-
     return m;
   }
 
@@ -398,44 +368,6 @@
     previous(o.lastOwn);
     previous(o.lastOpp);
 
-    // Backward-compatibility slice guard for legacy v2 models
-    const isLegacySpec = spec && spec.tag === "kf-charge-v2";
-
-    if (!isLegacySpec) {
-      // --- 5-TURN SELF ACTION HISTORY VECTOR (45 FLOATS) ---
-      const sHistory = o.selfHistory || Array(5).fill(o.lastOwn);
-      for (let i = 0; i < 5; i++) {
-        previous(sHistory[i]);
-      }
-
-      // --- 5-TURN OPPONENT ACTION HISTORY VECTOR (45 FLOATS) ---
-      const oHistory = o.oppHistory || Array(5).fill(o.lastOpp);
-      for (let i = 0; i < 5; i++) {
-        previous(oHistory[i]);
-      }
-
-      // --- DYNAMIC OPPONENT BEHAVIORAL STYLE METRICS (4 FLOATS) ---
-      let oppGuardCount = 0;
-      let oppAttackCount = 0;
-      let oppSpecialCount = 0;
-      let oppHeavyCount = 0;
-
-      for (const act of oHistory) {
-        const key = act?.key || "";
-        if (key.startsWith("A+")) oppGuardCount++;
-        if (key.includes("+")) oppAttackCount++;
-        if (key.endsWith("+I")) oppSpecialCount++;
-        if (key.endsWith("+L")) oppHeavyCount++;
-      }
-
-      values.push(
-        oppGuardCount / 5,   // Guard frequency (SOUL signature)
-        oppAttackCount / 5,  // Aggression frequency
-        oppSpecialCount / 5, // Chi special frequency
-        oppHeavyCount / 5    // Heavy sweep frequency
-      );
-    }
-
     values.push(
       o.remaining / limit(),
       o.round / g.COMBAT_RULES.MAX_ROUNDS
@@ -481,9 +413,8 @@
       data.moves
     );
 
-    // Automatically measures and locks frame dimension for v3
     spec.frame = vector(observe(create(sample), "p1"), spec).length;
-    spec.input = spec.frame * HISTORY;
+    spec.input = spec.frame * HISTORY; // spec.input === spec.frame
 
     return spec;
   }
@@ -491,23 +422,10 @@
   class Frames {
     constructor(spec) {
       this.spec = spec;
-      this.frames = [];
     }
 
     push(frame) {
-      if (!this.frames.length) {
-        this.frames = Array.from(
-          { length: HISTORY },
-          () => frame.slice()
-        );
-      } else {
-        this.frames.shift();
-        this.frames.push(frame.slice());
-      }
-
-      const out = new Float32Array(this.spec.input);
-      this.frames.forEach((f, i) => out.set(f, i * this.spec.frame));
-      return out;
+      return new Float32Array(frame);
     }
   }
 
