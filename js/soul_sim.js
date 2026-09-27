@@ -295,18 +295,18 @@
 
       let roundReward = (oppDmg - selfDmg) / 2400.0;
 
-      // 2. FAINT SETUP GRADIENT
+      // 2. FAINT SETUP GRADIENT (70% DISCOUNT: 0.05 -> 0.015)
       const faintGained = Math.max(0, postOppFaint - preOppFaint);
-      roundReward += (faintGained / 100.0) * 0.05;
+      roundReward += (faintGained / 100.0) * 0.015;
 
-      // 3. ONE-TIME CHI TRANSITION TRIGGERS (TRANSITION EVENTS ONLY)
+      // 3. ONE-TIME CHI TRANSITION TRIGGERS (80% DISCOUNT: 0.05 -> 0.01)
       // Trigger A: Dropping into Bankruptcy ( >5 to <=5 Chi )
       if (preSelfChi > 5 && postSelfChi <= 5) {
-        roundReward -= 0.05;
+        roundReward -= 0.01;
       }
       // Trigger B: Reaching Max Tier ( <15 to >=15 Chi )
       if (preSelfChi < 15 && postSelfChi >= 15) {
-        roundReward += 0.05;
+        roundReward += 0.01;
       }
 
       // 4. TERMINAL MATCH WIN / LOSS
