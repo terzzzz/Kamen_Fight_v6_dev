@@ -2,7 +2,7 @@
 (function (g) {
   "use strict";
 
-  // Updated version constants to lock v3 history matrix metadata
+  // Version constants locking v3 history matrix metadata
   const VERSION = "round-discount-master-guide-v3-history";
   const MASTER_VERSION = "kf-soul-matrix-v3";
   const WORKER_VERSION = "kf-soul-ddqn-v3";
@@ -46,18 +46,6 @@
     return `${toCode(rider1)}_${toCode(rider2)}`;
   }
 
-  function resetRAMStores() {
-    store.candidate = { matchups: {}, legacy: null };
-    store.active = { matchups: {}, legacy: null };
-    if (g.localStorage) {
-      try {
-        g.localStorage.removeItem(STORAGE_KEY);
-      } catch (e) {}
-    }
-    lastStorageWarning = "";
-    console.log("[SoulAgent] RAM stores and LocalStorage successfully cleared.");
-  }
-
   function validateCheckpoint(checkpoint, expectedLearner = null, expectedOpponent = null) {
     if (!checkpoint || typeof checkpoint !== "object") {
       return { valid: false, error: "Checkpoint is empty or invalid object." };
@@ -66,14 +54,21 @@
       return { valid: false, error: "Missing or corrupted neural network layers ('net.layers')." };
     }
 
-    // Architecture safeguard check for upgraded 256-unit hidden layer shape
-    if (checkpoint.net.sizes && checkpoint.net.sizes[1] !== 256) {
-      return { valid: false, error: `Obsolete architecture sizes [${checkpoint.net.sizes.join(", ")}]. Expected 256 primary hidden units.` };
+    // Validate layer dimensions dynamically (supports both 128 and 256 hidden unit architectures)
+    if (Array.isArray(checkpoint.net.sizes)) {
+      const sizes = checkpoint.net.sizes;
+      if (sizes.length < 3) {
+        return { valid: false, error: "Invalid network layer configuration in checkpoint." };
+      }
+      if (sizes[sizes.length - 1] !== 10) {
+        return { valid: false, error: `Output action layer mismatch: got ${sizes[sizes.length - 1]}, expected 10.` };
+      }
     }
 
     let weightCount = 0;
     for (let lIdx = 0; lIdx < checkpoint.net.layers.length; lIdx++) {
       const layer = checkpoint.net.layers[lIdx];
+      
       const rawWeights = layer.weights || layer.w || layer.W || layer.data;
 
       if (!rawWeights) {
@@ -159,6 +154,10 @@
     return false;
   }
 
+  /**
+   * AUTO-MAPS ALL 36 FILES FROM data/matrix/ ON STARTUP
+   * Iterates through 001_001.json -> 006_006.json in parallel.
+   */
   async function scanAllMatchupsFromRepo() {
     const codes = ["001", "002", "003", "004", "005", "006"];
     const fetchPromises = [];
@@ -182,12 +181,10 @@
                     store.candidate.matchups[key] = JSON.parse(JSON.stringify(checkpoint));
                   }
                   foundCount++;
-                } else {
-                  console.warn(`[SoulAgent] Ignored legacy file '${key}.json': ${val.error}`);
                 }
               }
             })
-            .catch(() => { /* 404 / File missing: Gracefully returns 0g */ })
+            .catch(() => { /* Gracefully ignores missing 0g matchups */ })
         );
       }
     }
@@ -282,10 +279,8 @@
     if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
 
     const spec = g.SoulEnv.makeSpec(cachedData);
-    const inputDim = Number.isFinite(spec?.input) ? spec.input : 108;
-    
-    // UPDATED: Instantiates upgraded [256, 128] matrix shape
-    const net = new g.SoulNN.Network(inputDim, 256, 128, 10);
+    const inputDim = Number.isFinite(spec?.input) ? spec.input : 476;
+    const net = new g.SoulNN.Network(inputDim, 128, 128, 10);
     const targetKey = getCanonicalKey(learnerId, opponentId);
 
     for (const [key, section] of Object.entries(store.active.matchups)) {
@@ -421,7 +416,6 @@
     MASTER_VERSION,
     WORKER_VERSION,
     ready,
-    resetRAMStores,
     scanAllMatchupsFromRepo,
     fetchMatchupFromCDN,
     toCode,
