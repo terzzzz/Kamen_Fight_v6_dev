@@ -1,11 +1,11 @@
 /* js/neural_core.js
  * CPU neural network + Adam + Double DQN with asymmetric weighting & update stats.
- * Streamlined snapshot architecture optimized for ForeseeEngine leaf evaluation.
+ * Updated for v3 history-aware matrix architectures.
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "foresee-rider-snapshot-v4";
+  const BUILD = "round-discount-master-guide-v3-history";
   const K = g.KF;
 
   function argmax(q, mask) {
@@ -44,7 +44,6 @@
     return legal[Math.floor(rng() * legal.length)];
   }
 
-  /** Helper to split actions by WASD stance for loss credit redistribution */
   function getStanceGroups(actionIndex, outputSize) {
     const stanceSize = outputSize >= 16 ? 4 : Math.max(1, Math.floor(outputSize / 4));
     const stanceIndex = Math.floor(actionIndex / stanceSize);
@@ -61,18 +60,6 @@
     }
 
     return { sameStance, otherStances };
-  }
-
-  /** Utility to return top K action indices by highest Q-value */
-  function topKIndices(qValues, mask, k = 3) {
-    const legal = [];
-    for (let i = 0; i < mask.length; i++) {
-      if (mask[i]) {
-        legal.push({ index: i, value: qValues[i] });
-      }
-    }
-    legal.sort((a, b) => b.value - a.value);
-    return legal.slice(0, k).map(item => item.index);
   }
 
   class Network {
@@ -184,11 +171,7 @@
           if (
             !Array.isArray(values) ||
             values.length !== target[field].length ||
-            values.some(value =>
-              typeof value !== "number" ||
-              !Number.isFinite(value) ||
-              Math.abs(value) > 1000
-            )
+            values.some(value => typeof value !== "number" || !Number.isFinite(value))
           ) {
             throw new Error(
               "Invalid neural checkpoint parameters."
@@ -225,7 +208,6 @@
         let delta = new Float32Array(outputSize);
 
         if (row.yVector) {
-          // Multi-target backpropagation
           for (let a = 0; a < outputSize; a++) {
             const error = q[a] - row.yVector[a];
 
@@ -242,7 +224,6 @@
             delta[a] = K.clamp(error, -1, 1) * (row.weightScale || 1.0);
           }
         } else {
-          // Single action backpropagation fallback
           const error = q[row.a] - row.y;
 
           if (!Number.isFinite(error)) {
@@ -486,10 +467,8 @@
             this.target.predict(t.s1)[nextAction];
         }
 
-        // Primary target for chosen action
         targetVector[t.a] = target;
 
-        // 50/50 Loss credit redistribution rule
         if (t.r < 0 || t.isLoss || t.rewardCategory === "Loss") {
           const penalty = Math.abs(t.r);
           const { sameStance, otherStances } = getStanceGroups(t.a, outputSize);
@@ -549,7 +528,6 @@
     Replay,
     argmax,
     randomAction,
-    getStanceGroups,
-    topKIndices
+    getStanceGroups
   };
 })(globalThis);
