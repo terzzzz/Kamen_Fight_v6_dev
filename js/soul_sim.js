@@ -241,8 +241,11 @@
         opponentPlanner = env => plan(env, enemySlot);
       }
 
+      // --- PRE-ROUND METRICS SNAPSHOT ---
       const preSelfLp = state[learnerSlot]?.lp ?? 0;
       const preOppLp = state[enemySlot]?.lp ?? 0;
+      const preSelfChi = state[learnerSlot]?.chi ?? 0;
+      const preOppFaint = state[enemySlot]?.faint ?? 0;
 
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
@@ -266,14 +269,47 @@
       history = g.KF_AI.remember(history, result.before || state, result.actions);
       rounds++;
 
+      // --- POST-ROUND METRICS SNAPSHOT ---
       const postSelfLp = state[learnerSlot]?.lp ?? 0;
       const postOppLp = state[enemySlot]?.lp ?? 0;
+      const postSelfChi = state[learnerSlot]?.chi ?? 0;
+      const postOppFaint = state[enemySlot]?.faint ?? 0;
 
+      const isOppFainted = Boolean(
+        result.before?.[enemySlot]?.fainted ||
+        result.before?.[enemySlot]?.isFainted ||
+        result.before?.[enemySlot]?.stunned ||
+        state[enemySlot]?.fainted ||
+        state[enemySlot]?.isFainted ||
+        state[enemySlot]?.stunned ||
+        (preOppFaint >= 100)
+      );
+
+      // 1. RE-SCALED LP DAMAGE (2400 MAX HEALTH) WITH 1.5x DIZZY PUNISH MULTIPLIER
       const selfDmg = Math.max(0, preSelfLp - postSelfLp);
-      const oppDmg = Math.max(0, preOppLp - postOppLp);
+      let oppDmg = Math.max(0, preOppLp - postOppLp);
 
-      let roundReward = (oppDmg - selfDmg) / 100.0;
+      if (isOppFainted) {
+        oppDmg *= 1.5; // 1.5x damage payout when punishing dizzy/fainted target
+      }
 
+      let roundReward = (oppDmg - selfDmg) / 2400.0;
+
+      // 2. FAINT SETUP GRADIENT
+      const faintGained = Math.max(0, postOppFaint - preOppFaint);
+      roundReward += (faintGained / 100.0) * 0.05;
+
+      // 3. ONE-TIME CHI TRANSITION TRIGGERS (TRANSITION EVENTS ONLY)
+      // Trigger A: Dropping into Bankruptcy ( >5 to <=5 Chi )
+      if (preSelfChi > 5 && postSelfChi <= 5) {
+        roundReward -= 0.05;
+      }
+      // Trigger B: Reaching Max Tier ( <15 to >=15 Chi )
+      if (preSelfChi < 15 && postSelfChi >= 15) {
+        roundReward += 0.05;
+      }
+
+      // 4. TERMINAL MATCH WIN / LOSS
       if (state.winner === learnerSlot) {
         roundReward += 1.0;
       } else if (state.winner && state.winner !== "draw") {
