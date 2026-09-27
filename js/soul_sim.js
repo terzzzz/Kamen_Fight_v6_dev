@@ -190,7 +190,7 @@
         isTraining: !options.isEvaluation
       });
 
-      // Resolve opponent action ONCE per round (prevents 20x redundant search calls per turn)
+      // Resolve opponent action planner ONCE per round
       let opponentPlanner;
       const isRiderOpponent = (opponentMode === "rider" || opponentMode === "mcts");
 
@@ -206,7 +206,8 @@
             evaluator: makeNeuralEvaluator(opponentNet, spec),
             isTraining: !options.isEvaluation
           });
-          opponentPlanner = E.planned(res.rows[0]?.action);
+          const plan = E.planned(res.rows[0]?.action);
+          opponentPlanner = env => plan(env, enemySlot);
         } else {
           const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
           opponentPlanner = env => actor.decide(env, enemySlot)?.a ?? 0;
@@ -226,7 +227,8 @@
           difficulty: "soul",
           isTraining: !options.isEvaluation
         });
-        opponentPlanner = E.planned(res.rows[0]?.action);
+        const plan = E.planned(res.rows[0]?.action);
+        opponentPlanner = env => plan(env, enemySlot);
       } else {
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
@@ -235,7 +237,8 @@
           difficulty: opponentMode,
           disableAgent: true
         });
-        opponentPlanner = E.planned(decision.action);
+        const plan = E.planned(decision.action);
+        opponentPlanner = env => plan(env, enemySlot);
       }
 
       const preSelfLp = state[learnerSlot]?.lp ?? 0;
