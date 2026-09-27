@@ -173,11 +173,10 @@
   }
 
   /**
-   * Main AI Search Entry Point.
-   * Performs Expectimax tree evaluation at depth 1, then executes multi-turn Monte Carlo
-   * horizon rollouts for top finalist moves using either neural Q-evaluation or fallback heuristics.
+   * Main AI Search Entry Point (Neural-Guided Expectimax & Monte Carlo Horizon).
+   * Supports candidate filtering via neural priors and custom leaf evaluation via SoulNN.
    *
-   * @param {Object} context - Match state, acting slot, difficulty, history, seed, evaluator, and isTraining flag.
+   * @param {Object} context - Match state, acting slot, difficulty, history, seed, evaluator, candidates, and isTraining flag.
    * @returns {Object} Evaluated candidate move rows sorted by score, plus debug metadata.
    */
   function search(context) {
@@ -187,6 +186,7 @@
       history = [],
       seed = 1,
       evaluator = null,
+      candidates = null,
       isTraining = false
     } = context;
 
@@ -204,7 +204,6 @@
     }
 
     const opponentSlot = C.other(slot);
-
     const chargeChoices = [...settings.charges];
 
     if (difficulty === "master" || difficulty === "soul") {
@@ -217,11 +216,23 @@
       }
     }
 
-    const ownActions = C.actions(
+    let ownActions = C.actions(
       state,
       slot,
       [...new Set(chargeChoices)]
     );
+
+    // Apply Neural Candidate Filter at Root Node (if provided by RIDER mode)
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      const filtered = ownActions.filter(a =>
+        candidates.includes(a.key) ||
+        candidates.includes(a) ||
+        candidates.some(c => typeof c === "object" && c.key === a.key && c.charge === a.charge)
+      );
+      if (filtered.length > 0) {
+        ownActions = filtered;
+      }
+    }
 
     // Predict opponent behavior using a Master difficulty policy model
     const opponentPolicy = policy(
@@ -233,7 +244,7 @@
 
     const rows = [];
 
-    // Step 1: Depth 1 Expectimax matrix evaluation across all root action choices
+    // Step 1: Depth 1 Expectimax matrix evaluation across filtered root choices
     for (const action of ownActions) {
       let expected = 0;
       let worst = Infinity;
@@ -267,7 +278,7 @@
     let finalists = rows;
     let completedHorizon = 1;
 
-    // Step 2: Multi-turn Monte Carlo Horizon Rollouts (Master & Soul difficulties)
+    // Step 2: Multi-turn Monte Carlo Horizon Rollouts (Master, Soul, and RIDER difficulties)
     if (
       settings.horizon > 1 &&
       rows.length > 1 &&
