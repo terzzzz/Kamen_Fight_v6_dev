@@ -39,9 +39,6 @@
     }
   }
 
-  /**
-   * Wraps a SoulNN network instance into a leaf state evaluator function for ForeseeEngine.
-   */
   function makeNeuralEvaluator(net, spec) {
     if (!net) return null;
     return function (state, slot) {
@@ -68,9 +65,6 @@
     };
   }
 
-  /**
-   * Helper to extract top K candidate action keys using neural network Q-values.
-   */
   function getTopCandidates(net, spec, env, slot, topKCount = 3, existingFrames = null) {
     if (!net) return null;
     const obs = E.observe(env, slot);
@@ -126,7 +120,6 @@
           const customTeacher = options.guide && typeof options.teacher === "function";
           a = customTeacher ? options.teacher(e, slot) : scriptedTeacher(observation, m);
         } else if ((options.mode === "rider" || options.mode === "mcts") && g.ForeseeEngine) {
-          // RIDER Mode: Neural candidate filtering + ForeseeEngine horizon lookahead
           const topKeys = getTopCandidates(net, spec, e, slot, 3, frames);
           const searchResult = g.ForeseeEngine.search({
             state: options.state ? C.copyState(options.state) : C.copyState(e.state),
@@ -172,6 +165,7 @@
     const combatRng = K.rng(K.hash(seed, "combat"));
     const choices = K.rng(K.hash(seed, "training-choices"));
     const learnerFrames = new E.Frames(spec);
+    const opponentFrames = new E.Frames(spec);
 
     let history = [];
     let previousActions = {};
@@ -196,61 +190,52 @@
         isTraining: !options.isEvaluation
       });
 
-      let opponentAct;
+      // Resolve opponent action ONCE per round (prevents 20x redundant search calls per turn)
+      let opponentPlanner;
       const isRiderOpponent = (opponentMode === "rider" || opponentMode === "mcts");
 
       if (opponentNet) {
         if (isRiderOpponent && g.ForeseeEngine) {
-          const opponentFrames = new E.Frames(spec);
-          opponentAct = env => {
-            const topKeys = getTopCandidates(opponentNet, spec, env, enemySlot, 3, opponentFrames);
-            const res = g.ForeseeEngine.search({
-              state: C.copyState(state),
-              slot: enemySlot,
-              history,
-              difficulty: "soul",
-              candidates: topKeys,
-              evaluator: makeNeuralEvaluator(opponentNet, spec),
-              isTraining: !options.isEvaluation
-            });
-            const best = res.rows[0]?.action;
-            return E.planned(best)(env, enemySlot);
-          };
-        } else {
-          const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
-          opponentAct = env => actor.decide(env, enemySlot)?.a ?? 0;
-        }
-      } else if (opponentMode === "mixed") {
-        const fastScripted = E.scripted(K.rng(K.hash(seed, "fast-opp", state.round)), "reactive");
-        opponentAct = env => {
-          const obs = E.observe(env, enemySlot);
-          const mask = Uint8Array.from(E.mask(env, enemySlot));
-          return fastScripted(obs, mask);
-        };
-      } else if (isRiderOpponent && g.ForeseeEngine) {
-        opponentAct = env => {
+          const topKeys = getTopCandidates(opponentNet, spec, e, enemySlot, 3, opponentFrames);
           const res = g.ForeseeEngine.search({
             state: C.copyState(state),
             slot: enemySlot,
             history,
             difficulty: "soul",
+            candidates: topKeys,
+            evaluator: makeNeuralEvaluator(opponentNet, spec),
             isTraining: !options.isEvaluation
           });
-          const best = res.rows[0]?.action;
-          return E.planned(best)(env, enemySlot);
+          opponentPlanner = E.planned(res.rows[0]?.action);
+        } else {
+          const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
+          opponentPlanner = env => actor.decide(env, enemySlot)?.a ?? 0;
+        }
+      } else if (opponentMode === "mixed") {
+        const fastScripted = E.scripted(K.rng(K.hash(seed, "fast-opp", state.round)), "reactive");
+        opponentPlanner = env => {
+          const obs = E.observe(env, enemySlot);
+          const mask = Uint8Array.from(E.mask(env, enemySlot));
+          return fastScripted(obs, mask);
         };
+      } else if (isRiderOpponent && g.ForeseeEngine) {
+        const res = g.ForeseeEngine.search({
+          state: C.copyState(state),
+          slot: enemySlot,
+          history,
+          difficulty: "soul",
+          isTraining: !options.isEvaluation
+        });
+        opponentPlanner = E.planned(res.rows[0]?.action);
       } else {
-        opponentAct = env => {
-          const decision = g.KF_AI.choose({
-            state: C.copyState(state),
-            slot: enemySlot,
-            history,
-            difficulty: opponentMode,
-            disableAgent: true
-          });
-          const planned = E.planned(decision.action);
-          return planned(env, enemySlot);
-        };
+        const decision = g.KF_AI.choose({
+          state: C.copyState(state),
+          slot: enemySlot,
+          history,
+          difficulty: opponentMode,
+          disableAgent: true
+        });
+        opponentPlanner = E.planned(decision.action);
       }
 
       const preSelfLp = state[learnerSlot]?.lp ?? 0;
@@ -258,7 +243,7 @@
 
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
-        const opposingAction = opponentAct(e);
+        const opposingAction = opponentPlanner(e);
 
         if (ownDecision) {
           pending.push({
