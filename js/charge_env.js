@@ -10,7 +10,7 @@
   const DECISION = 100;
   const REACTION = 250;
   const DELAY = 250;
-  const HISTORY = 1; // Streamlined single-frame snapshot
+  const HISTORY = 4; // Restored 4-frame history stacking (119 * 4 = 476 inputs)
   const GAMMA = 0.999;
 
   const SLOTS = ["p1", "p2"];
@@ -413,8 +413,8 @@
       data.moves
     );
 
-    spec.frame = vector(observe(create(sample), "p1"), spec).length;
-    spec.input = spec.frame * HISTORY; // Single-frame size
+    spec.frame = vector(observe(create(sample), "p1"), spec).length; // 119
+    spec.input = spec.frame * HISTORY; // 119 * 4 = 476
 
     return spec;
   }
@@ -422,10 +422,23 @@
   class Frames {
     constructor(spec) {
       this.spec = spec;
+      this.frames = [];
     }
 
     push(frame) {
-      return new Float32Array(frame);
+      if (!this.frames.length) {
+        this.frames = Array.from(
+          { length: HISTORY },
+          () => frame.slice()
+        );
+      } else {
+        this.frames.shift();
+        this.frames.push(frame.slice());
+      }
+
+      const out = new Float32Array(this.spec.input);
+      this.frames.forEach((f, i) => out.set(f, i * this.spec.frame));
+      return out;
     }
   }
 
