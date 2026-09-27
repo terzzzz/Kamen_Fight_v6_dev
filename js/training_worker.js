@@ -1,8 +1,8 @@
 /* js/training_worker.js */
 "use strict";
 
-const BUILD = "round-discount-master-guide-v3-history";
-const VERSION = "kf-soul-ddqn-v3";
+const BUILD = "round-discount-foresee-rider-v4-snapshot";
+const VERSION = "kf-soul-ddqn-v4";
 
 const MIN_IMITATION = 0.01;
 const INITIAL_IMITATION = 0.05;
@@ -16,7 +16,6 @@ importScripts(
     "ai.js",
     "charge_env.js",
     "neural_core.js",
-    "mcts_engine.js",
     "soul_sim.js"
   ].map(file => file + "?v=" + BUILD)
 );
@@ -57,14 +56,14 @@ function validateJob(job) {
   // Auto-map UI mode strings and legacy aliases to valid worker modes
   const rawMode = String(job.mode || "mixed").toLowerCase();
   const modeMap = {
-    mixed: "mixed",      // ✅ Fast O(1) scripted bot
+    mixed: "mixed",      // Fast O(1) scripted bot
     novice: "easy",
     easy: "easy",
     balanced: "balanced",
     master: "master",
     soul: "soul",
-    rider: "mcts",
-    mcts: "mcts"
+    rider: "rider",
+    mcts: "rider"
   };
 
   job.mode = modeMap[rawMode] || "mixed";
@@ -101,11 +100,7 @@ async function run(job) {
   const h1 = Array.isArray(job.hidden) ? job.hidden[0] : (spec.hidden ? spec.hidden[0] : 256);
   const h2 = Array.isArray(job.hidden) ? job.hidden[1] : (spec.hidden ? spec.hidden[1] : 128);
 
-  // Calculate expected total network parameters for [input, h1, h2, 10]
-  const expectedParams = (spec.input * h1 + h1) + (h1 * h2 + h2) + (h2 * 10 + 10);
-
   // Checkpoint architecture validation & stale model reset safeguard
- // Checkpoint architecture validation & stale model reset safeguard
   if (old && old.net) {
     const sizes = old.net.sizes || [];
     const inputMismatch = sizes[0] !== spec.input;
