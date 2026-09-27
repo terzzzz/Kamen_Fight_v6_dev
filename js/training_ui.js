@@ -258,8 +258,8 @@
       }
 
       .soul-tools pre {
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
+        white-space: pre;
+        overflow-x: auto;
       }
     `;
 
@@ -359,7 +359,7 @@
 
       if (!busy) {
         action("eval-candidate").disabled = !state.candidate && !candSection;
-        action("promote").disabled = !state.candidate || !state.candidate.evaluated;
+        action("promote").disabled = !candSection && !state.candidate;
         action("eval-active").disabled = !state.active && !actSection && state.activeMatchupsCount === 0;
       }
     }
