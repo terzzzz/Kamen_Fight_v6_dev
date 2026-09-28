@@ -390,7 +390,7 @@
       this.steps = previousSteps;
       this.updates = 0;
       this.loss = 0;
-      this.gamma = g.SoulEnv ? g.SoulEnv.GAMMA : 0.999;
+      this.gamma = g.SoulEnv ? g.SoulEnv.GAMMA : 0.95; // 0.95 gamma for combat rounds
       this.updateStats = { win: 0, damage: 0, loss: 0, neutral: 0 };
     }
 
@@ -465,6 +465,9 @@
           target += t.discount *
             this.target.predict(t.s1)[nextAction];
         }
+
+        // --- FIX: CLAMP TARGET Q-VALUE TO ELIMINATE DIVERGENCE ---
+        target = K.clamp(target, -5.0, 5.0);
 
         targetVector[t.a] = target;
 
