@@ -207,7 +207,7 @@
       opponent, opponentMode = "mixed", opponentNet = null,
       seed = 1, epsilon = 0, guideProbability = 0,
       rewardMode = "standard", initialStateOverride = null,
-      learnerMode = null
+      learnerMode = null, surpriseThreshold = 0.05
     } = options;
 
     const enemySlot = C.other(learnerSlot);
@@ -455,6 +455,32 @@
 
         for (let i = 0; i < pending.length; i++) {
           const isLastInRound = (i === pending.length - 1);
+          const stepReward = roundReward / pending.length;
+
+          // Compute TD Error (Surprise metric) if neural network is evaluating transitions
+          let tdError = 1.0; // Default high surprise when no net is attached
+          if (net && typeof net.predict === "function") {
+            const currentQValues = net.predict(pending[i].s);
+            const nextQValues = net.predict(s1);
+
+            let maxNextQ = -Infinity;
+            for (let j = 0; j < m1.length; j++) {
+              if (m1[j] && nextQValues[j] > maxNextQ) {
+                maxNextQ = nextQValues[j];
+              }
+            }
+            if (maxNextQ === -Infinity) maxNextQ = 0.0;
+
+            const targetQ = stepReward + discount * maxNextQ;
+            const currentQ = currentQValues[pending[i].a] ?? 0.0;
+            tdError = Math.abs(targetQ - currentQ);
+          }
+
+          // METHOD 2 GATE: Skip low-surprise transitions during training unless terminal
+          if (!options.isEvaluation && surpriseThreshold > 0 && tdError < surpriseThreshold && !isMatchDone) {
+            continue;
+          }
+
           yield {
             type: "transition",
             transition: {
@@ -463,7 +489,7 @@
               m: pending[i].m,
               s1,
               m1,
-              r: roundReward / pending.length,
+              r: stepReward,
               discount,
               done: isMatchDone,
               demo: pending[i].demo,
@@ -471,7 +497,8 @@
               actionKey: resolvedMove,
               resolvedActionKey: resolvedMove,
               rewardCategory: category,
-              weightScale: weightScale
+              weightScale: weightScale,
+              tdError: Number(tdError.toFixed(4))
             }
           };
         }
