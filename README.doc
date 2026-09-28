@@ -86,6 +86,8 @@ Riders: Include all showga riders + shadow moon (portrait only)
 7/9/26: Rider Amazon - design. 
 15/9/26: Confirm the deepmind neutral maching learning works. Training Ichigo as SOUL.
 17-21/9/26: Continue to enhance SOUL training logic. More stats revealed for analysis and ensure the training is on right track.
+22/9-27/9/26: Considered plugging training to python or enalrge training matrix size but failed, switched back to original. 
+28/9/26: Try to give a more accurate rewards in the matrix.
 
 
 
