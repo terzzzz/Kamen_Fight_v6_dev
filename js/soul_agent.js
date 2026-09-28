@@ -17,9 +17,10 @@
     amazon: "006"
   };
 
-  const REVERSE_CODES = Object.fromEntries(
-    Object.entries(RIDER_CODES).map(([id, code]) => [code, id])
-  );
+  const REVERSE_CODES = {};
+  Object.keys(RIDER_CODES).forEach(function (id) {
+    REVERSE_CODES[RIDER_CODES[id]] = id;
+  });
 
   let readyPromise = null;
   let cachedData = null;
@@ -29,6 +30,16 @@
     candidate: { matchups: {}, legacy: null },
     active: { matchups: {}, legacy: null }
   };
+
+  function getBaseURI() {
+    if (typeof document !== "undefined" && document.baseURI) {
+      return document.baseURI;
+    }
+    if (typeof self !== "undefined" && self.location && self.location.href) {
+      return self.location.href;
+    }
+    return "";
+  }
 
   function toCode(riderId) {
     if (!riderId) return "000";
@@ -54,7 +65,6 @@
       return { valid: false, error: "Missing or corrupted neural network layers ('net.layers')." };
     }
 
-    // Validate layer dimensions dynamically (supports both 128 and 256 hidden unit architectures)
     if (Array.isArray(checkpoint.net.sizes)) {
       const sizes = checkpoint.net.sizes;
       if (sizes.length < 3) {
@@ -68,7 +78,6 @@
     let weightCount = 0;
     for (let lIdx = 0; lIdx < checkpoint.net.layers.length; lIdx++) {
       const layer = checkpoint.net.layers[lIdx];
-      
       const rawWeights = layer.weights || layer.w || layer.W || layer.data;
 
       if (!rawWeights) {
@@ -154,20 +163,17 @@
     return false;
   }
 
-  /**
-   * AUTO-MAPS ALL 36 FILES FROM data/matrix/ ON STARTUP
-   * Iterates through 001_001.json -> 006_006.json in parallel.
-   */
   async function scanAllMatchupsFromRepo() {
     const codes = ["001", "002", "003", "004", "005", "006"];
     const fetchPromises = [];
     let foundCount = 0;
+    const base = getBaseURI();
 
     for (const lCode of codes) {
       for (const oCode of codes) {
         const key = `${lCode}_${oCode}`;
         const path = `data/matrix/${key}.json?t=${Date.now()}`;
-        const targetURL = new URL(path, document.baseURI);
+        const targetURL = new URL(path, base);
 
         fetchPromises.push(
           fetch(targetURL)
@@ -197,7 +203,7 @@
   async function fetchMatchupFromCDN(learnerId, opponentId) {
     const key = getCanonicalKey(learnerId, opponentId);
     const path = `data/matrix/${key}.json?t=${Date.now()}`;
-    const targetURL = new URL(path, document.baseURI);
+    const targetURL = new URL(path, getBaseURI());
 
     console.log(`[SoulAgent] Fetching ${path}...`);
     const res = await fetch(targetURL);
@@ -260,8 +266,7 @@
         }
       }
 
-      store.candidate.matchups[targetKey] = {
-        ...cloned,
+      store.candidate.matchups[targetKey] = Object.assign({}, cloned, {
         version: WORKER_VERSION,
         canonicalKey: targetKey,
         learnerId: learner,
@@ -269,7 +274,7 @@
         games: cloned.games || 0,
         steps: cloned.steps || 0,
         updatedAt: new Date().toISOString()
-      };
+      });
     }
 
     saveToLocalStorage();
@@ -338,10 +343,7 @@
       throw new Error("No candidate model exists to activate.");
     }
 
-    store.active.matchups = {
-      ...store.active.matchups,
-      ...JSON.parse(JSON.stringify(store.candidate.matchups))
-    };
+    store.active.matchups = Object.assign({}, store.active.matchups, JSON.parse(JSON.stringify(store.candidate.matchups)));
 
     if (store.candidate.legacy) {
       store.active.legacy = JSON.parse(JSON.stringify(store.candidate.legacy));
@@ -387,12 +389,14 @@
     const blob = new Blob([jsonString], { type: "application/json" });
     const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (typeof document !== "undefined" && document.createElement) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
 
     return { fileName, key, sizeMB, games: checkpoint.games || 0 };
   }
