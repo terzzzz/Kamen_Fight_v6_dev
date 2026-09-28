@@ -235,8 +235,6 @@
     const oppMaxLp = state[enemySlot]?.maxLp ?? 3000;
     let minOppLp = state[enemySlot]?.lp ?? oppMaxLp;
 
-    let accumulatedSelfHealLp = 0; // Cumulative self-heal pool (capped per match)
-
     while (!state.winner) {
       if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) break;
       const e = E.create(state, previousActions);
@@ -310,20 +308,9 @@
       }
 
       // --- PRE-ROUND GENERIC METRICS SNAPSHOT ---
-      const selfId         = state[learnerSlot]?.id || learnerId;
-      const oppId          = state[enemySlot]?.id || "nigo";
-
       const selfMaxLp      = state[learnerSlot]?.maxLp ?? 3000;
-
-      const preMinOppLp    = minOppLp;
       const preSelfLp      = e.cells[learnerSlot]?.lp ?? state[learnerSlot]?.lp ?? 0;
       const preOppLp       = e.cells[enemySlot]?.lp ?? state[enemySlot]?.lp ?? 0;
-
-      const preSelfFaint   = e.cells[learnerSlot]?.faint ?? state[learnerSlot]?.faint ?? 0;
-      const preOppFaint    = e.cells[enemySlot]?.faint ?? state[enemySlot]?.faint ?? 0;
-
-      const preSelfStatuses= countStatusEffects(state[learnerSlot]);
-      const preOppStatuses = countStatusEffects(state[enemySlot]);
 
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
@@ -345,27 +332,24 @@
       history = g.KF_AI.remember(history, result.before || state, result.actions);
       rounds++;
 
-      // --- POST-ROUND GENERIC METRICS SNAPSHOT ---
+      // --- POST-ROUND METRICS SNAPSHOT ---
       const postSelfLp     = state[learnerSlot]?.lp ?? 0;
       const postOppLp      = state[enemySlot]?.lp ?? 0;
-
-      const postSelfChi    = state[learnerSlot]?.chi ?? 0;
-      const postOppChi     = state[enemySlot]?.chi ?? 0;
-
-      const postSelfFaint  = state[learnerSlot]?.faint ?? 0;
-      const postOppFaint   = state[enemySlot]?.faint ?? 0;
-
-      const postSelfStatuses = countStatusEffects(state[learnerSlot]);
-      const postOppStatuses  = countStatusEffects(state[enemySlot]);
 
       // Update historical minimum LP reached by opponent
       minOppLp = Math.min(minOppLp, postOppLp);
 
-      // --- 1A. HIGH-WATER MARK OPPONENT LP PROGRESS ---
-      const oppProgressDmg = Math.max(0, preMinOppLp - minOppLp);
-      let oppDmgPct        = oppProgressDmg / oppMaxLp;
+      // --- 1. LP DAMAGE DEALT & RECEIVED (PURE DENSE HP DELTA) ---
+      const oppLpDelta = preOppLp - postOppLp;
+      const selfLpDelta = preSelfLp - postSelfLp;
 
-      // 1.5x Dizzy Punish Multiplier
+      const oppDmgPct  = Math.max(0, oppLpDelta) / oppMaxLp;
+      const selfDmgPct = Math.max(0, selfLpDelta) / selfMaxLp;
+
+      let roundReward = oppDmgPct - selfDmgPct;
+
+      /*
+      // --- COMMENTED OUT: DIZZY / FAINT MULTIPLIERS & SELF HEAL POOL ---
       const isOppFainted = Boolean(
         result.before?.[enemySlot]?.fainted ||
         result.before?.[enemySlot]?.isFainted ||
@@ -375,49 +359,35 @@
         state[enemySlot]?.stunned ||
         (preOppFaint >= 100)
       );
+      if (isOppFainted && oppDmgPct > 0) { oppDmgPct *= 1.5; }
+      */
 
-      if (isOppFainted && oppDmgPct > 0) {
-        oppDmgPct *= 1.5;
-      }
-
-      // --- 1B. CAPPED & WEIGHTED SELF DAMAGE / SELF HEAL ---
-      const selfLpDelta = preSelfLp - postSelfLp;
-      let selfDmgPct = 0.0;
-
-      if (selfLpDelta > 0) {
-        selfDmgPct = selfLpDelta / selfMaxLp;
-      } else if (selfLpDelta < 0) {
-        const rawHealLp = -selfLpDelta;
-        const maxMatchHealCap = selfMaxLp * 0.25; // 25% max LP cap per match
-        const claimableHeal   = Math.min(rawHealLp, Math.max(0, maxMatchHealCap - accumulatedSelfHealLp));
-        accumulatedSelfHealLp += claimableHeal;
-
-        const healWeight = 0.5; // Half priority relative to standard attacks
-        selfDmgPct = -((claimableHeal * healWeight) / selfMaxLp);
-      }
-
-      let roundReward = oppDmgPct - selfDmgPct;
-
-      // --- 2. FREE-TURN FAINT VALUE GRADIENT (POST-ROUND CHI & CLAMPED RESET) ---
+      /*
+      // --- COMMENTED OUT: SECTION 2. FREE-TURN FAINT VALUE GRADIENT ---
+      const selfId = state[learnerSlot]?.id || learnerId;
+      const oppId  = state[enemySlot]?.id || "nigo";
+      const postSelfChi = state[learnerSlot]?.chi ?? 0;
+      const postOppChi  = state[enemySlot]?.chi ?? 0;
+      const postSelfFaint = state[learnerSlot]?.faint ?? 0;
+      const postOppFaint  = state[enemySlot]?.faint ?? 0;
       const maxSelfDmg = getMaxDamageForChi(data, selfId, postSelfChi);
       const maxOppDmg  = getMaxDamageForChi(data, oppId, postOppChi);
-
       const deltaOppFaintPct  = Math.max(0, postOppFaint - preOppFaint) / 100.0;
       const deltaSelfFaintPct = Math.max(0, postSelfFaint - preSelfFaint) / 100.0;
-
       const oppFaintValue  = (1.5 * maxSelfDmg) / oppMaxLp;
       const selfFaintValue = (1.5 * maxOppDmg) / selfMaxLp;
-
       roundReward += (deltaOppFaintPct * oppFaintValue) - (deltaSelfFaintPct * selfFaintValue);
+      */
 
-      // --- 3. GENERIC UTILITY BREADCRUMB (BUFFS & DEBUFFS) ---
+      /*
+      // --- COMMENTED OUT: SECTION 3. GENERIC UTILITY BREADCRUMBS (BUFFS & DEBUFFS) ---
       const gainedSelfBuff   = postSelfStatuses > preSelfStatuses;
       const appliedOppDebuff = postOppStatuses > preOppStatuses;
-
       if (gainedSelfBuff) roundReward += 0.005;
       if (appliedOppDebuff) roundReward += 0.005;
+      */
 
-      // --- 4. TERMINAL MATCH OUTCOME ---
+      // --- 2. TERMINAL MATCH OUTCOME ---
       if (state.winner === learnerSlot) {
         roundReward += 1.0;
       } else if (state.winner && state.winner !== "draw") {
