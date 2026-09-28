@@ -1,6 +1,6 @@
-// common.js
-// Kamen Fight — Core Constants, Utilities, PRNG & Data Loader
-
+/* js/common.js
+ * Kamen Fight — Core Constants, Utilities, PRNG & Data Loader
+ */
 (function (g) {
   "use strict";
 
@@ -8,31 +8,11 @@
 
   KF.VERSION = "shared-core-1";
 
-  /**
-   * Clamps a numeric value between a minimum and maximum bound.
-   *
-   * @param {number} value - Input number.
-   * @param {number} [min=0] - Lower bound.
-   * @param {number} [max=1] - Upper bound.
-   * @returns {number} Clamped numerical value.
-   */
   KF.clamp = (value, min = 0, max = 1) =>
     Math.min(max, Math.max(min, value));
 
-  /**
-   * Promise-based delay helper for async control flow.
-   *
-   * @param {number} ms - Milliseconds to pause.
-   * @returns {Promise<void>}
-   */
   KF.wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  /**
-   * Maps difficulty aliases and user inputs to standardized internal difficulty keys.
-   *
-   * @param {string} value - Difficulty string input.
-   * @returns {"easy"|"balanced"|"master"|"soul"} Standardized difficulty key.
-   */
   KF.difficulty = function (value) {
     const key = String(value || "balanced").toLowerCase();
 
@@ -46,14 +26,8 @@
     }[key] || "balanced";
   };
 
-  /**
-   * FNV-1a 32-bit hashing function for generating deterministic seeds from string sequences.
-   *
-   * @param {...*} parts - Arguments to concatenate into the hashed string.
-   * @returns {number} 32-bit unsigned integer hash value.
-   */
-  KF.hash = function (...parts) {
-    const text = parts.join("|");
+  KF.hash = function () {
+    const text = Array.from(arguments).join("|");
     let hash = 2166136261;
 
     for (let i = 0; i < text.length; i++) {
@@ -64,13 +38,6 @@
     return hash >>> 0;
   };
 
-  /**
-   * Fast 32-bit pseudo-random number generator (Mulberry32 variant).
-   * Guarantees deterministic combat rollouts across AI search threads and replays.
-   *
-   * @param {number} seed - Initial 32-bit seed integer.
-   * @returns {function(): number} PRNG function returning float in [0, 1).
-   */
   KF.rng = function (seed) {
     let state = Number(seed) >>> 0;
 
@@ -85,15 +52,6 @@
     };
   };
 
-  /**
-   * AI search parameters configuration table mapped per difficulty level.
-   * - charges: Charge percentage options evaluated during decision-making.
-   * - horizon: Depth of lookahead tree rollouts.
-   * - finalists: Top N candidate root moves kept for deep horizon rollouts.
-   * - rollouts: Number of Monte Carlo simulation passes per finalist.
-   * - risk: Weighting assigned to worst-case outcomes vs expected utility (0 to 1).
-   * - nearBest: Softmax selection score tolerance window.
-   */
   KF.levels = Object.freeze({
     easy: {
       charges: [60, 100],
@@ -129,7 +87,6 @@
     }
   });
 
-  /** Master combat rules and status threshold balance constants. */
   g.COMBAT_RULES = Object.freeze({
     STARTING_CHI: 8,
     MAX_CHI: 16,
@@ -144,7 +101,6 @@
     MAX_ROUNDS: 50
   });
 
-  /** Engine runtime timeouts and handicap settings. */
   g.GAME_CONFIG = Object.freeze({
     ROUND_TIME_LIMIT: 8,
     CPU_REACTION_MS: 250,
@@ -156,7 +112,6 @@
     SOUL_CPU_DMG_MULTIPLIER: 1
   });
 
-  /** Base charge durations (in ms) per directional input. */
   g.CHARGE_TIMES = Object.freeze({
     W: 3500,
     A: 2200,
@@ -164,12 +119,10 @@
     D: 3000
   });
 
-  /** Returns required charge time for a given directional input. */
   g.getChargeTimeMs = function (direction) {
     return g.CHARGE_TIMES[String(direction).toUpperCase()] || 3000;
   };
 
-  /** Calculates charge percentage based on directional hold time. */
   g.calculateChargeProgress = function (direction, elapsedMs) {
     return KF.clamp(
       Math.floor(100 * elapsedMs / g.getChargeTimeMs(direction)),
@@ -180,11 +133,6 @@
 
   let dataPromise = null;
 
-  /**
-   * Singleton loader for fetching and compiling rider profiles and move databases.
-   *
-   * @returns {Promise<{riders: Array, moves: Object}>} Compiled game data.
-   */
   KF.loadData = function () {
     if (!dataPromise) {
       dataPromise = (async function () {
@@ -216,7 +164,7 @@
 
         return { riders, moves };
       })().catch(error => {
-        dataPromise = null; // Clear cached promise on error to allow retry
+        dataPromise = null;
         throw error;
       });
     }
