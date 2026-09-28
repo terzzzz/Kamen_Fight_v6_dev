@@ -207,7 +207,7 @@
       opponent, opponentMode = "mixed", opponentNet = null,
       seed = 1, epsilon = 0, guideProbability = 0,
       rewardMode = "standard", initialStateOverride = null,
-      learnerMode = null, surpriseThreshold = 0.05
+      learnerMode = null
     } = options;
 
     const enemySlot = C.other(learnerSlot);
@@ -387,11 +387,11 @@
       if (appliedOppDebuff) roundReward += 0.005;
       */
 
-      // --- 2. TERMINAL MATCH OUTCOME ---
+      // --- 2. TERMINAL MATCH OUTCOME (RESCALED TO ±0.20 TO PREVENT OVER-PENALIZATION) ---
       if (state.winner === learnerSlot) {
-        roundReward += 1.0;
+        roundReward += 0.20;
       } else if (state.winner && state.winner !== "draw") {
-        roundReward -= 1.0;
+        roundReward -= 0.20;
       }
 
       if (pending.length > 0) {
@@ -423,12 +423,13 @@
           weightScale = 1.5;
         }
 
+        // UNBIASED TRANSITION YIELDING (All transitions recorded without generator-level filtering)
         for (let i = 0; i < pending.length; i++) {
           const isLastInRound = (i === pending.length - 1);
           const stepReward = roundReward / pending.length;
 
-          // Compute TD Error (Surprise metric) if neural network is evaluating transitions
-          let tdError = 1.0; // Default high surprise when no net is attached
+          // Compute TD Error metric for telemetry logging
+          let tdError = 1.0;
           if (net && typeof net.predict === "function") {
             const currentQValues = net.predict(pending[i].s);
             const nextQValues = net.predict(s1);
@@ -444,11 +445,6 @@
             const targetQ = stepReward + discount * maxNextQ;
             const currentQ = currentQValues[pending[i].a] ?? 0.0;
             tdError = Math.abs(targetQ - currentQ);
-          }
-
-          // METHOD 2 GATE: Skip low-surprise transitions during training unless terminal
-          if (!options.isEvaluation && surpriseThreshold > 0 && tdError < surpriseThreshold && !isMatchDone) {
-            continue;
           }
 
           yield {
