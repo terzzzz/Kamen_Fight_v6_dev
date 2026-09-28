@@ -97,10 +97,6 @@
    * Generic helper: Scans any rider's move list in dataset and returns
    * the highest LP damage move affordable with their current Chi.
    */
- /**
-   * Generic helper: Scans any rider's move list in dataset and returns
-   * the highest LP damage move affordable with their current Chi.
-   */
   function getMaxDamageForChi(data, riderId, currentChi) {
     let moveList = [];
     const rawMoves = data?.moves;
@@ -109,10 +105,8 @@
       moveList = rawMoves.filter(m => m.riderId === riderId);
     } else if (rawMoves && typeof rawMoves === "object") {
       if (rawMoves[riderId] && typeof rawMoves[riderId] === "object") {
-        // Nested dictionary format: data.moves["amazon"]["D+J"]
         moveList = Object.values(rawMoves[riderId]);
       } else {
-        // Flat dictionary format: data.moves["D+J"]
         moveList = Object.values(rawMoves).filter(m => m && (m.riderId === riderId || !m.riderId));
       }
     }
@@ -122,7 +116,7 @@
     for (let i = 0; i < moveList.length; i++) {
       const m = moveList[i];
       if (!m) continue;
-      const cost = m.chiCost ?? m.cost ?? 0;
+      const cost = m.chiCost ?? m.cost ?? m.chi ?? 0;
       const dmg = m.baseDamage ?? m.damage ?? 0;
 
       if (cost <= currentChi && dmg > maxDmg) {
@@ -138,8 +132,18 @@
   function countStatusEffects(targetState) {
     if (!targetState) return 0;
     let count = 0;
-    if (Array.isArray(targetState.buffs)) count += targetState.buffs.length;
-    if (Array.isArray(targetState.debuffs)) count += targetState.debuffs.length;
+    if (Array.isArray(targetState.buffs)) {
+      count += targetState.buffs.length;
+    } else if (targetState.buffs && typeof targetState.buffs === "object") {
+      count += Object.keys(targetState.buffs).length;
+    }
+
+    if (Array.isArray(targetState.debuffs)) {
+      count += targetState.debuffs.length;
+    } else if (targetState.debuffs && typeof targetState.debuffs === "object") {
+      count += Object.keys(targetState.debuffs).length;
+    }
+
     if (targetState.airborne) count += 1;
     return count;
   }
@@ -224,6 +228,9 @@
     let rounds = 0;
     let ticks = 0;
 
+    let totalQSum = 0;
+    let totalQCount = 0;
+
     // --- INITIALIZE GENERIC MATCH TRACKERS ---
     const oppMaxLp = state[enemySlot]?.maxLp ?? 3000;
     let minOppLp = state[enemySlot]?.lp ?? oppMaxLp;
@@ -244,7 +251,11 @@
         frames: learnerFrames,
         state,
         history,
-        isTraining: !options.isEvaluation
+        isTraining: !options.isEvaluation,
+        onQ: (qVal) => {
+          totalQSum += qVal;
+          totalQCount++;
+        }
       });
 
       // Resolve opponent action planner ONCE per round
@@ -390,11 +401,9 @@
       let roundReward = oppDmgPct - selfDmgPct;
 
       // --- 2. FREE-TURN FAINT VALUE GRADIENT (POST-ROUND CHI & CLAMPED RESET) ---
-      // Evaluated at postSelfChi / postOppChi so AI accounts for remaining meter during stuns!
       const maxSelfDmg = getMaxDamageForChi(data, selfId, postSelfChi);
       const maxOppDmg  = getMaxDamageForChi(data, oppId, postOppChi);
 
-      // Both deltas strictly clamped to Math.max(0, ...) so engine auto-resets yield 0.0
       const deltaOppFaintPct  = Math.max(0, postOppFaint - preOppFaint) / 100.0;
       const deltaSelfFaintPct = Math.max(0, postSelfFaint - preSelfFaint) / 100.0;
 
@@ -453,10 +462,12 @@
         }
       }
       pending = [];
-      yield { type: "round", rounds };
+      const currentAvgQ = totalQCount > 0 ? totalQSum / totalQCount : 0;
+      yield { type: "round", rounds, avgQ: currentAvgQ };
     }
 
-    yield { type: "end", result: { state, rounds, ticks } };
+    const finalAvgQ = totalQCount > 0 ? totalQSum / totalQCount : 0;
+    yield { type: "end", result: { state, rounds, ticks, avgQ: finalAvgQ } };
   }
 
   g.SoulSim = { BUILD, reactor, episode };
