@@ -1,6 +1,6 @@
-// rider_brains.js
-// Kamen Fight — Tactical Priorities & Posture Heuristics Engine
-
+/* js/rider_brains.js
+ * Kamen Fight — Tactical Priorities & Posture Heuristics Engine
+ */
 (function (g) {
   "use strict";
 
@@ -16,6 +16,7 @@
   };
 
   function has(player, id) {
+    if (!player || !Array.isArray(player.activeBuffs)) return false;
     return player.activeBuffs.some(
       buff => buff.id === id && buff.roundsLeft > 0
     );
@@ -281,7 +282,7 @@
     if (level !== "master" && level !== "soul" && rawDiff !== "soul") return 0;
 
     const tree = intent(state, slot, difficulty);
-    const index = tree.preferred.indexOf(action.key);
+    const index = tree.preferred.indexOf(action?.key);
 
     if (index < 0) return 0;
 
@@ -289,9 +290,11 @@
   }
 
   function prior(state, slot, action, difficulty) {
-    const self = state[slot];
-    const opponent = state[C.other(slot)];
-    const move = state.moves[slot][action.key];
+    const self = state?.[slot];
+    const opponent = state?.[C.other(slot)];
+    const move = state?.moves?.[slot]?.[action?.key];
+
+    if (!self || !opponent || !move) return 0.03;
 
     if (action.key === "DO_NOTHING") {
       return self.isFainted ? 1 : 0.08;
@@ -342,6 +345,7 @@
   }
 
   function fighterValue(player) {
+    if (!player) return 0;
     const profile = profiles[player.id] || profiles.ichigo;
 
     let value =
@@ -353,7 +357,7 @@
     if (player.chi > 14) value += 35;
     if (player.isFainted) value -= 300;
 
-    for (const buff of player.activeBuffs) {
+    for (const buff of player.activeBuffs || []) {
       const harmful = Object.entries(buff.effects || {}).some(
         ([key, amount]) =>
           (key === "speed" && amount < 1) ||
