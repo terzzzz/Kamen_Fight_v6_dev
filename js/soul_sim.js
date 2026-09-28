@@ -93,6 +93,25 @@
     return keys.length > 0 ? keys : null;
   }
 
+  /**
+   * Helper function: Scans a rider's move list in dataset and returns
+   * the highest LP damage move affordable with their current Chi reserve.
+   */
+  function getMaxDamageForChi(data, riderId, currentChi) {
+    const moves = data?.moves?.filter(m => m.riderId === riderId) || [];
+    let maxDmg = 80; // Default fallback to basic light punch (80 LP)
+
+    for (let i = 0; i < moves.length; i++) {
+      const cost = moves[i].chiCost ?? moves[i].cost ?? 0;
+      const dmg = moves[i].damage ?? moves[i].baseDamage ?? 0;
+
+      if (cost <= currentChi && dmg > maxDmg) {
+        maxDmg = dmg;
+      }
+    }
+    return maxDmg;
+  }
+
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
     const frames = options.frames || new E.Frames(spec);
@@ -173,6 +192,10 @@
     let rounds = 0;
     let ticks = 0;
 
+    // --- INITIALIZE HIGH-WATER MARK FOR HEAL-PROOF REWARDS ---
+    const oppMaxLp = state[enemySlot]?.maxLp ?? 3000;
+    let minOppLp = state[enemySlot]?.lp ?? oppMaxLp;
+
     while (!state.winner) {
       if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) break;
       const e = E.create(state, previousActions);
@@ -242,10 +265,20 @@
       }
 
       // --- PRE-ROUND METRICS SNAPSHOT ---
-      const preSelfLp = state[learnerSlot]?.lp ?? 0;
-      const preOppLp = state[enemySlot]?.lp ?? 0;
-      const preSelfChi = state[learnerSlot]?.chi ?? 0;
-      const preOppFaint = state[enemySlot]?.faint ?? 0;
+      const selfId       = state[learnerSlot]?.id || learnerId;
+      const oppId        = state[enemySlot]?.id || "nigo";
+
+      const selfMaxLp    = state[learnerSlot]?.maxLp ?? 3000;
+
+      const preMinOppLp  = minOppLp; // Baseline health benchmark before this turn
+      const preSelfLp    = e.cells[learnerSlot]?.lp ?? state[learnerSlot]?.lp ?? 0;
+      const preOppLp     = e.cells[enemySlot]?.lp ?? state[enemySlot]?.lp ?? 0;
+
+      const preSelfChi   = e.cells[learnerSlot]?.chi ?? state[learnerSlot]?.chi ?? 0;
+      const preOppChi    = e.cells[enemySlot]?.chi ?? state[enemySlot]?.chi ?? 0;
+
+      const preSelfFaint = e.cells[learnerSlot]?.faint ?? state[learnerSlot]?.faint ?? 0;
+      const preOppFaint  = e.cells[enemySlot]?.faint ?? state[enemySlot]?.faint ?? 0;
 
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
@@ -270,11 +303,21 @@
       rounds++;
 
       // --- POST-ROUND METRICS SNAPSHOT ---
-      const postSelfLp = state[learnerSlot]?.lp ?? 0;
-      const postOppLp = state[enemySlot]?.lp ?? 0;
-      const postSelfChi = state[learnerSlot]?.chi ?? 0;
+      const postSelfLp   = state[learnerSlot]?.lp ?? 0;
+      const postOppLp    = state[enemySlot]?.lp ?? 0;
+
+      const postSelfFaint= state[learnerSlot]?.faint ?? 0;
       const postOppFaint = state[enemySlot]?.faint ?? 0;
 
+      // Update historical minimum LP reached by opponent this match
+      minOppLp = Math.min(minOppLp, postOppLp);
+
+      // 1. HIGH-WATER MARK LP PROGRESS (HEAL-PROOF & ZERO ILLUSION)
+      const selfDmgPct     = Math.max(0, preSelfLp - postSelfLp) / selfMaxLp;
+      const oppProgressDmg = Math.max(0, preMinOppLp - minOppLp);
+      let oppDmgPct        = oppProgressDmg / oppMaxLp;
+
+      // 1.5x Dizzy Punish Multiplier (applied when punishing dizzy/fainted target)
       const isOppFainted = Boolean(
         result.before?.[enemySlot]?.fainted ||
         result.before?.[enemySlot]?.isFainted ||
@@ -285,31 +328,25 @@
         (preOppFaint >= 100)
       );
 
-      // 1. RE-SCALED LP DAMAGE (2400 MAX HEALTH) WITH 1.5x DIZZY PUNISH MULTIPLIER
-      const selfDmg = Math.max(0, preSelfLp - postSelfLp);
-      let oppDmg = Math.max(0, preOppLp - postOppLp);
-
-      if (isOppFainted) {
-        oppDmg *= 1.5; // 1.5x damage payout when punishing dizzy/fainted target
+      if (isOppFainted && oppDmgPct > 0) {
+        oppDmgPct *= 1.5;
       }
 
-      let roundReward = (oppDmg - selfDmg) / 2400.0;
+      let roundReward = oppDmgPct - selfDmgPct;
 
-      // 2. FAINT SETUP GRADIENT (70% DISCOUNT: 0.05 -> 0.015)
-      const faintGained = Math.max(0, postOppFaint - preOppFaint);
-      roundReward += (faintGained / 100.0) * 0.015;
+      // 2. FREE-TURN FAINT VALUE GRADIENT
+      const maxSelfDmg = getMaxDamageForChi(data, selfId, preSelfChi);
+      const maxOppDmg  = getMaxDamageForChi(data, oppId, preOppChi);
 
-      // 3. ONE-TIME CHI TRANSITION TRIGGERS (80% DISCOUNT: 0.05 -> 0.01)
-      // Trigger A: Dropping into Bankruptcy ( >5 to <=5 Chi )
-      if (preSelfChi > 5 && postSelfChi <= 5) {
-        roundReward -= 0.01;
-      }
-      // Trigger B: Reaching Max Tier ( <15 to >=15 Chi )
-      if (preSelfChi < 15 && postSelfChi >= 15) {
-        roundReward += 0.01;
-      }
+      const deltaOppFaintPct  = Math.max(0, postOppFaint - preOppFaint) / 100.0;
+      const deltaSelfFaintPct = Math.max(0, postSelfFaint - preSelfFaint) / 100.0;
 
-      // 4. TERMINAL MATCH WIN / LOSS
+      const oppFaintValue  = (1.5 * maxSelfDmg) / oppMaxLp;
+      const selfFaintValue = (1.5 * maxOppDmg) / selfMaxLp;
+
+      roundReward += (deltaOppFaintPct * oppFaintValue) - (deltaSelfFaintPct * selfFaintValue);
+
+      // 3. TERMINAL MATCH OUTCOME
       if (state.winner === learnerSlot) {
         roundReward += 1.0;
       } else if (state.winner && state.winner !== "draw") {
