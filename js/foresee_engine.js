@@ -363,26 +363,43 @@
     // --- DIFFICULTY-SPECIFIC OVERRIDES & HUMAN-LIKE BLUNDER INJECTION ---
     if (difficulty === "novice") {
       const rng = K.rng(K.hash(seed, "novice_blunder"));
+      const roll = rng();
 
-      // Rule 1: 40% chance to select a completely random non-A move (no passive turtling)
-      if (rng() < 0.40) {
-        const nonAMoves = ownActions.filter(a => !a.key.startsWith("A+"));
-        const randomChoice = nonAMoves.length > 0
-          ? nonAMoves[Math.floor(rng() * nonAMoves.length)]
-          : ownActions[Math.floor(rng() * ownActions.length)];
+      // Rule 1: 10% chance to DO_NOTHING (pretend charging with no attack buttons)
+      if (roll < 0.10) {
+        const doNothingBase = ownActions.find(a => a.key === "DO_NOTHING") || { key: "DO_NOTHING", charge: 0 };
+        const pretendCharge = [0, 25, 50, 75, 100][Math.floor(rng() * 5)];
+        const doNothingChoice = Object.assign({}, doNothingBase, { charge: pretendCharge });
 
         return {
-          rows: [{ action: randomChoice, score: 0 }],
+          rows: [{ action: doNothingChoice, score: 0 }],
           debug: {
             difficulty,
-            strategy: "Novice 40% Random Non-A Blunder",
+            strategy: "Novice 10% Pretend Charge (DO_NOTHING)",
             rootActions: ownActions.length,
             completedHorizon: 1
           }
         };
       }
 
-      // Rule 2: Never pick #1 best move; select 2nd or 3rd best candidate instead
+      // Rule 2: 40% chance to select a completely random move  with random charge %
+      if (roll < 0.50) {
+        const randomBase = ownActions[Math.floor(rng() * ownActions.length)];
+        const randomCharge = [0, 25, 50, 75, 100][Math.floor(rng() * 5)];
+        const randomChoice = Object.assign({}, randomBase, { charge: randomCharge });
+
+        return {
+          rows: [{ action: randomChoice, score: 0 }],
+          debug: {
+            difficulty,
+            strategy: "Novice 40% Random Move (Incl. A-Stance & Random Charge)",
+            rootActions: ownActions.length,
+            completedHorizon: 1
+          }
+        };
+      }
+
+      // Rule 3: Remaining 50% chance — never pick #1 best move; select 2nd or 3rd best candidate
       let noviceRows = [];
       if (rows.length >= 3) {
         const choiceIdx = rng() < 0.5 ? 1 : 2;
@@ -421,7 +438,7 @@
         };
       }
 
-    } else if (difficulty === "master" || difficulty === "soul") {
+    } else if (difficulty === "master" ) {
       const turnIndex = history.length + 1;
       const rng = K.rng(K.hash(seed, "master_charge_shortening", turnIndex));
 
