@@ -154,71 +154,6 @@ async function run(job) {
       )
     : null;
 
-  if (learner && typeof learner.accept === "function") {
-    learner.accept = function (transition, imitation = 0.03) {
-      this.steps++;
-      this.queue.push(transition);
-
-      if (transition.done) {
-        while (this.queue.length) {
-          this.fold();
-        }
-      } else if (this.queue.length >= 1) {
-        this.fold();
-      }
-
-      if (
-        this.steps % 16 !== 0 ||
-        this.replay.items.length < 256
-      ) {
-        return;
-      }
-
-      const rows = this.replay.sample(32, this.rng).map(t => {
-        let target = t.r;
-
-        if (t.discount > 0) {
-          const nextAction = SoulNN.argmax(
-            this.net.predict(t.s1),
-            t.m1
-          );
-
-          target += t.discount *
-            this.target.predict(t.s1)[nextAction];
-        }
-
-        const cat = t.rewardCategory || t.category || "Neu";
-        if (cat === "Win") this.updateStats.win++;
-        else if (cat === "Dmg") this.updateStats.damage++;
-        else if (cat === "Loss") this.updateStats.loss++;
-        else this.updateStats.neutral++;
-
-        const scale = t.weightScale || 1.0;
-
-        return {
-          s: t.s,
-          a: t.a,
-          m: t.m,
-          demo: t.demo,
-          y: target,
-          weightScale: scale
-        };
-      });
-
-      this.loss = this.net.train(
-        rows,
-        0.0003,
-        imitation
-      );
-
-      this.updates++;
-
-      if (this.updates % 200 === 0) {
-        this.target = this.net.clone();
-      }
-    };
-  }
-
   const baseGames = old?.games || 0;
   const baseSteps = old?.steps || 0;
 
@@ -516,10 +451,10 @@ async function run(job) {
           moveMatrix[dir][attackBtn] = (moveMatrix[dir][attackBtn] || 0) + 1;
         }
       } else if (event.type === "round") {
-        latestAvgQ = event.avgQ;
+        if (event.avgQ !== undefined) latestAvgQ = event.avgQ;
       } else if (event.type === "end") {
         result = event.result;
-        latestAvgQ = event.result.avgQ;
+        if (event.result.avgQ !== undefined) latestAvgQ = event.result.avgQ;
       }
 
       const now = performance.now();
