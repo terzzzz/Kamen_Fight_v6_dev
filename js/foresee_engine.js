@@ -46,7 +46,7 @@
 
   /**
    * Analyzes recent match history to model opponent usage patterns and charge habits.
-   * Uses exponential decay weighting ($0.90^t$) to favor recent turn trends over older ones.
+   * Uses exponential decay weighting (0.90^t) to favor recent turn trends over older ones.
    */
   function observations(history, slot) {
     const counts = {};
@@ -195,7 +195,7 @@
       : (s, sl) => B.evaluate(s, sl);
 
     const difficulty = K.difficulty(context.difficulty);
-    
+
     // Copy levels configuration and apply speed caps ONLY during training runs
     const settings = { ...K.levels[difficulty] };
     if (isTraining) {
@@ -358,6 +358,82 @@
 
       finalists.sort(stableSort);
       completedHorizon = settings.horizon;
+    }
+
+    // --- DIFFICULTY-SPECIFIC OVERRIDES & HUMAN-LIKE BLUNDER INJECTION ---
+    if (difficulty === "novice") {
+      const rng = K.rng(K.hash(seed, "novice_blunder"));
+
+      // Rule 1: 40% chance to select a completely random non-A move (no passive turtling)
+      if (rng() < 0.40) {
+        const nonAMoves = ownActions.filter(a => !a.key.startsWith("A+"));
+        const randomChoice = nonAMoves.length > 0
+          ? nonAMoves[Math.floor(rng() * nonAMoves.length)]
+          : ownActions[Math.floor(rng() * ownActions.length)];
+
+        return {
+          rows: [{ action: randomChoice, score: 0 }],
+          debug: {
+            difficulty,
+            strategy: "Novice 40% Random Non-A Blunder",
+            rootActions: ownActions.length,
+            completedHorizon: 1
+          }
+        };
+      }
+
+      // Rule 2: Never pick #1 best move; select 2nd or 3rd best candidate instead
+      let noviceRows = [];
+      if (rows.length >= 3) {
+        const choiceIdx = rng() < 0.5 ? 1 : 2;
+        noviceRows = [rows[choiceIdx], rows[choiceIdx === 1 ? 2 : 1]];
+      } else if (rows.length === 2) {
+        noviceRows = [rows[1]];
+      } else {
+        noviceRows = [rows[0]];
+      }
+
+      return {
+        rows: noviceRows,
+        debug: {
+          difficulty,
+          strategy: "Novice 2nd/3rd Best Selection",
+          rootActions: ownActions.length,
+          completedHorizon: 1
+        }
+      };
+
+    } else if (difficulty === "balanced") {
+      const turnIndex = history.length + 1;
+      const rng = K.rng(K.hash(seed, "balanced_variation", turnIndex));
+
+      // Rule: Every 5th or 6th turn (or ~18% chance), drop search tree and execute a random legal move
+      if (turnIndex % 5 === 0 || turnIndex % 6 === 0 || rng() < 0.18) {
+        const randomChoice = ownActions[Math.floor(rng() * ownActions.length)];
+        return {
+          rows: [{ action: randomChoice, score: 0 }],
+          debug: {
+            difficulty,
+            strategy: `Balanced Periodic Random Move (Turn ${turnIndex})`,
+            rootActions: ownActions.length,
+            completedHorizon
+          }
+        };
+      }
+
+    } else if (difficulty === "master" || difficulty === "soul") {
+      const turnIndex = history.length + 1;
+      const rng = K.rng(K.hash(seed, "master_charge_shortening", turnIndex));
+
+      // Rule: 15% chance to adopt a 50% shorter charge duration/level requirement
+      if (finalists.length > 0 && rng() < 0.15) {
+        const bestRow = finalists[0];
+        const shortenedCharge = Math.round(bestRow.action.charge * 0.5);
+
+        finalists[0] = Object.assign({}, bestRow, {
+          action: Object.assign({}, bestRow.action, { charge: shortenedCharge })
+        });
+      }
     }
 
     return {
