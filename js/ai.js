@@ -12,13 +12,9 @@
   const C = g.CombatCore;
 
   function stamp(result) {
-    return {
-      ...result,
-      debug: {
-        ...(result.debug || {}),
-        engineVersion: VERSION
-      }
-    };
+    return Object.assign({}, result, {
+      debug: Object.assign({}, result.debug || {}, { engineVersion: VERSION })
+    });
   }
 
   function choose(context) {
@@ -82,12 +78,10 @@
       throw new Error("ForeseeEngine search module is missing.");
     }
 
-    const searchDifficulty = (rawDiff === "soul") ? "soul" : K.difficulty(context.difficulty);
+    // FIX: Resolves difficulty correctly even if context uses 'mode' instead of 'difficulty'
+    const searchDifficulty = (rawDiff === "soul") ? "soul" : K.difficulty(context.difficulty || context.mode);
 
-    const result = g.ForeseeEngine.search({
-      ...context,
-      difficulty: searchDifficulty
-    });
+    const result = g.ForeseeEngine.search(Object.assign({}, context, { difficulty: searchDifficulty }));
 
     const rows = result.rows;
 
@@ -133,26 +127,24 @@
     }
 
     return stamp({
-      action: { ...selected.action },
-      debug: {
-        ...result.debug,
+      action: Object.assign({}, selected.action),
+      debug: Object.assign({}, result.debug, {
         chosenScore: Number(selected.score.toFixed(2))
-      }
+      })
     });
   }
 
   function remember(history, before, selected) {
-    return [
-      ...(Array.isArray(history) ? history : []),
-      {
-        p1: { ...selected.p1 },
-        p2: { ...selected.p2 },
-        fainted: {
-          p1: before.p1.isFainted,
-          p2: before.p2.isFainted
-        }
+    const list = Array.isArray(history) ? history.slice() : [];
+    list.push({
+      p1: Object.assign({}, selected.p1),
+      p2: Object.assign({}, selected.p2),
+      fainted: {
+        p1: before.p1.isFainted,
+        p2: before.p2.isFainted
       }
-    ].slice(-24);
+    });
+    return list.slice(-24);
   }
 
   g.KF_AI = {
