@@ -45,6 +45,35 @@
   }
 
   /**
+   * Samples an action candidate from sorted finalists using fixed rank probabilities:
+   * - 50% -> 1st best (Index 0)
+   * - 30% -> 2nd best (Index 1)
+   * - 15% -> 3rd best (Index 2)
+   * -  5% -> 5th best (Index 4)
+   *
+   * Falls back safely to the highest available index if candidate count is small.
+   */
+  function sampleRankedAction(rows, rng) {
+    if (!rows || rows.length === 0) return null;
+
+    const roll = rng();
+    let targetIndex = 0;
+
+    if (roll < 0.50) {
+      targetIndex = 0;
+    } else if (roll < 0.80) {
+      targetIndex = 1;
+    } else if (roll < 0.95) {
+      targetIndex = 2;
+    } else {
+      targetIndex = 4;
+    }
+
+    const safeIndex = Math.min(targetIndex, rows.length - 1);
+    return rows[safeIndex];
+  }
+
+  /**
    * Analyzes recent match history to model opponent usage patterns and charge habits.
    * Uses exponential decay weighting (0.90^t) to favor recent turn trends over older ones.
    */
@@ -382,7 +411,7 @@
         };
       }
 
-      // Rule 2: 40% chance to select a completely random move  with random charge %
+      // Rule 2: 40% chance to select a completely random move with random charge %
       if (roll < 0.50) {
         const randomBase = ownActions[Math.floor(rng() * ownActions.length)];
         const randomCharge = [0, 25, 50, 75, 100][Math.floor(rng() * 5)];
@@ -438,7 +467,7 @@
         };
       }
 
-    } else if (difficulty === "master" ) {
+    } else if (difficulty === "master" || difficulty === "soul") {
       const turnIndex = history.length + 1;
       const rng = K.rng(K.hash(seed, "master_charge_shortening", turnIndex));
 
@@ -453,8 +482,21 @@
       }
     }
 
+    // --- WEIGHTED RANK SELECTION (STRICTLY FOR RIDER / NEURAL AGENT) ---
+    // Executes only when candidates array is passed (invoked by SoulNN in RIDER mode)
+    let orderedFinalists = finalists;
+
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      const selectionRng = K.rng(K.hash(seed, "rider_ranked_selection", history.length));
+      const chosenRow = sampleRankedAction(finalists, selectionRng);
+
+      if (chosenRow && finalists.length > 0) {
+        orderedFinalists = [chosenRow, ...finalists.filter(r => r !== chosenRow)];
+      }
+    }
+
     return {
-      rows: finalists,
+      rows: orderedFinalists,
       debug: {
         difficulty,
         strategy: B.intent(state, slot, difficulty).name,
@@ -464,7 +506,8 @@
         rolloutsPerFinalist: settings.rollouts,
         usingNeuralEvaluator: typeof evaluator === "function",
         isTraining,
-        finalists: finalists.slice(0, 6).map(row => ({
+        selectedRank: candidates && orderedFinalists.length > 0 ? finalists.indexOf(orderedFinalists[0]) + 1 : 1,
+        finalists: orderedFinalists.slice(0, 6).map(row => ({
           key: row.action.key,
           charge: row.action.charge,
           score: Number(row.score.toFixed(2))
@@ -478,6 +521,7 @@
     search,
     policy,
     sample,
+    sampleRankedAction,
     pairValue
   };
 })(globalThis);
