@@ -97,13 +97,33 @@
    * Generic helper: Scans any rider's move list in dataset and returns
    * the highest LP damage move affordable with their current Chi.
    */
+ /**
+   * Generic helper: Scans any rider's move list in dataset and returns
+   * the highest LP damage move affordable with their current Chi.
+   */
   function getMaxDamageForChi(data, riderId, currentChi) {
-    const moves = data?.moves?.filter(m => m.riderId === riderId) || [];
+    let moveList = [];
+    const rawMoves = data?.moves;
+
+    if (Array.isArray(rawMoves)) {
+      moveList = rawMoves.filter(m => m.riderId === riderId);
+    } else if (rawMoves && typeof rawMoves === "object") {
+      if (rawMoves[riderId] && typeof rawMoves[riderId] === "object") {
+        // Nested dictionary format: data.moves["amazon"]["D+J"]
+        moveList = Object.values(rawMoves[riderId]);
+      } else {
+        // Flat dictionary format: data.moves["D+J"]
+        moveList = Object.values(rawMoves).filter(m => m && (m.riderId === riderId || !m.riderId));
+      }
+    }
+
     let maxDmg = 80; // Default fallback to basic light punch (80 LP)
 
-    for (let i = 0; i < moves.length; i++) {
-      const cost = moves[i].chiCost ?? moves[i].cost ?? 0;
-      const dmg = moves[i].damage ?? moves[i].baseDamage ?? 0;
+    for (let i = 0; i < moveList.length; i++) {
+      const m = moveList[i];
+      if (!m) continue;
+      const cost = m.chiCost ?? m.cost ?? 0;
+      const dmg = m.baseDamage ?? m.damage ?? 0;
 
       if (cost <= currentChi && dmg > maxDmg) {
         maxDmg = dmg;
