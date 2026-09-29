@@ -104,7 +104,7 @@ async function run(job) {
   if (old && old.net) {
     const sizes = old.net.sizes || [];
     const inputMismatch = sizes[0] !== spec.input;
-    const actionMismatch = sizes[3] !== 10;
+    const actionMismatch = sizes[3] !== 16 && sizes[3] !== 10;
 
     if (inputMismatch || actionMismatch) {
       console.warn(`[Worker] Checkpoint dimension mismatch [${sizes.join(", ")}] vs expected input [${spec.input}]. Discarding checkpoint.`);
@@ -129,7 +129,7 @@ async function run(job) {
         spec.input,
         h1,
         h2,
-        10
+        16
       );
 
   if (net.sizes[0] !== spec.input) {
@@ -204,11 +204,9 @@ async function run(job) {
   let draws = 0;
   let totalRounds = 0;
 
-  // Global Cumulative Q Accumulators for the entire job run
   let jobCumulativeQSum = 0;
   let jobCumulativeQCount = 0;
 
-  // Adaptive Epsilon Rolling Window Tracker
   const recentOutcomes = [];
   const WINDOW_SIZE = 30;
 
@@ -382,24 +380,18 @@ async function run(job) {
       }
     }
 
-  // --- ADAPTIVE ROLLING WIN-RATE EPSILON CONTROLLER ---
-let epsilon = 0;
-if (training) {
-  if (recentOutcomes.length < 5) {
-    // Initial warm-up baseline exploration
-    epsilon = 0.12;
-  } else {
-    const winsInWindow = recentOutcomes.reduce((a, b) => a + b, 0);
-    const rollingWinRate = winsInWindow / recentOutcomes.length;
+    let epsilon = 0;
+    if (training) {
+      if (recentOutcomes.length < 5) {
+        epsilon = 0.12;
+      } else {
+        const winsInWindow = recentOutcomes.reduce((a, b) => a + b, 0);
+        const rollingWinRate = winsInWindow / recentOutcomes.length;
 
-    // Piecewise Adaptive Epsilon:
-    // - Win rate <= 20%: Capped at 12% (0.12)
-    // - Win rate >= 50%: Clamped at 2% (0.02)
-    // - Win rate 20% to 50%: Linear interpolation dropping from 12% down to 2%
-    const linearEpsilon = 0.02 + ((0.50 - rollingWinRate) / 0.30) * 0.10;
-    epsilon = Math.max(0.02, Math.min(0.12, linearEpsilon));
-  }
-}
+        const linearEpsilon = 0.02 + ((0.50 - rollingWinRate) / 0.30) * 0.10;
+        epsilon = Math.max(0.02, Math.min(0.12, linearEpsilon));
+      }
+    }
 
     const imitation = training
       ? Math.max(MIN_IMITATION, INITIAL_IMITATION * guideProbability)
@@ -519,7 +511,6 @@ if (training) {
       draws++;
     }
 
-    // Record outcome into rolling window for adaptive epsilon
     recentOutcomes.push(outcome === "wins" ? 1 : 0);
     if (recentOutcomes.length > WINDOW_SIZE) {
       recentOutcomes.shift();
@@ -579,15 +570,13 @@ self.onmessage = async event => {
 
   try {
     await run(event.data.job);
-
   } catch (error) {
     send("error", {
       error:
         error.stack ||
         error.message ||
         String(error)
-      });
-
+    });
   } finally {
     busy = false;
   }
