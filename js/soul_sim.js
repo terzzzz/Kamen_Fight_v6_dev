@@ -1,5 +1,9 @@
 /* js/soul_sim.js
- * Combat simulation loop, reward shaping, and action execution engine.
+ * Rule-Regularized Composite Soft-Q Combat Simulator Engine.
+ * Features:
+ *  - Dynamic EV-Based Stochastic Execution Charge Optimization
+ *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
+ *  - Composite Soft-Q Action Selection (Top-K Filtered)
  */
 (function (g) {
   "use strict";
@@ -41,9 +45,6 @@
     }
   }
 
-  /**
-   * Helper to retrieve move metadata from global dataset or state cell.
-   */
   function getMoveMeta(moveKey, riderId, data) {
     if (!moveKey || !data || !data.moves) return null;
     const rawMoves = data.moves;
@@ -60,156 +61,202 @@
   }
 
   /**
-   * Smart Real-Time Charge Optimization Handler
-   * Dynamically determines exact charge % (0.0 to 1.0) based on:
-   *  1) Archetype Priority: CHARGE > MELEE (CHARGE attacks beat MELEE attacks regardless of speed)
-   *  2) Sequential Fixed Actions: If opponent's action is already locked/fixed, charge to 100%
-   *  3) Round Timer Allowance: Ensure charge duration does not breach the 8-second timer cap
-   *  4) Speed Competition: Cut charge to 75% only when facing uninterrupted MELEE speed threats
+   * Rider-Level Stochastic EV Charge Optimization Layer
+   * Evaluates expected value (EV) across candidate charge levels (25% to 100%)
+   * incorporating real-time hit rate bonuses, evasion, speed priority, and timer limits,
+   * then applies Softmax sampling for organic, unreadable human timing.
    */
-  function resolveExecutionCharge(chosenMoveKey, state, learnerSlot, data = null) {
-    if (!chosenMoveKey || chosenMoveKey === "NONE" || chosenMoveKey === "IDLE") {
-      return 1.0;
+  function resolveExecutionCharge(chosenMoveKey, state, learnerSlot, data = null, rng = Math.random) {
+    if (!chosenMoveKey || chosenMoveKey === "NONE" || chosenMoveKey === "IDLE" || chosenMoveKey === "DO_NOTHING") {
+      return 0;
     }
 
     const selfSlot = learnerSlot;
     const enemySlot = learnerSlot === "p1" ? "p2" : "p1";
 
-    const selfRiderId = state[selfSlot]?.id || "ichigo";
-    const enemyRiderId = state[enemySlot]?.id || "ichigo";
+    const selfPlayer = state[selfSlot] || {};
+    const enemyPlayer = state[enemySlot] || {};
 
-    const enemyChi = state[enemySlot]?.chi ?? 0;
-    const remainingTimer = state.roundTimer ?? state.timer ?? 8.0; // 8-second round limit
+    const selfRiderId = selfPlayer.id || "ichigo";
+    const enemyRiderId = enemyPlayer.id || "ichigo";
 
-    // -------------------------------------------------------------------------
-    // RULE 1: OPPONENT ACTION FIXED / ACTING SECOND
-    // If the opponent has already locked in an action or is locked in recovery/stun,
-    // we know our relative resolution timing. Charge up to 100% full power as long as
-    // the 8-second round timer budget allows.
-    // -------------------------------------------------------------------------
+    const moveMeta = getMoveMeta(chosenMoveKey, selfRiderId, data);
+    const baseHitChance = Number(moveMeta?.hitChance ?? 100);
+    const baseDamage = Number(moveMeta?.baseDamage ?? 100);
+
+    const atk = C.modifiers ? C.modifiers(selfPlayer) : { attack: 1, dAttack: 1, sAttack: 1, speed: 1, accuracy: 0 };
+    const def = C.modifiers ? C.modifiers(enemyPlayer) : { armor: 1, evasion: 0, speed: 1 };
+
+    const remainingTimer = state.roundTimer ?? state.timer ?? 8.0;
+    const timerCapPercent = Math.floor(Math.min(1.0, Math.max(0.3, remainingTimer / 8.0)) * 100);
+
+    // STATE 1: OPPONENT ACTION FIXED / FAINTED / LOCKED -> MAX CHARGE DUMP (100%)
     const isEnemyActionFixed = Boolean(
-      state[enemySlot]?.locked ||
-      state[enemySlot]?.fainted ||
+      enemyPlayer.isFainted ||
+      enemyPlayer.locked ||
       state.cells?.[enemySlot]?.locked ||
       (state.previousActions && state.previousActions[enemySlot])
     );
 
     if (isEnemyActionFixed) {
-      // Scale charge duration to fit cleanly within remaining 8-sec timer window
-      const maxAllowedChargeByTimer = Math.min(1.0, Math.max(0.5, remainingTimer / 8.0));
-      return maxAllowedChargeByTimer;
+      const organicJitter = Math.floor((rng() - 0.5) * 6);
+      return K.clamp(timerCapPercent + organicJitter, 80, 100);
     }
 
-    // -------------------------------------------------------------------------
-    // RULE 2: ARCHETYPE PRIORITY ENGINE (CHARGE > MELEE)
-    // In engine resolution mechanics, CHARGE-type moves hold strict priority over MELEE moves.
-    // If our move is CHARGE type (e.g. Riderman charge attacks) and the opponent only has
-    // MELEE moves (e.g. Ichigo), CHARGE wins priority unconditionally. Charge to 100% safely!
-    // -------------------------------------------------------------------------
-    const myMoveMeta = getMoveMeta(chosenMoveKey, selfRiderId, data);
-    const myMoveType = myMoveMeta?.type || (chosenMoveKey.includes("W") || chosenMoveKey.includes("I") ? "CHARGE" : "MELEE");
-
-    // Check if enemy rider is purely MELEE-based (e.g., Ichigo has 100% MELEE moveset)
+    // STATE 2: RANGE ADVANTAGE (PROJECTILE / REACH vs PURE MELEE) -> MAX CHARGE DUMP
+    const myRangeType = String(moveMeta?.rangeType || "MELEE").toUpperCase();
     const isEnemyPureMelee = (enemyRiderId === "ichigo" || enemyRiderId === "001");
 
-    if (myMoveType === "CHARGE" && isEnemyPureMelee) {
-      // CHARGE > MELEE priority guarantees execution priority; safely charge 100%
-      const maxAllowedChargeByTimer = Math.min(1.0, Math.max(0.5, remainingTimer / 8.0));
-      return maxAllowedChargeByTimer;
+    if ((myRangeType === "PROJECTILE" || myRangeType === "REACH") && isEnemyPureMelee) {
+      const organicJitter = Math.floor((rng() - 0.5) * 6);
+      return K.clamp(timerCapPercent + organicJitter, 80, 100);
     }
 
-    // -------------------------------------------------------------------------
-    // RULE 3: SAFE MAXIMUM PUNISH WINDOW
-    // If opponent is out of Chi (0-10 Chi) or incapacitated, full charge is guaranteed safe.
-    // -------------------------------------------------------------------------
-    if (enemyChi < 10) {
-      return 1.0;
+    // STATE 3: SIMULTANEOUS CONTESTED NEUTRAL PLAY -> STOCHASTIC EV CURVE OPTIMIZATION
+    const candidates = [];
+    const stepSize = 10;
+
+    const enemySpeed = def.speed || 1.0;
+    const enemyEstimatedQ = 70 / enemySpeed; // Estimated opponent execution benchmark
+
+    let enemyEvasion = def.evasion || 0;
+    if (enemyPlayer.chi < 5) enemyEvasion -= 0.25; // Low Chi (<5 out of 16) penalizes evasion
+
+    let instability = 1.0;
+    if (enemyPlayer.airborneTicks > 0 && enemyPlayer.airborneAppliedRound === state.round) {
+      instability = 1.8 - 0.8 * (enemyPlayer.airborneChargePercent || 100) / 100;
     }
 
-    // -------------------------------------------------------------------------
-    // RULE 4: SAME-TYPE SPEED TRADES (MELEE vs MELEE or High-Chi Threat)
-    // When both players compete on equal attack priority, sacrifice 25% charge
-    // to undercut enemy speed and secure the first-strike frame interrupt.
-    // -------------------------------------------------------------------------
-    let charge = 1.0;
+    for (let c = 25; c <= timerCapPercent; c += stepSize) {
+      const chargeFactor = Math.sqrt(0.5 + 0.5 * (c / 100));
 
-    if (enemyChi >= 30) {
-      charge = 0.75; // Sacrifice 25% power to hit first
+      const accuracy = baseHitChance * chargeFactor + atk.accuracy + (selfPlayer.chi > 14 ? 20 : 0);
+      const hitProb = K.clamp((accuracy * (1 - enemyEvasion) * instability) / 100, 0.10, 1.0);
+
+      const rawDmg = baseDamage * chargeFactor * atk.attack * def.armor * (selfPlayer.chi > 14 ? 1.20 : 1.0);
+
+      const selfQ = c / (atk.speed || 1.0);
+      const speedMargin = enemyEstimatedQ - selfQ;
+      
+      const pFirst = 1.0 / (1.0 + Math.exp(-0.1 * speedMargin));
+
+      const evScore = (pFirst * hitProb * rawDmg) - ((1.0 - pFirst) * 30.0);
+
+      candidates.push({ charge: c, ev: evScore });
     }
 
-    if (state.distance === 1 && chosenMoveKey.includes("I")) {
-      charge = Math.min(charge, 0.70); // Close-range fast interrupt
-    }
+    if (candidates.length === 0) return timerCapPercent;
 
-    // -------------------------------------------------------------------------
-    // RULE 5: HARD TIMER BOUND
-    // Always clamp final charge percentage to respect the 8-second round limit.
-    // -------------------------------------------------------------------------
-    const timerCap = Math.min(1.0, Math.max(0.4, remainingTimer / 8.0));
-    return Math.min(charge, timerCap);
-  }
+    candidates.sort((a, b) => b.ev - a.ev);
 
-  /**
-   * Softmax Temperature Action Sampler (T = 0.35)
-   * Converts Q-values into a probability distribution during evaluation to prevent
-   * argmax policy tilt, turtle loops, and 50% Guard freeze-ups.
-   */
-  function sampleSoftmaxAction(qValues, mask, temperature = 0.35, rng = Math.random) {
-    let maxQ = -Infinity;
-    for (let i = 0; i < qValues.length; i++) {
-      if (mask && !mask[i]) continue;
-      if (qValues[i] > maxQ) maxQ = qValues[i];
-    }
+    const topCandidates = candidates.slice(0, Math.min(4, candidates.length));
+    const maxEV = topCandidates[0].ev;
+    const temp = 0.20;
 
-    if (maxQ === -Infinity) return 0;
-
-    const temp = Math.max(0.01, temperature);
-    const probs = new Float32Array(qValues.length);
+    const probs = new Float32Array(topCandidates.length);
     let sum = 0;
 
-    for (let i = 0; i < qValues.length; i++) {
-      if (mask && !mask[i]) continue;
-      probs[i] = Math.exp((qValues[i] - maxQ) / temp);
+    for (let i = 0; i < topCandidates.length; i++) {
+      probs[i] = Math.exp((topCandidates[i].ev - maxEV) / (temp * 100));
       sum += probs[i];
     }
 
-    if (sum <= 0) return 0;
+    let selectedCharge = topCandidates[0].charge;
 
-    const r = rng() * sum;
-    let acc = 0;
-
-    for (let i = 0; i < qValues.length; i++) {
-      if (mask && !mask[i]) continue;
-      acc += probs[i];
-      if (r <= acc) return i;
+    if (sum > 0) {
+      const roll = rng() * sum;
+      let acc = 0;
+      for (let i = 0; i < topCandidates.length; i++) {
+        acc += probs[i];
+        if (roll <= acc) {
+          selectedCharge = topCandidates[i].charge;
+          break;
+        }
+      }
     }
 
-    return 0;
+    const fineJitter = Math.floor((rng() - 0.5) * 8);
+    return K.clamp(selectedCharge + fineJitter, 25, timerCapPercent);
   }
 
   /**
-   * Rank-Weighted Fallback Sampler (50 / 30 / 15 / 5)
+   * Deterministic Rule Payoff Evaluator R_rule(s, a)
    */
-  function sampleRankWeightedAction(qValues, mask, rng) {
-    const legal = [];
-    for (let i = 0; i < mask.length; i++) {
-      if (mask[i]) {
-        legal.push({ index: i, q: qValues[i] });
+  function computeRuleScores(env, slot) {
+    const scores = new Float32Array(16);
+    const selfState = env.cells[slot] || {};
+    const currentChi = selfState.chi ?? 0;
+
+    for (let i = 0; i < 16; i++) {
+      const actionObj = E.actionFromIndex ? E.actionFromIndex(env, slot, i) : null;
+      const key = actionObj?.key || "NONE";
+
+      // Hard Penalty on Passivity/IDLE
+      if (key === "NONE" || key === "IDLE" || !key.includes("+")) {
+        scores[i] = -0.15;
+        continue;
       }
+
+      let score = 0.05;
+
+      if (key.includes("I") || key.includes("L")) {
+        score += currentChi >= 8 ? 0.20 : 0.05;
+      } else if (key.includes("J") || key.includes("K")) {
+        score += 0.12;
+      }
+
+      if (key.startsWith("A+")) {
+        score += 0.08;
+      }
+
+      scores[i] = score;
     }
+
+    return scores;
+  }
+
+  /**
+   * Top-K Composite Action Sampler
+   * Evaluates V(s, a) = alpha * R_rule(s, a) + (1 - alpha) * Q_theta(s, a)
+   */
+  function sampleTopKCompositeAction(qValues, mask, ruleScores, alpha = 0.30, topK = 5, temp = 0.35, rng = Math.random) {
+    const legal = [];
+
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i]) continue;
+      const rScore = ruleScores ? (ruleScores[i] || 0) : 0;
+      const qScore = qValues[i];
+
+      const compositeV = alpha * rScore + (1 - alpha) * qScore;
+      legal.push({ index: i, score: compositeV });
+    }
+
     if (legal.length === 0) return 0;
-    legal.sort((a, b) => b.q - a.q);
+    legal.sort((a, b) => b.score - a.score);
 
-    if (legal.length === 1) return legal[0].index;
+    const pool = legal.slice(0, Math.min(topK, legal.length));
+    const maxVal = pool[0].score;
 
-    const roll = rng();
-    if (roll < 0.50 || legal.length === 1) return legal[0].index; // Rank 1 (50%)
-    if (roll < 0.80 || legal.length === 2) return legal[1].index; // Rank 2 (30%)
-    if (roll < 0.95 || legal.length === 3) return legal[2].index; // Rank 3 (15%)
+    const t = Math.max(0.01, temp);
+    const probs = new Float32Array(pool.length);
+    let sum = 0;
 
-    const rest = legal.slice(3);
-    const subIdx = Math.floor(rng() * rest.length);
-    return rest[subIdx].index;
+    for (let i = 0; i < pool.length; i++) {
+      probs[i] = Math.exp((pool[i].score - maxVal) / t);
+      sum += probs[i];
+    }
+
+    if (sum <= 0) return pool[0].index;
+
+    const roll = rng() * sum;
+    let acc = 0;
+
+    for (let i = 0; i < pool.length; i++) {
+      acc += probs[i];
+      if (roll <= acc) return pool[i].index;
+    }
+
+    return pool[0].index;
   }
 
   function makeNeuralEvaluator(net, spec) {
@@ -310,14 +357,12 @@
           a = N.randomAction(m, rng);
         } else {
           const qValues = net.predict(s);
+          const ruleScores = computeRuleScores(e, slot);
 
           if (options.isTraining) {
-            // TRAINING: Pure argmax policy exploitation
-            a = N.argmax(qValues, m);
+            a = sampleTopKCompositeAction(qValues, m, ruleScores, 0.15, 3, 0.15, rng);
           } else {
-            // EVALUATION / MATCH PLAY: Softmax Temperature Sampling (T = 0.35)
-            // Prevents argmax policy tilt, turtle loops, and 50% Guard freeze-ups
-            a = sampleSoftmaxAction(qValues, m, 0.35, rng);
+            a = sampleTopKCompositeAction(qValues, m, ruleScores, 0.30, 5, 0.35, rng);
           }
 
           if (options.onQ) options.onQ(qValues[a]);
@@ -472,20 +517,16 @@
       const oppDmgPct  = Math.max(0, oppLpDelta) / oppMaxLp;
       const selfDmgPct = Math.max(0, selfLpDelta) / selfMaxLp;
 
-      // --- REBALANCED REWARD SHAPING ---
       let roundReward = (oppDmgPct * 1.5) - (selfDmgPct * 1.0);
 
-      // Chi Accumulation Bonus
       const chiGainPct = Math.max(0, postSelfChi - preSelfChi) / 100.0;
       roundReward += chiGainPct * 0.05;
 
-      // Explicit IDLE / Timeout Penalty
       const resolvedMove = previousActions[learnerSlot]?.key || "NONE";
       if (resolvedMove === "NONE" || resolvedMove === "IDLE" || !resolvedMove.includes("+")) {
         roundReward -= 0.15;
       }
 
-      // Terminal Match Rewards
       if (state.winner === learnerSlot) {
         roundReward += 1.0;
       } else if (state.winner && state.winner !== "draw") {
