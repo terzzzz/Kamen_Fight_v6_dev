@@ -203,7 +203,10 @@ async function run(job) {
   let losses = 0;
   let draws = 0;
   let totalRounds = 0;
-  let latestAvgQ = 0;
+
+  // Global Cumulative Q Accumulators for the entire job run
+  let jobCumulativeQSum = 0;
+  let jobCumulativeQCount = 0;
 
   let currentGuideProbability = 0;
   let currentImitation = 0;
@@ -253,6 +256,8 @@ async function run(job) {
       wasdCounts.W + wasdCounts.A + wasdCounts.S + wasdCounts.D + wasdCounts.IDLE
     );
 
+    const cumulativeAvgQ = jobCumulativeQCount > 0 ? (jobCumulativeQSum / jobCumulativeQCount) : 0;
+
     return {
       build: BUILD,
       kind: job.kind,
@@ -278,7 +283,7 @@ async function run(job) {
       loss: learner?.loss || 0,
       replaySize: learner?.replay?.items?.length || 0,
       updateStats: learner?.updateStats || null,
-      avgQ: latestAvgQ,
+      avgQ: cumulativeAvgQ,
 
       totalTrainingGames: training
         ? baseGames + games
@@ -449,10 +454,16 @@ async function run(job) {
           moveMatrix[dir][attackBtn] = (moveMatrix[dir][attackBtn] || 0) + 1;
         }
       } else if (event.type === "round") {
-        if (event.avgQ !== undefined) latestAvgQ = event.avgQ;
+        if (event.qSumDelta && event.qCountDelta) {
+          jobCumulativeQSum += event.qSumDelta;
+          jobCumulativeQCount += event.qCountDelta;
+        }
       } else if (event.type === "end") {
         result = event.result;
-        if (event.result.avgQ !== undefined) latestAvgQ = event.result.avgQ;
+        if (event.result.qSumDelta && event.result.qCountDelta) {
+          jobCumulativeQSum += event.result.qSumDelta;
+          jobCumulativeQCount += event.result.qCountDelta;
+        }
       }
 
       const now = performance.now();
