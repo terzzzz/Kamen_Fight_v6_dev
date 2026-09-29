@@ -42,6 +42,114 @@
   }
 
   /**
+   * Helper to retrieve move metadata from global dataset or state cell.
+   */
+  function getMoveMeta(moveKey, riderId, data) {
+    if (!moveKey || !data || !data.moves) return null;
+    const rawMoves = data.moves;
+    if (Array.isArray(rawMoves)) {
+      return rawMoves.find(m => m.key === moveKey || m.id === moveKey) || null;
+    }
+    if (typeof rawMoves === "object") {
+      if (rawMoves[riderId] && typeof rawMoves[riderId] === "object") {
+        return rawMoves[riderId][moveKey] || null;
+      }
+      return rawMoves[moveKey] || Object.values(rawMoves).find(m => m.key === moveKey) || null;
+    }
+    return null;
+  }
+
+  /**
+   * Smart Real-Time Charge Optimization Handler
+   * Dynamically determines exact charge % (0.0 to 1.0) based on:
+   *  1) Archetype Priority: CHARGE > MELEE (CHARGE attacks beat MELEE attacks regardless of speed)
+   *  2) Sequential Fixed Actions: If opponent's action is already locked/fixed, charge to 100%
+   *  3) Round Timer Allowance: Ensure charge duration does not breach the 8-second timer cap
+   *  4) Speed Competition: Cut charge to 75% only when facing uninterrupted MELEE speed threats
+   */
+  function resolveExecutionCharge(chosenMoveKey, state, learnerSlot, data = null) {
+    if (!chosenMoveKey || chosenMoveKey === "NONE" || chosenMoveKey === "IDLE") {
+      return 1.0;
+    }
+
+    const selfSlot = learnerSlot;
+    const enemySlot = learnerSlot === "p1" ? "p2" : "p1";
+
+    const selfRiderId = state[selfSlot]?.id || "ichigo";
+    const enemyRiderId = state[enemySlot]?.id || "ichigo";
+
+    const enemyChi = state[enemySlot]?.chi ?? 0;
+    const remainingTimer = state.roundTimer ?? state.timer ?? 8.0; // 8-second round limit
+
+    // -------------------------------------------------------------------------
+    // RULE 1: OPPONENT ACTION FIXED / ACTING SECOND
+    // If the opponent has already locked in an action or is locked in recovery/stun,
+    // we know our relative resolution timing. Charge up to 100% full power as long as
+    // the 8-second round timer budget allows.
+    // -------------------------------------------------------------------------
+    const isEnemyActionFixed = Boolean(
+      state[enemySlot]?.locked ||
+      state[enemySlot]?.fainted ||
+      state.cells?.[enemySlot]?.locked ||
+      (state.previousActions && state.previousActions[enemySlot])
+    );
+
+    if (isEnemyActionFixed) {
+      // Scale charge duration to fit cleanly within remaining 8-sec timer window
+      const maxAllowedChargeByTimer = Math.min(1.0, Math.max(0.5, remainingTimer / 8.0));
+      return maxAllowedChargeByTimer;
+    }
+
+    // -------------------------------------------------------------------------
+    // RULE 2: ARCHETYPE PRIORITY ENGINE (CHARGE > MELEE)
+    // In engine resolution mechanics, CHARGE-type moves hold strict priority over MELEE moves.
+    // If our move is CHARGE type (e.g. Riderman charge attacks) and the opponent only has
+    // MELEE moves (e.g. Ichigo), CHARGE wins priority unconditionally. Charge to 100% safely!
+    // -------------------------------------------------------------------------
+    const myMoveMeta = getMoveMeta(chosenMoveKey, selfRiderId, data);
+    const myMoveType = myMoveMeta?.type || (chosenMoveKey.includes("W") || chosenMoveKey.includes("I") ? "CHARGE" : "MELEE");
+
+    // Check if enemy rider is purely MELEE-based (e.g., Ichigo has 100% MELEE moveset)
+    const isEnemyPureMelee = (enemyRiderId === "ichigo" || enemyRiderId === "001");
+
+    if (myMoveType === "CHARGE" && isEnemyPureMelee) {
+      // CHARGE > MELEE priority guarantees execution priority; safely charge 100%
+      const maxAllowedChargeByTimer = Math.min(1.0, Math.max(0.5, remainingTimer / 8.0));
+      return maxAllowedChargeByTimer;
+    }
+
+    // -------------------------------------------------------------------------
+    // RULE 3: SAFE MAXIMUM PUNISH WINDOW
+    // If opponent is out of Chi (0-10 Chi) or incapacitated, full charge is guaranteed safe.
+    // -------------------------------------------------------------------------
+    if (enemyChi < 10) {
+      return 1.0;
+    }
+
+    // -------------------------------------------------------------------------
+    // RULE 4: SAME-TYPE SPEED TRADES (MELEE vs MELEE or High-Chi Threat)
+    // When both players compete on equal attack priority, sacrifice 25% charge
+    // to undercut enemy speed and secure the first-strike frame interrupt.
+    // -------------------------------------------------------------------------
+    let charge = 1.0;
+
+    if (enemyChi >= 30) {
+      charge = 0.75; // Sacrifice 25% power to hit first
+    }
+
+    if (state.distance === 1 && chosenMoveKey.includes("I")) {
+      charge = Math.min(charge, 0.70); // Close-range fast interrupt
+    }
+
+    // -------------------------------------------------------------------------
+    // RULE 5: HARD TIMER BOUND
+    // Always clamp final charge percentage to respect the 8-second round limit.
+    // -------------------------------------------------------------------------
+    const timerCap = Math.min(1.0, Math.max(0.4, remainingTimer / 8.0));
+    return Math.min(charge, timerCap);
+  }
+
+  /**
    * Softmax Temperature Action Sampler (T = 0.35)
    * Converts Q-values into a probability distribution during evaluation to prevent
    * argmax policy tilt, turtle loops, and 50% Guard freeze-ups.
@@ -156,35 +264,6 @@
       }
     }
     return keys.length > 0 ? keys : null;
-  }
-
-  function getMaxDamageForChi(data, riderId, currentChi) {
-    let moveList = [];
-    const rawMoves = data?.moves;
-
-    if (Array.isArray(rawMoves)) {
-      moveList = rawMoves.filter(m => m.riderId === riderId);
-    } else if (rawMoves && typeof rawMoves === "object") {
-      if (rawMoves[riderId] && typeof rawMoves[riderId] === "object") {
-        moveList = Object.values(rawMoves[riderId]);
-      } else {
-        moveList = Object.values(rawMoves).filter(m => m && (m.riderId === riderId || !m.riderId));
-      }
-    }
-
-    let maxDmg = 80;
-
-    for (let i = 0; i < moveList.length; i++) {
-      const m = moveList[i];
-      if (!m) continue;
-      const cost = m.chiCost ?? m.cost ?? m.chi ?? 0;
-      const dmg = m.baseDamage ?? m.damage ?? 0;
-
-      if (cost <= currentChi && dmg > maxDmg) {
-        maxDmg = dmg;
-      }
-    }
-    return maxDmg;
   }
 
   function reactor(spec, net, rng, options = {}) {
@@ -394,20 +473,19 @@
       const selfDmgPct = Math.max(0, selfLpDelta) / selfMaxLp;
 
       // --- REBALANCED REWARD SHAPING ---
-      // 1. HP Delta: Rewards landing hits slightly higher than taking chip damage
       let roundReward = (oppDmgPct * 1.5) - (selfDmgPct * 1.0);
 
-      // 2. Chi Accumulation Bonus
+      // Chi Accumulation Bonus
       const chiGainPct = Math.max(0, postSelfChi - preSelfChi) / 100.0;
       roundReward += chiGainPct * 0.05;
 
-      // 3. Explicit IDLE / Timeout Penalty (Applied strictly to non-action turns)
+      // Explicit IDLE / Timeout Penalty
       const resolvedMove = previousActions[learnerSlot]?.key || "NONE";
-      if (resolvedMove === "NONE" || resolvedMove === "IDLE" || resolvedMove === "DO_NOTHING") {
-        roundReward -= 0.15; // Directly discourages turn skipping
+      if (resolvedMove === "NONE" || resolvedMove === "IDLE" || !resolvedMove.includes("+")) {
+        roundReward -= 0.15;
       }
 
-      // 4. Terminal Match Rewards
+      // Terminal Match Rewards
       if (state.winner === learnerSlot) {
         roundReward += 1.0;
       } else if (state.winner && state.winner !== "draw") {
@@ -503,5 +581,5 @@
     yield { type: "end", result: { state, rounds, ticks, avgQ: finalAvgQ, qSumDelta: finalQSumDelta, qCountDelta: finalQCountDelta } };
   }
 
-  g.SoulSim = { BUILD, reactor, episode };
+  g.SoulSim = { BUILD, reactor, episode, resolveExecutionCharge };
 })(globalThis);
