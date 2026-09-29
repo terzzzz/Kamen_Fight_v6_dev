@@ -1,17 +1,29 @@
 /* js/neural_core.js
- * CPU neural network + Adam + Double DQN with asymmetric weighting & update stats.
+ * CPU neural network + Adam + Double DQN + Softmax Action Sampler
  */
 (function (g) {
   "use strict";
 
   const BUILD = "round-discount-master-guide-v3-history";
-  const K = g.KF;
+  const K = g.KF || {
+    rng: (seed) => {
+      let s = seed || 1;
+      return () => {
+        s = (s * 9301 + 49297) % 233280;
+        return s / 233280;
+      };
+    },
+    clamp: (val, min, max) => Math.max(min, Math.min(max, val))
+  };
 
+  /**
+   * Deterministic Argmax with Action Masking
+   */
   function argmax(q, mask) {
     let best = -1;
 
     for (let i = 0; i < q.length; i++) {
-      if (!mask[i]) continue;
+      if (mask && !mask[i]) continue;
 
       if (!Number.isFinite(q[i])) {
         throw new Error("Non-finite neural output.");
@@ -29,18 +41,56 @@
     return best;
   }
 
+  /**
+   * Temperature-Based Softmax Action Sampler
+   * Eliminates 50% IDLE loops during evaluation (epsilon = 0)
+   */
+  function sampleAction(q, mask, temperature = 0.3, rng = Math.random) {
+    if (temperature <= 0.01) {
+      return argmax(q, mask);
+    }
+
+    let maxQ = -Infinity;
+    for (let i = 0; i < q.length; i++) {
+      if (mask && !mask[i]) continue;
+      if (q[i] > maxQ) maxQ = q[i];
+    }
+
+    const probs = new Float32Array(q.length);
+    let sum = 0;
+
+    for (let i = 0; i < q.length; i++) {
+      if (mask && !mask[i]) continue;
+      probs[i] = Math.exp((q[i] - maxQ) / temperature);
+      sum += probs[i];
+    }
+
+    if (sum <= 0) return argmax(q, mask);
+
+    const r = rng() * sum;
+    let acc = 0;
+
+    for (let i = 0; i < q.length; i++) {
+      if (mask && !mask[i]) continue;
+      acc += probs[i];
+      if (r <= acc) return i;
+    }
+
+    return argmax(q, mask);
+  }
+
   function randomAction(mask, rng) {
     const legal = [];
 
     for (let i = 0; i < mask.length; i++) {
-      if (mask[i]) legal.push(i);
+      if (!mask || mask[i]) legal.push(i);
     }
 
     if (!legal.length) {
       throw new Error("Empty action mask.");
     }
 
-    return legal[Math.floor(rng() * legal.length)];
+    return legal[Math.floor((rng || Math.random)() * legal.length)];
   }
 
   function getStanceGroups(actionIndex, outputSize) {
@@ -154,9 +204,7 @@
         !Array.isArray(json.layers) ||
         json.layers.length !== sizes.length - 1
       ) {
-        throw new Error(
-          "Unsupported neural checkpoint architecture."
-        );
+        throw new Error("Unsupported neural checkpoint architecture.");
       }
 
       const net = new Network(sizes);
@@ -172,9 +220,7 @@
             values.length !== target[field].length ||
             values.some(value => typeof value !== "number" || !Number.isFinite(value))
           ) {
-            throw new Error(
-              "Invalid neural checkpoint parameters."
-            );
+            throw new Error("Invalid neural checkpoint parameters.");
           }
 
           target[field].set(values);
@@ -240,7 +286,7 @@
           let maximum = -Infinity;
 
           for (let a = 0; a < outputSize; a++) {
-            if (row.m[a]) {
+            if (row.m && row.m[a]) {
               maximum = Math.max(maximum, q[a]);
             }
           }
@@ -249,14 +295,14 @@
           let total = 0;
 
           for (let a = 0; a < outputSize; a++) {
-            if (!row.m[a]) continue;
+            if (row.m && !row.m[a]) continue;
 
-            probabilities[a] = Math.exp(q[a] - maximum);
+            probabilities[a] = Math.exp(q[a] - (maximum === -Infinity ? 0 : maximum));
             total += probabilities[a];
           }
 
           for (let a = 0; a < outputSize; a++) {
-            if (!row.m[a]) continue;
+            if (row.m && !row.m[a]) continue;
 
             delta[a] += imitation * (
               probabilities[a] / (total || 1) -
@@ -269,9 +315,7 @@
           const layer = this.layers[l];
           const grad = gradients[l];
           const previous = tape[l];
-          const back = l > 0
-            ? new Float32Array(layer.n)
-            : null;
+          const back = l > 0 ? new Float32Array(layer.n) : null;
 
           for (let j = 0; j < layer.m; j++) {
             const d = delta[j];
@@ -294,7 +338,6 @@
                 back[i] = 0;
               }
             }
-
             delta = back;
           }
         }
@@ -314,9 +357,7 @@
         throw new Error("Non-finite neural gradient.");
       }
 
-      const scale =
-        Math.min(1, 5 / (Math.sqrt(normSquared) || 1)) /
-        rows.length;
+      const scale = Math.min(1, 5 / (Math.sqrt(normSquared) || 1)) / rows.length;
 
       this.adamStep++;
 
@@ -341,9 +382,7 @@
               (Math.sqrt(second[i] / correction2) + 1e-8);
 
             if (!Number.isFinite(parameters[i])) {
-              throw new Error(
-                "Invalid neural parameter after update."
-              );
+              throw new Error("Invalid neural parameter after update.");
             }
           }
         }
@@ -371,11 +410,10 @@
     }
 
     sample(count, rng) {
+      const sampler = rng || Math.random;
       return Array.from(
         { length: count },
-        () => this.items[
-          Math.floor(rng() * this.items.length)
-        ]
+        () => this.items[Math.floor(sampler() * this.items.length)]
       );
     }
   }
@@ -390,7 +428,7 @@
       this.steps = previousSteps;
       this.updates = 0;
       this.loss = 0;
-      this.gamma = g.SoulEnv ? g.SoulEnv.GAMMA : 0.95; // 0.95 gamma for combat rounds
+      this.gamma = g.SoulEnv ? g.SoulEnv.GAMMA : 0.95;
       this.updateStats = { win: 0, damage: 0, loss: 0, neutral: 0 };
     }
 
@@ -448,12 +486,7 @@
         return;
       }
 
-      const outputSize = this.net.sizes[this.net.sizes.length - 1];
-
       const rows = this.replay.sample(32, this.rng).map(t => {
-        const currentQ = this.net.predict(t.s);
-        const targetVector = Float32Array.from(currentQ);
-
         let target = t.r;
 
         if (t.discount > 0) {
@@ -462,33 +495,11 @@
             t.m1
           );
 
-          target += t.discount *
-            this.target.predict(t.s1)[nextAction];
+          target += t.discount * this.target.predict(t.s1)[nextAction];
         }
 
-        // --- FIX: CLAMP TARGET Q-VALUE TO ELIMINATE DIVERGENCE ---
+        // Clamp TD target to prevent gradient blowups
         target = K.clamp(target, -5.0, 5.0);
-
-        targetVector[t.a] = target;
-
-        if (t.r < 0 || t.isLoss || t.rewardCategory === "Loss") {
-          const penalty = Math.abs(t.r);
-          const { sameStance, otherStances } = getStanceGroups(t.a, outputSize);
-
-          if (sameStance.length > 0) {
-            const samePenalty = (0.50 * penalty) / sameStance.length;
-            sameStance.forEach(aIdx => {
-              targetVector[aIdx] -= samePenalty;
-            });
-          }
-
-          if (otherStances.length > 0) {
-            const otherPenalty = (0.50 * penalty) / otherStances.length;
-            otherStances.forEach(aIdx => {
-              targetVector[aIdx] -= otherPenalty;
-            });
-          }
-        }
 
         const cat = t.rewardCategory ||
           (t.weightScale === 2.0 ? "Win" : t.weightScale === 1.5 ? "Dmg" : t.weightScale === 0.5 ? "Loss" : "Neu");
@@ -504,7 +515,6 @@
           m: t.m,
           demo: t.demo,
           y: target,
-          yVector: targetVector,
           weightScale: t.weightScale || 1.0
         };
       });
@@ -529,6 +539,7 @@
     Learner,
     Replay,
     argmax,
+    sampleAction,
     randomAction,
     getStanceGroups
   };
