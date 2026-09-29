@@ -3,7 +3,7 @@
  * Features:
  *  - Dynamic EV-Based Stochastic Execution Charge Optimization
  *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
- *  - Composite Soft-Q Action Selection (Top-K Filtered)
+ *  - Integrated Real-Time Charge Resolution in Combat Loop
  */
 (function (g) {
   "use strict";
@@ -62,9 +62,6 @@
 
   /**
    * Rider-Level Stochastic EV Charge Optimization Layer
-   * Evaluates expected value (EV) across candidate charge levels (25% to 100%)
-   * incorporating real-time hit rate bonuses, evasion, speed priority, and timer limits,
-   * then applies Softmax sampling for organic, unreadable human timing.
    */
   function resolveExecutionCharge(chosenMoveKey, state, learnerSlot, data = null, rng = Math.random) {
     if (!chosenMoveKey || chosenMoveKey === "NONE" || chosenMoveKey === "IDLE" || chosenMoveKey === "DO_NOTHING") {
@@ -117,10 +114,10 @@
     const stepSize = 10;
 
     const enemySpeed = def.speed || 1.0;
-    const enemyEstimatedQ = 70 / enemySpeed; // Estimated opponent execution benchmark
+    const enemyEstimatedQ = 70 / enemySpeed;
 
     let enemyEvasion = def.evasion || 0;
-    if (enemyPlayer.chi < 5) enemyEvasion -= 0.25; // Low Chi (<5 out of 16) penalizes evasion
+    if (enemyPlayer.chi < 5) enemyEvasion -= 0.25;
 
     let instability = 1.0;
     if (enemyPlayer.airborneTicks > 0 && enemyPlayer.airborneAppliedRound === state.round) {
@@ -179,9 +176,6 @@
     return K.clamp(selectedCharge + fineJitter, 25, timerCapPercent);
   }
 
-  /**
-   * Deterministic Rule Payoff Evaluator R_rule(s, a)
-   */
   function computeRuleScores(env, slot) {
     const scores = new Float32Array(16);
     const selfState = env.cells[slot] || {};
@@ -191,7 +185,6 @@
       const actionObj = E.actionFromIndex ? E.actionFromIndex(env, slot, i) : null;
       const key = actionObj?.key || "NONE";
 
-      // Hard Penalty on Passivity/IDLE
       if (key === "NONE" || key === "IDLE" || !key.includes("+")) {
         scores[i] = -0.15;
         continue;
@@ -215,10 +208,6 @@
     return scores;
   }
 
-  /**
-   * Top-K Composite Action Sampler
-   * Evaluates V(s, a) = alpha * R_rule(s, a) + (1 - alpha) * Q_theta(s, a)
-   */
   function sampleTopKCompositeAction(qValues, mask, ruleScores, alpha = 0.30, topK = 5, temp = 0.35, rng = Math.random) {
     const legal = [];
 
@@ -487,13 +476,33 @@
 
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
-        const opposingAction = opponentPlanner(e);
+        const rawActionIndex = ownDecision?.a ?? 0;
+
+        // RESOLVE REAL-TIME STOCHASTIC EV CHARGE FOR LEARNER
+        const learnerActionObj = E.actionFromIndex ? E.actionFromIndex(e, learnerSlot, rawActionIndex) : null;
+        const learnerKey = learnerActionObj?.key || "DO_NOTHING";
+        const learnerRng = K.rng(K.hash(seed, "charge-learner", state.round, ticks));
+        const learnerCharge = resolveExecutionCharge(learnerKey, state, learnerSlot, data, learnerRng);
 
         if (ownDecision) {
-          pending.push(Object.assign({}, ownDecision));
+          pending.push(Object.assign({}, ownDecision, { charge: learnerCharge, key: learnerKey }));
         }
 
-        E.step(e, { [learnerSlot]: ownDecision?.a ?? 0, [enemySlot]: opposingAction });
+        const opposingAction = opponentPlanner(e);
+
+        // RESOLVE REAL-TIME STOCHASTIC EV CHARGE FOR NEURAL OPPONENTS
+        let finalOppAction = opposingAction;
+        if (typeof opposingAction === "number") {
+          const oppActionObj = E.actionFromIndex ? E.actionFromIndex(e, enemySlot, opposingAction) : null;
+          const oppKey = oppActionObj?.key || "DO_NOTHING";
+          const oppRng = K.rng(K.hash(seed, "charge-opp", state.round, ticks));
+          const oppCharge = resolveExecutionCharge(oppKey, state, enemySlot, data, oppRng);
+          finalOppAction = { a: opposingAction, index: opposingAction, key: oppKey, charge: oppCharge };
+        }
+
+        const finalLearnerAction = { a: rawActionIndex, index: rawActionIndex, key: learnerKey, charge: learnerCharge };
+
+        E.step(e, { [learnerSlot]: finalLearnerAction, [enemySlot]: finalOppAction });
         ticks++;
         if (ticks % 8 === 0) yield { type: "clock" };
       }
