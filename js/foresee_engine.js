@@ -187,12 +187,21 @@
 
   /**
    * Computes expected utility value of a single move exchange using an optional neural evaluator.
+   * Features automatic fallback to RiderBrains heuristic if neural output returns NaN or throws error.
    */
   function pairValue(state, slot, ownAction, opponentAction, evaluator = null) {
     const [a1, a2] = orderedActions(slot, ownAction, opponentAction);
-    const evalFn = typeof evaluator === "function"
+    const rawEvalFn = typeof evaluator === "function"
       ? evaluator
       : (s, sl) => B.evaluate(s, sl);
+
+    const evalFn = (s, sl) => {
+      try {
+        const val = rawEvalFn(s, sl);
+        if (typeof val === "number" && !isNaN(val)) return val;
+      } catch (e) {}
+      return B.evaluate(s, sl);
+    };
 
     return C.distribution(state, a1, a2).reduce(
       (sum, result) =>
@@ -219,17 +228,27 @@
       isTraining = false
     } = context;
 
-    const evalFn = typeof evaluator === "function"
+    const rawEvalFn = typeof evaluator === "function"
       ? evaluator
       : (s, sl) => B.evaluate(s, sl);
 
+    // Safe evaluator wrapper: falls back to RiderBrains heuristic if neural eval throws or returns NaN on cloned states
+    const evalFn = (s, sl) => {
+      try {
+        const val = rawEvalFn(s, sl);
+        if (typeof val === "number" && !isNaN(val)) return val;
+      } catch (e) {}
+      return B.evaluate(s, sl);
+    };
+
     const difficulty = K.difficulty(context.difficulty);
 
-    // Copy levels configuration and apply speed caps ONLY during training runs
+    // Copy levels configuration and enforce speed caps during training OR whenever a neural evaluator is attached
     const settings = { ...K.levels[difficulty] };
-    if (isTraining) {
-      settings.rollouts = Math.min(settings.rollouts, 4);
-      settings.finalists = Math.min(settings.finalists, 2);
+    if (isTraining || typeof evaluator === "function") {
+      settings.horizon = Math.min(settings.horizon, 2);   // Cap lookahead depth to 2 max
+      settings.rollouts = Math.min(settings.rollouts, 4); // Cap rollouts per finalist to 4
+      settings.finalists = Math.min(settings.finalists, 2); // Cap root finalists to 2
     }
 
     const opponentSlot = C.other(slot);
