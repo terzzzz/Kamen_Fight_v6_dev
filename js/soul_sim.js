@@ -1,4 +1,6 @@
-/* js/soul_sim.js */
+/* js/soul_sim.js
+ * Combat simulation loop, reward shaping, and action execution engine.
+ */
 (function (g) {
   "use strict";
 
@@ -40,8 +42,45 @@
   }
 
   /**
-   * Non-deterministic Rank Sampler for Evaluation & Human Matchups (50/30/15/5).
-   * Prevents predictable move loops against search tree and human opponents.
+   * Softmax Temperature Action Sampler (T = 0.35)
+   * Converts Q-values into a probability distribution during evaluation to prevent
+   * argmax policy tilt, turtle loops, and 50% Guard freeze-ups.
+   */
+  function sampleSoftmaxAction(qValues, mask, temperature = 0.35, rng = Math.random) {
+    let maxQ = -Infinity;
+    for (let i = 0; i < qValues.length; i++) {
+      if (mask && !mask[i]) continue;
+      if (qValues[i] > maxQ) maxQ = qValues[i];
+    }
+
+    if (maxQ === -Infinity) return 0;
+
+    const temp = Math.max(0.01, temperature);
+    const probs = new Float32Array(qValues.length);
+    let sum = 0;
+
+    for (let i = 0; i < qValues.length; i++) {
+      if (mask && !mask[i]) continue;
+      probs[i] = Math.exp((qValues[i] - maxQ) / temp);
+      sum += probs[i];
+    }
+
+    if (sum <= 0) return 0;
+
+    const r = rng() * sum;
+    let acc = 0;
+
+    for (let i = 0; i < qValues.length; i++) {
+      if (mask && !mask[i]) continue;
+      acc += probs[i];
+      if (r <= acc) return i;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Rank-Weighted Fallback Sampler (50 / 30 / 15 / 5)
    */
   function sampleRankWeightedAction(qValues, mask, rng) {
     const legal = [];
@@ -60,7 +99,6 @@
     if (roll < 0.80 || legal.length === 2) return legal[1].index; // Rank 2 (30%)
     if (roll < 0.95 || legal.length === 3) return legal[2].index; // Rank 3 (15%)
 
-    // Rank 4+ remaining pool (5% total split)
     const rest = legal.slice(3);
     const subIdx = Math.floor(rng() * rest.length);
     return rest[subIdx].index;
@@ -120,10 +158,6 @@
     return keys.length > 0 ? keys : null;
   }
 
-  /**
-   * Generic helper: Scans any rider's move list in dataset and returns
-   * the highest LP damage move affordable with their current Chi.
-   */
   function getMaxDamageForChi(data, riderId, currentChi) {
     let moveList = [];
     const rawMoves = data?.moves;
@@ -138,7 +172,7 @@
       }
     }
 
-    let maxDmg = 80; // Default fallback to basic light punch (80 LP)
+    let maxDmg = 80;
 
     for (let i = 0; i < moveList.length; i++) {
       const m = moveList[i];
@@ -197,13 +231,16 @@
           a = N.randomAction(m, rng);
         } else {
           const qValues = net.predict(s);
+
           if (options.isTraining) {
-            // TRAINING: Pure Q-learning exploitation (follows matrix intent directly)
+            // TRAINING: Pure argmax policy exploitation
             a = N.argmax(qValues, m);
           } else {
-            // EVALUATION / MATCH PLAY: 50/30/15/5 Non-deterministic Rank Mix-up
-            a = sampleRankWeightedAction(qValues, m, rng);
+            // EVALUATION / MATCH PLAY: Softmax Temperature Sampling (T = 0.35)
+            // Prevents argmax policy tilt, turtle loops, and 50% Guard freeze-ups
+            a = sampleSoftmaxAction(qValues, m, 0.35, rng);
           }
+
           if (options.onQ) options.onQ(qValues[a]);
         }
 
@@ -319,10 +356,10 @@
         opponentPlanner = env => plan(env, enemySlot);
       }
 
-      const selfMaxLp      = state[learnerSlot]?.maxLp ?? 3000;
-      const preSelfLp      = e.cells[learnerSlot]?.lp ?? state[learnerSlot]?.lp ?? 0;
-      const preOppLp       = e.cells[enemySlot]?.lp ?? state[enemySlot]?.lp ?? 0;
-      const preOppChi      = e.cells[enemySlot]?.chi ?? state[enemySlot]?.chi ?? 0;
+      const selfMaxLp  = state[learnerSlot]?.maxLp ?? 3000;
+      const preSelfLp  = e.cells[learnerSlot]?.lp ?? state[learnerSlot]?.lp ?? 0;
+      const preOppLp   = e.cells[enemySlot]?.lp ?? state[enemySlot]?.lp ?? 0;
+      const preSelfChi = e.cells[learnerSlot]?.chi ?? state[learnerSlot]?.chi ?? 0;
 
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
@@ -344,36 +381,37 @@
       history = g.KF_AI.remember(history, result.before || state, result.actions);
       rounds++;
 
-      const postSelfLp     = state[learnerSlot]?.lp ?? 0;
-      const postOppLp      = state[enemySlot]?.lp ?? 0;
+      const postSelfLp  = state[learnerSlot]?.lp ?? 0;
+      const postOppLp   = state[enemySlot]?.lp ?? 0;
+      const postSelfChi = state[learnerSlot]?.chi ?? 0;
 
       minOppLp = Math.min(minOppLp, postOppLp);
 
-      const oppLpDelta = preOppLp - postOppLp;
+      const oppLpDelta  = preOppLp - postOppLp;
       const selfLpDelta = preSelfLp - postSelfLp;
 
       const oppDmgPct  = Math.max(0, oppLpDelta) / oppMaxLp;
       const selfDmgPct = Math.max(0, selfLpDelta) / selfMaxLp;
 
-      let roundReward = oppDmgPct - selfDmgPct;
+      // --- REBALANCED REWARD SHAPING ---
+      // 1. HP Delta: Rewards landing hits slightly higher than taking chip damage
+      let roundReward = (oppDmgPct * 1.5) - (selfDmgPct * 1.0);
 
-      // --- DYNAMIC WORST-CASE CHI PENALTY FOR TIMEOUTS & PURE MOVEMENT/IDLE TURNS ---
-      const resolvedMove = previousActions[learnerSlot]?.key || "DO_NOTHING";
-      const isNonAttackingTurn = !resolvedMove.includes("+");
+      // 2. Chi Accumulation Bonus
+      const chiGainPct = Math.max(0, postSelfChi - preSelfChi) / 100.0;
+      roundReward += chiGainPct * 0.05;
 
-      if (isNonAttackingTurn) {
-        const oppId = state[enemySlot]?.id || "nigo";
-        const maxOppPotentialDmg = getMaxDamageForChi(data, oppId, preOppChi);
-        const worstCaseIdlePenalty = maxOppPotentialDmg / selfMaxLp;
-
-        roundReward -= worstCaseIdlePenalty;
+      // 3. Explicit IDLE / Timeout Penalty (Applied strictly to non-action turns)
+      const resolvedMove = previousActions[learnerSlot]?.key || "NONE";
+      if (resolvedMove === "NONE" || resolvedMove === "IDLE" || resolvedMove === "DO_NOTHING") {
+        roundReward -= 0.15; // Directly discourages turn skipping
       }
 
-      // --- TERMINAL MATCH OUTCOME ---
+      // 4. Terminal Match Rewards
       if (state.winner === learnerSlot) {
-        roundReward += 0.20;
+        roundReward += 1.0;
       } else if (state.winner && state.winner !== "draw") {
-        roundReward -= 0.20;
+        roundReward -= 1.0;
       }
 
       if (pending.length > 0) {
