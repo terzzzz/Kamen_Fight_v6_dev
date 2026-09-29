@@ -93,7 +93,6 @@ async function run(job) {
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
-  // Dynamically resolve hidden layer dimensions from existing checkpoint or defaults (128)
   const h1 = Array.isArray(job.hidden)
     ? job.hidden[0]
     : (old?.net?.sizes?.[1] || (spec.hidden ? spec.hidden[0] : 128));
@@ -102,7 +101,6 @@ async function run(job) {
     ? job.hidden[1]
     : (old?.net?.sizes?.[2] || (spec.hidden ? spec.hidden[1] : 128));
 
-  // Checkpoint architecture validation & input mismatch safeguard
   if (old && old.net) {
     const sizes = old.net.sizes || [];
     const inputMismatch = sizes[0] !== spec.input;
@@ -110,7 +108,7 @@ async function run(job) {
 
     if (inputMismatch || actionMismatch) {
       console.warn(`[Worker] Checkpoint dimension mismatch [${sizes.join(", ")}] vs expected input [${spec.input}]. Discarding checkpoint.`);
-      old = null; // Auto-reset stale model
+      old = null;
     } else {
       old.version = VERSION;
       old.spec = spec;
@@ -553,7 +551,7 @@ self.onmessage = async event => {
         error.stack ||
         error.message ||
         String(error)
-    });
+      });
 
   } finally {
     busy = false;
