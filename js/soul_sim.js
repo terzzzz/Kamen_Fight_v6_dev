@@ -120,6 +120,39 @@
     return keys.length > 0 ? keys : null;
   }
 
+  /**
+   * Generic helper: Scans any rider's move list in dataset and returns
+   * the highest LP damage move affordable with their current Chi.
+   */
+  function getMaxDamageForChi(data, riderId, currentChi) {
+    let moveList = [];
+    const rawMoves = data?.moves;
+
+    if (Array.isArray(rawMoves)) {
+      moveList = rawMoves.filter(m => m.riderId === riderId);
+    } else if (rawMoves && typeof rawMoves === "object") {
+      if (rawMoves[riderId] && typeof rawMoves[riderId] === "object") {
+        moveList = Object.values(rawMoves[riderId]);
+      } else {
+        moveList = Object.values(rawMoves).filter(m => m && (m.riderId === riderId || !m.riderId));
+      }
+    }
+
+    let maxDmg = 80; // Default fallback to basic light punch (80 LP)
+
+    for (let i = 0; i < moveList.length; i++) {
+      const m = moveList[i];
+      if (!m) continue;
+      const cost = m.chiCost ?? m.cost ?? m.chi ?? 0;
+      const dmg = m.baseDamage ?? m.damage ?? 0;
+
+      if (cost <= currentChi && dmg > maxDmg) {
+        maxDmg = dmg;
+      }
+    }
+    return maxDmg;
+  }
+
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
     const frames = options.frames || new E.Frames(spec);
@@ -209,6 +242,8 @@
 
     let totalQSum = 0;
     let totalQCount = 0;
+    let lastReportedQSum = 0;
+    let lastReportedQCount = 0;
 
     const oppMaxLp = state[enemySlot]?.maxLp ?? 3000;
     let minOppLp = state[enemySlot]?.lp ?? oppMaxLp;
@@ -287,6 +322,7 @@
       const selfMaxLp      = state[learnerSlot]?.maxLp ?? 3000;
       const preSelfLp      = e.cells[learnerSlot]?.lp ?? state[learnerSlot]?.lp ?? 0;
       const preOppLp       = e.cells[enemySlot]?.lp ?? state[enemySlot]?.lp ?? 0;
+      const preOppChi      = e.cells[enemySlot]?.chi ?? state[enemySlot]?.chi ?? 0;
 
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
@@ -321,6 +357,19 @@
 
       let roundReward = oppDmgPct - selfDmgPct;
 
+      // --- DYNAMIC WORST-CASE CHI PENALTY FOR TIMEOUTS & PURE MOVEMENT/IDLE TURNS ---
+      const resolvedMove = previousActions[learnerSlot]?.key || "DO_NOTHING";
+      const isNonAttackingTurn = !resolvedMove.includes("+");
+
+      if (isNonAttackingTurn) {
+        const oppId = state[enemySlot]?.id || "nigo";
+        const maxOppPotentialDmg = getMaxDamageForChi(data, oppId, preOppChi);
+        const worstCaseIdlePenalty = maxOppPotentialDmg / selfMaxLp;
+
+        roundReward -= worstCaseIdlePenalty;
+      }
+
+      // --- TERMINAL MATCH OUTCOME ---
       if (state.winner === learnerSlot) {
         roundReward += 0.20;
       } else if (state.winner && state.winner !== "draw") {
@@ -339,7 +388,6 @@
 
         const isMatchDone = Boolean(state.winner);
         const discount = isMatchDone ? 0.0 : 0.95;
-        const resolvedMove = previousActions[learnerSlot]?.key || "DO_NOTHING";
 
         let category = "Neu";
         let weightScale = 1.0;
@@ -400,12 +448,21 @@
         }
       }
       pending = [];
+
       const currentAvgQ = totalQCount > 0 ? totalQSum / totalQCount : 0;
-      yield { type: "round", rounds, avgQ: currentAvgQ };
+      const qSumDelta = totalQSum - lastReportedQSum;
+      const qCountDelta = totalQCount - lastReportedQCount;
+      lastReportedQSum = totalQSum;
+      lastReportedQCount = totalQCount;
+
+      yield { type: "round", rounds, avgQ: currentAvgQ, qSumDelta, qCountDelta };
     }
 
     const finalAvgQ = totalQCount > 0 ? totalQSum / totalQCount : 0;
-    yield { type: "end", result: { state, rounds, ticks, avgQ: finalAvgQ } };
+    const finalQSumDelta = totalQSum - lastReportedQSum;
+    const finalQCountDelta = totalQCount - lastReportedQCount;
+
+    yield { type: "end", result: { state, rounds, ticks, avgQ: finalAvgQ, qSumDelta: finalQSumDelta, qCountDelta: finalQCountDelta } };
   }
 
   g.SoulSim = { BUILD, reactor, episode };
