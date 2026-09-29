@@ -382,22 +382,24 @@ async function run(job) {
       }
     }
 
-    // --- ADAPTIVE ROLLING WIN-RATE EPSILON CONTROLLER ---
-    let epsilon = 0;
-    if (training) {
-      if (recentOutcomes.length < 5) {
-        // Initial warm-up baseline exploration
-        epsilon = 0.12;
-      } else {
-        const winsInWindow = recentOutcomes.reduce((a, b) => a + b, 0);
-        const rollingWinRate = winsInWindow / recentOutcomes.length;
+  // --- ADAPTIVE ROLLING WIN-RATE EPSILON CONTROLLER ---
+let epsilon = 0;
+if (training) {
+  if (recentOutcomes.length < 5) {
+    // Initial warm-up baseline exploration
+    epsilon = 0.12;
+  } else {
+    const winsInWindow = recentOutcomes.reduce((a, b) => a + b, 0);
+    const rollingWinRate = winsInWindow / recentOutcomes.length;
 
-        // Baseline: 10% epsilon at 50% win rate.
-        // Drops toward 3% floor as win rate reaches 80%+.
-        // Scales up toward 20% ceiling as win rate drops toward 10%.
-        epsilon = Math.max(0.03, Math.min(0.20, 0.10 + (0.50 - rollingWinRate) * 0.30));
-      }
-    }
+    // Piecewise Adaptive Epsilon:
+    // - Win rate <= 20%: Capped at 12% (0.12)
+    // - Win rate >= 50%: Clamped at 2% (0.02)
+    // - Win rate 20% to 50%: Linear interpolation dropping from 12% down to 2%
+    const linearEpsilon = 0.02 + ((0.50 - rollingWinRate) / 0.30) * 0.10;
+    epsilon = Math.max(0.02, Math.min(0.12, linearEpsilon));
+  }
+}
 
     const imitation = training
       ? Math.max(MIN_IMITATION, INITIAL_IMITATION * guideProbability)
