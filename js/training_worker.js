@@ -208,6 +208,10 @@ async function run(job) {
   let jobCumulativeQSum = 0;
   let jobCumulativeQCount = 0;
 
+  // Adaptive Epsilon Rolling Window Tracker
+  const recentOutcomes = [];
+  const WINDOW_SIZE = 30;
+
   let currentGuideProbability = 0;
   let currentImitation = 0;
   let currentEpsilon = 0;
@@ -360,7 +364,6 @@ async function run(job) {
     }
 
     const batchProgressPct = (i / Math.max(1, job.matches)) * 100;
-    const batchProgressRatio = i / Math.max(1, job.matches);
 
     let guideProbability = 0.0;
     if (training) {
@@ -379,9 +382,22 @@ async function run(job) {
       }
     }
 
-    const epsilon = training
-      ? Math.max(0.05, 0.15 * Math.exp(-3.0 * batchProgressRatio))
-      : 0;
+    // --- ADAPTIVE ROLLING WIN-RATE EPSILON CONTROLLER ---
+    let epsilon = 0;
+    if (training) {
+      if (recentOutcomes.length < 5) {
+        // Initial warm-up baseline exploration
+        epsilon = 0.12;
+      } else {
+        const winsInWindow = recentOutcomes.reduce((a, b) => a + b, 0);
+        const rollingWinRate = winsInWindow / recentOutcomes.length;
+
+        // Baseline: 10% epsilon at 50% win rate.
+        // Drops toward 3% floor as win rate reaches 80%+.
+        // Scales up toward 20% ceiling as win rate drops toward 10%.
+        epsilon = Math.max(0.03, Math.min(0.20, 0.10 + (0.50 - rollingWinRate) * 0.30));
+      }
+    }
 
     const imitation = training
       ? Math.max(MIN_IMITATION, INITIAL_IMITATION * guideProbability)
@@ -499,6 +515,12 @@ async function run(job) {
       losses++;
     } else {
       draws++;
+    }
+
+    // Record outcome into rolling window for adaptive epsilon
+    recentOutcomes.push(outcome === "wins" ? 1 : 0);
+    if (recentOutcomes.length > WINDOW_SIZE) {
+      recentOutcomes.shift();
     }
 
     const label =
