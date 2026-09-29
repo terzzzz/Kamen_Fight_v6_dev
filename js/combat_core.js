@@ -1,6 +1,6 @@
-// combat_core.js
-// Kamen Fight — Pure Deterministic Combat Rules & Resolution Engine
-
+/* js/combat_core.js
+ * Kamen Fight — Pure Deterministic Combat Rules & Resolution Engine
+ */
 (function (g) {
   "use strict";
 
@@ -55,20 +55,16 @@
   function effectDefinition(buff, riderId) {
     if (buff.effects) return { ...buff.effects };
 
-    // Dynamic airborne buff scaling based on Rider identity
     if (buff.id === "airborne_boost") {
       if (riderId === "nigo") {
         return { attack: 1.15, accuracy: 15 };
       }
-
       if (riderId === "v3") {
         return { dAttack: 1.15, evasion: 0.15 };
       }
-
       if (riderId === "x") {
         return { dAttack: 1.15, evasion: 0.20 };
       }
-
       return { attack: 1.15, evasion: 0.20 };
     }
 
@@ -95,9 +91,6 @@
 
   /**
    * Compiles raw JSON rider move definitions into validated, immutable move structures.
-   *
-   * @param {Object} raw - Raw moves data structure from data/moves.json.
-   * @returns {Object} Object mapping rider IDs to compiled move lookup tables.
    */
   function compileMoves(raw) {
     const output = {};
@@ -130,14 +123,12 @@
           debuff: normalizeBuff(source.debuff, riderId)
         };
 
-        // Numerical validity enforcement
         for (const field of ["chiCost", "baseDamage", "hitChance"]) {
           if (!Number.isFinite(move[field]) || move[field] < 0) {
             throw new Error(`Invalid ${riderId} ${key}: ${field}`);
           }
         }
 
-        // Configure guard categories and button matching rules
         if (type === "DEFENSE") {
           const legacyOmni =
             key === "A+I" &&
@@ -151,7 +142,6 @@
           move.offensive = false;
         }
 
-        // Default Chi refund calculations for light physical attacks (Direction D)
         move.chiRefundOnHit = Number(
           source.chiRefundOnHit ??
           (
@@ -170,7 +160,6 @@
     return output;
   }
 
-  /** Deep copies a fighter state object to ensure state immutability. */
   function copyFighter(player) {
     return {
       ...player,
@@ -178,7 +167,6 @@
     };
   }
 
-  /** Deep copies a match state object for simulation rollouts. */
   function copyState(state) {
     return {
       round: state.round,
@@ -189,7 +177,6 @@
     };
   }
 
-  /** Initializes base runtime fighter state structure. */
   function createFighter(rider) {
     return {
       id: rider.id,
@@ -210,7 +197,6 @@
     };
   }
 
-  /** Constructs initial match state structure from selected rider definitions. */
   function createMatch(rider1, rider2, allMoves) {
     if (!allMoves[rider1.id] || !allMoves[rider2.id]) {
       throw new Error("Cannot create a match with missing move data.");
@@ -228,7 +214,6 @@
     };
   }
 
-  /** Computes combined stat modifiers (attack, armor, speed, accuracy, evasion) from active buffs. */
   function modifiers(player) {
     const result = {
       attack: 1,
@@ -258,12 +243,10 @@
     return result;
   }
 
-  /** Calculates move charge duration in milliseconds adjusted for player speed modifier. */
   function chargeMs(player, direction) {
     return g.getChargeTimeMs(direction) / modifiers(player).speed;
   }
 
-  /** Calculates the maximum charge percentage reachable within round time limits. */
   function maxCharge(player, direction) {
     const available =
       g.GAME_CONFIG.ROUND_TIME_LIMIT * 1000 -
@@ -276,7 +259,6 @@
     );
   }
 
-  /** Validates whether an action is legal given current player state and Chi balance. */
   function isLegal(state, slot, action) {
     if (!action || typeof action.key !== "string") return false;
 
@@ -293,7 +275,6 @@
       action.charge <= 100;
   }
 
-  /** Sanitizes and normalizes an action request into a valid execution object. */
   function normalizeAction(state, slot, action) {
     if (!isLegal(state, slot, action)) {
       return { key: "DO_NOTHING", charge: 0 };
@@ -307,7 +288,6 @@
     };
   }
 
-  /** Enumerates all valid action/charge combinations available to a fighter (used by search trees). */
   function actions(state, slot, chargeOptions) {
     if (state.winner || state[slot].isFainted) {
       return [{ key: "DO_NOTHING", charge: 0 }];
@@ -343,23 +323,14 @@
     return output;
   }
 
-  /** Evaluates move range tier priority (Projectile = 3, Reach/Rope = 2, Melee = 1). */
   function rangePriority(move) {
     const range = String(move?.rangeType || "MELEE").toUpperCase();
 
     if (range === "PROJECTILE") return 3;
-
     if (["REACH", "ROPE", "MID_RANGE"].includes(range)) return 2;
-
     return 1;
   }
 
-  /**
-   * Compares move priority between two actions.
-   * Priority hierarchy: 1) Range Type, 2) Direction Tier (S > W > D > A), 3) Adjusted Charge Time.
-   *
-   * @returns {number} 1 if Action 1 has priority, -1 if Action 2 has priority, 0 if tied.
-   */
   function comparePriority(state, action1, action2) {
     const m1 = state.moves.p1[action1.key];
     const m2 = state.moves.p2[action2.key];
@@ -372,18 +343,15 @@
       return 1;
     }
 
-    // Tier 1 Priority: Range classification
     const rangeDifference = rangePriority(m1) - rangePriority(m2);
     if (rangeDifference) return Math.sign(rangeDifference);
 
-    // Tier 2 Priority: Stance direction tier
     const tiers = { S: 3, W: 2, D: 1, A: 0 };
     const tierDifference =
       (tiers[m1.direction] || 0) - (tiers[m2.direction] || 0);
 
     if (tierDifference) return Math.sign(tierDifference);
 
-    // Tier 3 Priority: Actual execution duration adjusted for speed
     const q1 = action1.charge / modifiers(state.p1).speed;
     const q2 = action2.charge / modifiers(state.p2).speed;
 
@@ -391,7 +359,6 @@
     return q1 < q2 ? 1 : -1;
   }
 
-  /** Applies or refreshes a status buff on a fighter. */
   function applyBuff(player, definition, round) {
     if (!definition) return;
 
@@ -406,9 +373,6 @@
     });
   }
 
-  /**
-   * Executes combat round transition logic, resolving move interactions, damages, guards, and status updates.
-   */
   function transition(input, requested1, requested2, choose, trace) {
     if (input.winner) {
       throw new Error("Cannot resolve a completed match.");
@@ -430,13 +394,10 @@
     const touchedFaint = { p1: false, p2: false };
     const events = [];
 
-    // Evaluates probability threshold using provided deterministic PRNG branch function
     const chance = probability => {
       const p = K.clamp(probability);
-
       if (p <= 0) return false;
       if (p >= 1) return true;
-
       return choose(p);
     };
 
@@ -450,7 +411,6 @@
       });
     }
 
-    /** Accumulates faint meter and triggers stun state when threshold (100) is reached. */
     function addFaint(slot, amount) {
       const player = state[slot];
 
@@ -458,7 +418,6 @@
 
       touchedFaint[slot] = true;
 
-      // Low Chi (< 5) increases faint vulnerability by +25%
       const adjusted = player.chi < 5
         ? Math.floor(amount * 1.25)
         : amount;
@@ -473,7 +432,6 @@
       }
     }
 
-    // Step 1: Pre-resolution stance & guard setup (Guards reserve Chi upfront)
     for (const slot of SLOTS) {
       const action = selected[slot];
       const move = state.moves[slot][action.key];
@@ -489,7 +447,6 @@
       }
     }
 
-    // Step 2: Determine initiative order (Ties resolved via 50% chance roll)
     const priority = comparePriority(
       state,
       selected.p1,
@@ -502,7 +459,6 @@
 
     const order = [first, other(first)];
 
-    // Step 3: Resolve actions in initiative order
     for (const slot of order) {
       const targetSlot = other(slot);
       const attacker = state[slot];
@@ -517,7 +473,6 @@
       if (attacker.lp <= 0 || defender.lp <= 0) continue;
       if (move.guardKind || action.key === "DO_NOTHING") continue;
 
-      // Interrupted attacks (due to prior hit or faint) fizzle out
       if (interrupted[slot] || attacker.isFainted) {
         emit({ type: "interrupted", slot, key: action.key });
         continue;
@@ -525,7 +480,6 @@
 
       attacker.chi -= move.chiCost;
 
-      // Non-offensive utility move execution (healing, buffs, airborne state)
       if (!move.offensive) {
         applyBuff(attacker, move.buff, state.round);
 
@@ -549,7 +503,6 @@
         continue;
       }
 
-      // Offensive move resolution calculations
       const atk = modifiers(attacker);
       const def = modifiers(defender);
       const chargeFactor = Math.sqrt(0.5 + 0.5 * action.charge / 100);
@@ -563,7 +516,6 @@
       let guardReward = 0;
       let outcome = "hit";
 
-      // Guard interaction resolution
       if (guarding) {
         const matches = !move.unblockable &&
           (
@@ -593,7 +545,6 @@
           outcome = "guardFail";
         }
       } else if (!defender.isFainted && !idleTarget) {
-        // Evasion and accuracy calculations for un-guarded targets
         let evasion = def.evasion;
 
         if (defender.chi < 5) evasion -= 0.25;
@@ -637,7 +588,6 @@
         if (glancing) outcome = "glancing";
       }
 
-      // Final damage formula calculation
       const stanceAttack = move.direction === "D"
         ? atk.dAttack
         : move.direction === "S" ? atk.sAttack : 1;
@@ -660,7 +610,6 @@
 
       defender.lp = Math.max(0, defender.lp - damage);
 
-      // Post-hit faint meter buildup, Chi rewards, and status applications
       if (guarded) {
         addFaint(
           targetSlot,
@@ -681,7 +630,7 @@
           Number(move.baseFaintDamage ?? R.HIT_BUILDUP)
         );
 
-        interrupted[targetSlot] = true; // Clean hit interrupts opponent action
+        interrupted[targetSlot] = true;
 
         attacker.chi = Math.min(
           R.MAX_CHI,
@@ -707,7 +656,6 @@
       });
     }
 
-    // Step 4: Post-turn cleanup (Passive Chi regeneration, faint recovery, buff durations)
     for (const slot of SLOTS) {
       const player = state[slot];
       const move = state.moves[slot][selected[slot].key];
@@ -715,7 +663,6 @@
         selected[other(slot)].key
       ];
 
-      // Penalize holding zero-cost guard against passive opponents
       if (
         move.guardKind &&
         move.chiCost === 0 &&
@@ -724,7 +671,6 @@
         addFaint(slot, R.FAINT_PENALTY_IDLE_GUARD);
       }
 
-      // Recover from faint or apply passive faint decay
       if (startedFainted[slot]) {
         player.isFainted = false;
         player.faintMeter = 0;
@@ -735,7 +681,6 @@
         );
       }
 
-      // Decrement active buff durations
       for (const buff of player.activeBuffs) {
         if (buff.appliedRound !== state.round) {
           buff.roundsLeft--;
@@ -756,7 +701,6 @@
       player.chi = K.clamp(player.chi, 0, R.MAX_CHI);
     }
 
-    // Step 5: Check match ending conditions (KOs, max round limits)
     if (state.p1.lp <= 0 && state.p2.lp <= 0) {
       state.winner = "draw";
     } else if (state.p1.lp <= 0) {
@@ -768,7 +712,6 @@
     } else {
       state.round++;
 
-      // Passive turn Chi gain
       for (const slot of SLOTS) {
         if (!state[slot].isFainted) {
           state[slot].chi = Math.min(
@@ -784,9 +727,6 @@
     return { state, events, actions: selected };
   }
 
-  /**
-   * Resolves a turn deterministically using the provided PRNG function.
-   */
   function resolve(state, action1, action2, rng, trace = false) {
     if (typeof rng !== "function") {
       throw new Error("CombatCore.resolve requires an explicit RNG.");
@@ -801,10 +741,6 @@
     );
   }
 
-  /**
-   * Enumerates all stochastic outcome branches for Expectimax lookahead search trees.
-   * Eliminates the need for separate heuristic damage formulas in AI decision engines.
-   */
   function distribution(state, action1, action2) {
     const results = [];
 
@@ -820,7 +756,6 @@
             if (cursor < path.length) {
               return path[cursor++];
             }
-
             throw { combatChanceBranch: true, probability: p };
           },
           false
@@ -851,7 +786,6 @@
     return results;
   }
 
-  // Global namespace export
   g.CombatCore = {
     IDLE,
     compileMoves,
