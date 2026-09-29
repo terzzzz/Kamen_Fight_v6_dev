@@ -2,8 +2,9 @@
  * Rule-Regularized Composite Soft-Q Combat Simulator Engine.
  * Features:
  *  - Dynamic EV-Based Stochastic Execution Charge Optimization
+ *  - Real-Time Chi-Budget Action Masking
  *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
- *  - Integrated Real-Time Charge Resolution in Combat Loop
+ *  - Composite Soft-Q Action Selection (Top-K Filtered)
  */
 (function (g) {
   "use strict";
@@ -114,7 +115,7 @@
     const stepSize = 10;
 
     const enemySpeed = def.speed || 1.0;
-    const enemyEstimatedQ = 70 / enemySpeed;
+    const enemyEstimatedQ = 35 / enemySpeed;
 
     let enemyEvasion = def.evasion || 0;
     if (enemyPlayer.chi < 5) enemyEvasion -= 0.25;
@@ -135,9 +136,9 @@
       const selfQ = c / (atk.speed || 1.0);
       const speedMargin = enemyEstimatedQ - selfQ;
       
-      const pFirst = 1.0 / (1.0 + Math.exp(-0.1 * speedMargin));
+      const pFirst = 1.0 / (1.0 + Math.exp(-0.15 * speedMargin));
 
-      const evScore = (pFirst * hitProb * rawDmg) - ((1.0 - pFirst) * 30.0);
+      const evScore = (pFirst * hitProb * rawDmg) - ((1.0 - pFirst) * 35.0);
 
       candidates.push({ charge: c, ev: evScore });
     }
@@ -178,15 +179,24 @@
 
   function computeRuleScores(env, slot) {
     const scores = new Float32Array(16);
-    const selfState = env.cells[slot] || {};
+    const selfState = env?.state?.[slot] || env?.cells?.[slot] || {};
     const currentChi = selfState.chi ?? 0;
+    const moves = env?.state?.moves?.[slot] || env?.moves?.[slot] || {};
 
     for (let i = 0; i < 16; i++) {
       const actionObj = E.actionFromIndex ? E.actionFromIndex(env, slot, i) : null;
       const key = actionObj?.key || "NONE";
 
       if (key === "NONE" || key === "IDLE" || !key.includes("+")) {
-        scores[i] = -0.15;
+        scores[i] = -0.50;
+        continue;
+      }
+
+      const moveMeta = moves[key];
+      const chiCost = moveMeta ? Number(moveMeta.chiCost ?? 0) : 0;
+
+      if (chiCost > currentChi) {
+        scores[i] = -1.0;
         continue;
       }
 
@@ -208,11 +218,23 @@
     return scores;
   }
 
-  function sampleTopKCompositeAction(qValues, mask, ruleScores, alpha = 0.30, topK = 5, temp = 0.35, rng = Math.random) {
+  function sampleTopKCompositeAction(qValues, mask, ruleScores, alpha = 0.30, topK = 5, temp = 0.35, rng = Math.random, env = null, slot = null) {
     const legal = [];
+    const selfState = env?.state?.[slot] || env?.cells?.[slot] || {};
+    const currentChi = selfState.chi ?? 16;
+    const moves = env?.state?.moves?.[slot] || env?.moves?.[slot] || {};
 
     for (let i = 0; i < mask.length; i++) {
       if (!mask[i]) continue;
+
+      const actionObj = E.actionFromIndex ? E.actionFromIndex(env, slot, i) : null;
+      const key = actionObj?.key || "NONE";
+
+      if (key !== "NONE" && key !== "IDLE" && moves[key]) {
+        const chiCost = Number(moves[key].chiCost ?? 0);
+        if (chiCost > currentChi) continue;
+      }
+
       const rScore = ruleScores ? (ruleScores[i] || 0) : 0;
       const qScore = qValues[i];
 
@@ -220,7 +242,13 @@
       legal.push({ index: i, score: compositeV });
     }
 
-    if (legal.length === 0) return 0;
+    if (legal.length === 0) {
+      for (let i = 0; i < mask.length; i++) {
+        if (mask[i]) return i;
+      }
+      return 0;
+    }
+
     legal.sort((a, b) => b.score - a.score);
 
     const pool = legal.slice(0, Math.min(topK, legal.length));
@@ -349,9 +377,9 @@
           const ruleScores = computeRuleScores(e, slot);
 
           if (options.isTraining) {
-            a = sampleTopKCompositeAction(qValues, m, ruleScores, 0.15, 3, 0.15, rng);
+            a = sampleTopKCompositeAction(qValues, m, ruleScores, 0.15, 3, 0.15, rng, e, slot);
           } else {
-            a = sampleTopKCompositeAction(qValues, m, ruleScores, 0.30, 5, 0.35, rng);
+            a = sampleTopKCompositeAction(qValues, m, ruleScores, 0.30, 5, 0.35, rng, e, slot);
           }
 
           if (options.onQ) options.onQ(qValues[a]);
@@ -478,36 +506,31 @@
         const ownDecision = learner.decide(e, learnerSlot);
         const rawActionIndex = ownDecision?.a ?? 0;
 
-        // RESOLVE REAL-TIME STOCHASTIC EV CHARGE FOR LEARNER
-        const learnerActionObj = E.actionFromIndex ? E.actionFromIndex(e, learnerSlot, rawActionIndex) : null;
-        const learnerKey = learnerActionObj?.key || "DO_NOTHING";
-        const learnerRng = K.rng(K.hash(seed, "charge-learner", state.round, ticks));
-        const learnerCharge = resolveExecutionCharge(learnerKey, state, learnerSlot, data, learnerRng);
-
         if (ownDecision) {
-          pending.push(Object.assign({}, ownDecision, { charge: learnerCharge, key: learnerKey }));
+          pending.push(Object.assign({}, ownDecision));
         }
 
         const opposingAction = opponentPlanner(e);
+        const rawOpponentIndex = typeof opposingAction === "number" ? opposingAction : (opposingAction?.a ?? 0);
 
-        // RESOLVE REAL-TIME STOCHASTIC EV CHARGE FOR NEURAL OPPONENTS
-        let finalOppAction = opposingAction;
-        if (typeof opposingAction === "number") {
-          const oppActionObj = E.actionFromIndex ? E.actionFromIndex(e, enemySlot, opposingAction) : null;
-          const oppKey = oppActionObj?.key || "DO_NOTHING";
-          const oppRng = K.rng(K.hash(seed, "charge-opp", state.round, ticks));
-          const oppCharge = resolveExecutionCharge(oppKey, state, enemySlot, data, oppRng);
-          finalOppAction = { a: opposingAction, index: opposingAction, key: oppKey, charge: oppCharge };
-        }
-
-        const finalLearnerAction = { a: rawActionIndex, index: rawActionIndex, key: learnerKey, charge: learnerCharge };
-
-        E.step(e, { [learnerSlot]: finalLearnerAction, [enemySlot]: finalOppAction });
+        // Pass raw integer indices directly to SoulEnv.step
+        E.step(e, { [learnerSlot]: rawActionIndex, [enemySlot]: rawOpponentIndex });
         ticks++;
         if (ticks % 8 === 0) yield { type: "clock" };
       }
 
       const selected = E.actions(e);
+
+      // Dynamically calculate and attach EV charges before round resolution
+      if (selected.p1 && selected.p1.key) {
+        const rngP1 = K.rng(K.hash(seed, "charge-p1", state.round));
+        selected.p1.charge = resolveExecutionCharge(selected.p1.key, state, "p1", data, rngP1);
+      }
+      if (selected.p2 && selected.p2.key) {
+        const rngP2 = K.rng(K.hash(seed, "charge-p2", state.round));
+        selected.p2.charge = resolveExecutionCharge(selected.p2.key, state, "p2", data, rngP2);
+      }
+
       const result = C.resolve(state, selected.p1, selected.p2, combatRng, false);
       previousActions = Object.assign({}, result.actions);
       state = result.state;
