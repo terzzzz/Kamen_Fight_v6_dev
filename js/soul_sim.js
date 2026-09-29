@@ -39,6 +39,33 @@
     }
   }
 
+  /**
+   * Non-deterministic Rank Sampler for Evaluation & Human Matchups (50/30/15/5).
+   * Prevents predictable move loops against search tree and human opponents.
+   */
+  function sampleRankWeightedAction(qValues, mask, rng) {
+    const legal = [];
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i]) {
+        legal.push({ index: i, q: qValues[i] });
+      }
+    }
+    if (legal.length === 0) return 0;
+    legal.sort((a, b) => b.q - a.q);
+
+    if (legal.length === 1) return legal[0].index;
+
+    const roll = rng();
+    if (roll < 0.50 || legal.length === 1) return legal[0].index; // Rank 1 (50%)
+    if (roll < 0.80 || legal.length === 2) return legal[1].index; // Rank 2 (30%)
+    if (roll < 0.95 || legal.length === 3) return legal[2].index; // Rank 3 (15%)
+
+    // Rank 4+ remaining pool (5% total split)
+    const rest = legal.slice(3);
+    const subIdx = Math.floor(rng() * rest.length);
+    return rest[subIdx].index;
+  }
+
   function makeNeuralEvaluator(net, spec) {
     if (!net) return null;
     return function (state, slot) {
@@ -93,61 +120,6 @@
     return keys.length > 0 ? keys : null;
   }
 
-  /**
-   * Generic helper: Scans any rider's move list in dataset and returns
-   * the highest LP damage move affordable with their current Chi.
-   */
-  function getMaxDamageForChi(data, riderId, currentChi) {
-    let moveList = [];
-    const rawMoves = data?.moves;
-
-    if (Array.isArray(rawMoves)) {
-      moveList = rawMoves.filter(m => m.riderId === riderId);
-    } else if (rawMoves && typeof rawMoves === "object") {
-      if (rawMoves[riderId] && typeof rawMoves[riderId] === "object") {
-        moveList = Object.values(rawMoves[riderId]);
-      } else {
-        moveList = Object.values(rawMoves).filter(m => m && (m.riderId === riderId || !m.riderId));
-      }
-    }
-
-    let maxDmg = 80; // Default fallback to basic light punch (80 LP)
-
-    for (let i = 0; i < moveList.length; i++) {
-      const m = moveList[i];
-      if (!m) continue;
-      const cost = m.chiCost ?? m.cost ?? m.chi ?? 0;
-      const dmg = m.baseDamage ?? m.damage ?? 0;
-
-      if (cost <= currentChi && dmg > maxDmg) {
-        maxDmg = dmg;
-      }
-    }
-    return maxDmg;
-  }
-
-  /**
-   * Helper to count active beneficial buffs or status effects on a target.
-   */
-  function countStatusEffects(targetState) {
-    if (!targetState) return 0;
-    let count = 0;
-    if (Array.isArray(targetState.buffs)) {
-      count += targetState.buffs.length;
-    } else if (targetState.buffs && typeof targetState.buffs === "object") {
-      count += Object.keys(targetState.buffs).length;
-    }
-
-    if (Array.isArray(targetState.debuffs)) {
-      count += targetState.debuffs.length;
-    } else if (targetState.debuffs && typeof targetState.debuffs === "object") {
-      count += Object.keys(targetState.debuffs).length;
-    }
-
-    if (targetState.airborne) count += 1;
-    return count;
-  }
-
   function reactor(spec, net, rng, options = {}) {
     assertNetworkSize(spec, net, "Controller network");
     const frames = options.frames || new E.Frames(spec);
@@ -192,7 +164,13 @@
           a = N.randomAction(m, rng);
         } else {
           const qValues = net.predict(s);
-          a = N.argmax(qValues, m);
+          if (options.isTraining) {
+            // TRAINING: Pure Q-learning exploitation (follows matrix intent directly)
+            a = N.argmax(qValues, m);
+          } else {
+            // EVALUATION / MATCH PLAY: 50/30/15/5 Non-deterministic Rank Mix-up
+            a = sampleRankWeightedAction(qValues, m, rng);
+          }
           if (options.onQ) options.onQ(qValues[a]);
         }
 
@@ -207,9 +185,10 @@
       opponent, opponentMode = "mixed", opponentNet = null,
       seed = 1, epsilon = 0, guideProbability = 0,
       rewardMode = "standard", initialStateOverride = null,
-      learnerMode = null
+      learnerMode = null, isEvaluation = false
     } = options;
 
+    const isTraining = !isEvaluation;
     const enemySlot = C.other(learnerSlot);
     let state = initialStateOverride || C.createMatch(
       learnerSlot === "p1" ? data.riders.find(r => r.id === learnerId) : opponent,
@@ -231,7 +210,6 @@
     let totalQSum = 0;
     let totalQCount = 0;
 
-    // --- INITIALIZE GENERIC MATCH TRACKERS ---
     const oppMaxLp = state[enemySlot]?.maxLp ?? 3000;
     let minOppLp = state[enemySlot]?.lp ?? oppMaxLp;
 
@@ -240,7 +218,7 @@
       const e = E.create(state, previousActions);
       const guidedRound = choices() < guideProbability;
 
-      const activeLearnerMode = learnerMode || (options.isEvaluation && (opponentMode === "rider" || opponentMode === "mcts") ? "rider" : null);
+      const activeLearnerMode = learnerMode || (isEvaluation && (opponentMode === "rider" || opponentMode === "mcts") ? "rider" : null);
 
       const learner = reactor(spec, net, K.rng(K.hash(seed, "ctrl", state.round, learnerSlot)), {
         epsilon,
@@ -249,14 +227,13 @@
         frames: learnerFrames,
         state,
         history,
-        isTraining: !options.isEvaluation,
+        isTraining,
         onQ: (qVal) => {
           totalQSum += qVal;
           totalQCount++;
         }
       });
 
-      // Resolve opponent action planner ONCE per round
       let opponentPlanner;
       const isRiderOpponent = (opponentMode === "rider" || opponentMode === "mcts");
 
@@ -270,12 +247,12 @@
             difficulty: "soul",
             candidates: topKeys,
             evaluator: makeNeuralEvaluator(opponentNet, spec),
-            isTraining: !options.isEvaluation
+            isTraining
           });
           const plan = E.planned(res.rows[0]?.action);
           opponentPlanner = env => plan(env, enemySlot);
         } else {
-          const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state });
+          const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state, isTraining: false });
           opponentPlanner = env => actor.decide(env, enemySlot)?.a ?? 0;
         }
       } else if (opponentMode === "mixed") {
@@ -291,7 +268,7 @@
           slot: enemySlot,
           history,
           difficulty: "soul",
-          isTraining: !options.isEvaluation
+          isTraining
         });
         const plan = E.planned(res.rows[0]?.action);
         opponentPlanner = env => plan(env, enemySlot);
@@ -307,7 +284,6 @@
         opponentPlanner = env => plan(env, enemySlot);
       }
 
-      // --- PRE-ROUND GENERIC METRICS SNAPSHOT ---
       const selfMaxLp      = state[learnerSlot]?.maxLp ?? 3000;
       const preSelfLp      = e.cells[learnerSlot]?.lp ?? state[learnerSlot]?.lp ?? 0;
       const preOppLp       = e.cells[enemySlot]?.lp ?? state[enemySlot]?.lp ?? 0;
@@ -332,14 +308,11 @@
       history = g.KF_AI.remember(history, result.before || state, result.actions);
       rounds++;
 
-      // --- POST-ROUND METRICS SNAPSHOT ---
       const postSelfLp     = state[learnerSlot]?.lp ?? 0;
       const postOppLp      = state[enemySlot]?.lp ?? 0;
 
-      // Update historical minimum LP reached by opponent
       minOppLp = Math.min(minOppLp, postOppLp);
 
-      // --- 1. LP DAMAGE DEALT & RECEIVED (PURE DENSE HP DELTA) ---
       const oppLpDelta = preOppLp - postOppLp;
       const selfLpDelta = preSelfLp - postSelfLp;
 
@@ -348,46 +321,6 @@
 
       let roundReward = oppDmgPct - selfDmgPct;
 
-      /*
-      // --- COMMENTED OUT: DIZZY / FAINT MULTIPLIERS & SELF HEAL POOL ---
-      const isOppFainted = Boolean(
-        result.before?.[enemySlot]?.fainted ||
-        result.before?.[enemySlot]?.isFainted ||
-        result.before?.[enemySlot]?.stunned ||
-        state[enemySlot]?.fainted ||
-        state[enemySlot]?.isFainted ||
-        state[enemySlot]?.stunned ||
-        (preOppFaint >= 100)
-      );
-      if (isOppFainted && oppDmgPct > 0) { oppDmgPct *= 1.5; }
-      */
-
-      /*
-      // --- COMMENTED OUT: SECTION 2. FREE-TURN FAINT VALUE GRADIENT ---
-      const selfId = state[learnerSlot]?.id || learnerId;
-      const oppId  = state[enemySlot]?.id || "nigo";
-      const postSelfChi = state[learnerSlot]?.chi ?? 0;
-      const postOppChi  = state[enemySlot]?.chi ?? 0;
-      const postSelfFaint = state[learnerSlot]?.faint ?? 0;
-      const postOppFaint  = state[enemySlot]?.faint ?? 0;
-      const maxSelfDmg = getMaxDamageForChi(data, selfId, postSelfChi);
-      const maxOppDmg  = getMaxDamageForChi(data, oppId, postOppChi);
-      const deltaOppFaintPct  = Math.max(0, postOppFaint - preOppFaint) / 100.0;
-      const deltaSelfFaintPct = Math.max(0, postSelfFaint - preSelfFaint) / 100.0;
-      const oppFaintValue  = (1.5 * maxSelfDmg) / oppMaxLp;
-      const selfFaintValue = (1.5 * maxOppDmg) / selfMaxLp;
-      roundReward += (deltaOppFaintPct * oppFaintValue) - (deltaSelfFaintPct * selfFaintValue);
-      */
-
-      /*
-      // --- COMMENTED OUT: SECTION 3. GENERIC UTILITY BREADCRUMBS (BUFFS & DEBUFFS) ---
-      const gainedSelfBuff   = postSelfStatuses > preSelfStatuses;
-      const appliedOppDebuff = postOppStatuses > preOppStatuses;
-      if (gainedSelfBuff) roundReward += 0.005;
-      if (appliedOppDebuff) roundReward += 0.005;
-      */
-
-      // --- 2. TERMINAL MATCH OUTCOME (RESCALED TO ±0.20 TO PREVENT OVER-PENALIZATION) ---
       if (state.winner === learnerSlot) {
         roundReward += 0.20;
       } else if (state.winner && state.winner !== "draw") {
@@ -408,7 +341,6 @@
         const discount = isMatchDone ? 0.0 : 0.95;
         const resolvedMove = previousActions[learnerSlot]?.key || "DO_NOTHING";
 
-        // Assign category and weight scale based on round outcome
         let category = "Neu";
         let weightScale = 1.0;
 
@@ -423,12 +355,10 @@
           weightScale = 1.5;
         }
 
-        // UNBIASED TRANSITION YIELDING (All transitions recorded without generator-level filtering)
         for (let i = 0; i < pending.length; i++) {
           const isLastInRound = (i === pending.length - 1);
           const stepReward = roundReward / pending.length;
 
-          // Compute TD Error metric for telemetry logging
           let tdError = 1.0;
           if (net && typeof net.predict === "function") {
             const currentQValues = net.predict(pending[i].s);
