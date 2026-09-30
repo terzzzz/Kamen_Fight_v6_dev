@@ -416,7 +416,7 @@
       // Rule 1: 10% chance to DO_NOTHING (pretend charging with no attack buttons)
       if (roll < 0.10) {
         const doNothingBase = ownActions.find(a => a.key === "DO_NOTHING") || { key: "DO_NOTHING", charge: 0 };
-        const pretendCharge = [0, 25, 50, 75, 100][Math.floor(rng() * 5)];
+        const pretendCharge = [4, 45,  85, 100][Math.floor(rng() * 5)];
         const doNothingChoice = Object.assign({}, doNothingBase, { charge: pretendCharge });
 
         return {
