@@ -2,7 +2,7 @@
  * Rule-Regularized Composite Soft-Q Combat Simulator Engine.
  * Features:
  *  - Dynamic EV-Based Stochastic Execution Charge Optimization
- *  - Real-Time Chi-Budget Action Masking
+ *  - Real-Time Chi-Budget Action Masking & Telemetry Alignment
  *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
  *  - Composite Soft-Q Action Selection (Top-K Filtered)
  */
@@ -513,7 +513,6 @@
         const opposingAction = opponentPlanner(e);
         const rawOpponentIndex = typeof opposingAction === "number" ? opposingAction : (opposingAction?.a ?? 0);
 
-        // Pass raw integer indices directly to SoulEnv.step
         E.step(e, { [learnerSlot]: rawActionIndex, [enemySlot]: rawOpponentIndex });
         ticks++;
         if (ticks % 8 === 0) yield { type: "clock" };
@@ -521,7 +520,6 @@
 
       const selected = E.actions(e);
 
-      // Dynamically calculate and attach EV charges before round resolution
       if (selected.p1 && selected.p1.key) {
         const rngP1 = K.rng(K.hash(seed, "charge-p1", state.round));
         selected.p1.charge = resolveExecutionCharge(selected.p1.key, state, "p1", data, rngP1);
