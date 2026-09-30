@@ -780,10 +780,24 @@
       refresh();
 
       try {
-        await g.SoulAgent.ready();
-        const payload = JSON.parse(await file.text());
+        const readyData = await g.SoulAgent.ready();
+        let payload = JSON.parse(await file.text());
+
+        // --- AUTOMATIC IMPORT MIGRATION CHECK ---
+        if (payload && payload.net && Array.isArray(payload.net.sizes)) {
+          const spec = g.SoulEnv.makeSpec(readyData.data);
+          if (payload.net.sizes[0] !== spec.input) {
+            payload.net = g.SoulEnv.upgradeMatrixForTelemetry(payload.net);
+            payload.spec = spec;
+            output("Checkpoint upgraded: Expanded input layer with zero-extension for live telemetry.\nImported into CANDIDATE.");
+          } else {
+            output("1v1 Matchup checkpoint verified and imported into CANDIDATE.");
+          }
+        } else {
+          output("1v1 Matchup checkpoint verified and imported into CANDIDATE.");
+        }
+
         g.SoulAgent.importCandidate(payload);
-        output("1v1 Matchup checkpoint verified and imported into CANDIDATE.");
       } catch (error) {
         output("IMPORT ERROR\n" + error.message);
       } finally {
