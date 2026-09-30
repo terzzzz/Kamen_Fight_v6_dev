@@ -234,7 +234,7 @@
       return Network.fromJSON(this.toJSON());
     }
 
-    train(rows, learningRate = 0.0003, imitation = 0) {
+    train(rows, learningRate = 0.0001, imitation = 0) {
       if (!rows.length) return 0;
 
       const outputSize = this.sizes[this.sizes.length - 1];
@@ -432,6 +432,24 @@
       this.updateStats = { win: 0, damage: 0, loss: 0, neutral: 0 };
     }
 
+    /**
+     * Polyak Soft Target Network Update
+     * Slows target network drift to eliminate sharp Q-value jumps.
+     */
+    softUpdateTarget(tau = 0.005) {
+      if (!this.target) return;
+      for (let l = 0; l < this.net.layers.length; l++) {
+        const online = this.net.layers[l];
+        const target = this.target.layers[l];
+        for (let i = 0; i < online.w.length; i++) {
+          target.w[i] = tau * online.w[i] + (1 - tau) * target.w[i];
+        }
+        for (let i = 0; i < online.b.length; i++) {
+          target.b[i] = tau * online.b[i] + (1 - tau) * target.b[i];
+        }
+      }
+    }
+
     fold() {
       const transition = this.queue.shift();
       if (!transition) return;
@@ -479,8 +497,9 @@
         this.fold();
       }
 
+      // Gradient Step Interval updated from 16 to 32 ticks
       if (
-        this.steps % 16 !== 0 ||
+        this.steps % 32 !== 0 ||
         this.replay.items.length < 256
       ) {
         return;
@@ -519,17 +538,17 @@
         };
       });
 
+      // Learning rate updated from 0.0003 to 0.0001
       this.loss = this.net.train(
         rows,
-        0.0003,
+        0.0001,
         imitation
       );
 
       this.updates++;
 
-      if (this.updates % 200 === 0) {
-        this.target = this.net.clone();
-      }
+      // Soft Target Update applied on every step (tau = 0.005)
+      this.softUpdateTarget(0.005);
     }
   }
 
