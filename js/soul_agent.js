@@ -70,9 +70,10 @@
       if (sizes.length < 3) {
         return { valid: false, error: "Invalid network layer configuration in checkpoint." };
       }
-      if (sizes[sizes.length - 1] !== 10) {
-        return { valid: false, error: `Output action layer mismatch: got ${sizes[sizes.length - 1]}, expected 10.` };
-      }
+ 
+if (sizes[sizes.length - 1] !== 10) { 
+  return { valid: false, error: `Output action layer mismatch: got ${sizes[sizes.length - 1]}, expected 10.` };
+}
     }
 
     let weightCount = 0;
