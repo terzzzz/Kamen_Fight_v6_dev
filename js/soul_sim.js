@@ -10,7 +10,7 @@
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3-history-v3";
+  const BUILD = "round-discount-master-guide-v3-history";
 
   const E = g.SoulEnv;
   const N = g.SoulNN;
