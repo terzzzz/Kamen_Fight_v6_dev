@@ -1,5 +1,5 @@
 /* js/charge_env.js
- * Kamen Fight — Intra-Turn Telemetry & Frame Stacking Environment Engine
+ * Kamen Fight — Standard 4-Round Combat History Environment Engine
  */
 (function (g) {
   "use strict";
@@ -12,7 +12,7 @@
   const DECISION = 100;
   const REACTION = 250;
   const DELAY = 250;
-  const HISTORY = 4; // 4-frame temporal history stacking
+  const HISTORY = 4; // 4-frame temporal history stacking (119 * 4 = 476 inputs)
   const GAMMA = 0.999;
 
   const SLOTS = ["p1", "p2"];
@@ -264,10 +264,6 @@
     };
   }
 
-  /**
-   * Encodes observation object into a normalized Float32Array vector.
-   * Incorporates the explicit 7-feature intra-turn control telemetry block.
-   */
   function vector(o, spec) {
     const values = [];
 
@@ -350,18 +346,11 @@
       );
     }
 
-    /**
-     * Explicit 7-Feature Control Telemetry Encoding:
-     * [1. NONE, 2. W, 3. A, 4. S, 5. D, 6. charge_pct, 7. is_locked]
-     */
     function control(c) {
-      const dir = c ? c.direction : null;
-      values.push(Number(!dir || dir === "NONE"));
       for (const d of DIRS) {
-        values.push(Number(dir === d));
+        values.push(Number(c.direction === d));
       }
-      values.push(c ? (c.charge || 0) / 100 : 0);
-      values.push(c ? Number(!!c.locked) : 0);
+      values.push(c.charge / 100, Number(c.locked));
     }
 
     function previous(a) {
@@ -376,8 +365,8 @@
     fighter(o.self);
     fighter(o.enemy);
     opponentCapabilities(o.enemy, o.enemyMoves);
-    control(o.own); // Self 7-feature telemetry
-    control(o.opp); // Opponent 7-feature telemetry
+    control(o.own);
+    control(o.opp);
     previous(o.lastOwn);
     previous(o.lastOpp);
 
@@ -426,8 +415,8 @@
       data.moves
     );
 
-    spec.frame = vector(observe(create(sample), "p1"), spec).length; // Exact per-frame size (e.g. 121)
-    spec.input = spec.frame * HISTORY; // Full 4-frame stacked temporal input vector
+    spec.frame = vector(observe(create(sample), "p1"), spec).length; // Exact frame size: 119
+    spec.input = spec.frame * HISTORY; // Standard input size: 119 * 4 = 476
 
     return spec;
   }
@@ -453,54 +442,6 @@
       this.frames.forEach((f, i) => out.set(f, i * this.spec.frame));
       return out;
     }
-  }
-
-  /**
-   * Network Surgery Utility:
-   * Upgrades an existing saved Neural Checkpoint JSON to accommodate newly added features 
-   * via zero-extension initialization (preserves 100% of trained weight parameters).
-   */
-  function upgradeMatrixForTelemetry(oldJson, numNewFeaturesPerFrame = 2) {
-    if (!oldJson || !Array.isArray(oldJson.sizes) || !Array.isArray(oldJson.layers)) {
-      throw new Error("Invalid checkpoint JSON supplied for migration.");
-    }
-
-    const newSizes = [...oldJson.sizes];
-    const oldInputSize = newSizes[0];
-    const newInputSize = oldInputSize + (numNewFeaturesPerFrame * HISTORY);
-    newSizes[0] = newInputSize;
-
-    const hiddenSize = newSizes[1];
-    const oldW0 = oldJson.layers[0].w;
-    const newW0 = new Float32Array(newInputSize * hiddenSize);
-
-    const oldFrameSize = oldInputSize / HISTORY;
-    const newFrameSize = newInputSize / HISTORY;
-
-    for (let j = 0; j < hiddenSize; j++) {
-      const oldHiddenOffset = j * oldInputSize;
-      const newHiddenOffset = j * newInputSize;
-
-      for (let h = 0; h < HISTORY; h++) {
-        const oldStart = oldHiddenOffset + (h * oldFrameSize);
-        const newStart = newHiddenOffset + (h * newFrameSize);
-
-        for (let i = 0; i < oldFrameSize; i++) {
-          newW0[newStart + i] = oldW0[oldStart + i];
-        }
-        // New feature weights remain zero-initialized (0.0) automatically
-      }
-    }
-
-    return {
-      sizes: newSizes,
-      layers: oldJson.layers.map((layer, idx) => {
-        if (idx === 0) {
-          return { w: Array.from(newW0), b: [...layer.b] };
-        }
-        return { w: [...layer.w], b: [...layer.b] };
-      })
-    };
   }
 
   function planned(action) {
@@ -688,7 +629,6 @@
     vector,
     makeSpec,
     Frames,
-    upgradeMatrixForTelemetry,
     planned,
     scripted
   };
