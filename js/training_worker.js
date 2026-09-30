@@ -380,16 +380,17 @@ async function run(job) {
       }
     }
 
+    // Epsilon max cap updated from 0.12 to 0.06
     let epsilon = 0;
     if (training) {
       if (recentOutcomes.length < 5) {
-        epsilon = 0.12;
+        epsilon = 0.06;
       } else {
         const winsInWindow = recentOutcomes.reduce((a, b) => a + b, 0);
         const rollingWinRate = winsInWindow / recentOutcomes.length;
 
-        const linearEpsilon = 0.02 + ((0.50 - rollingWinRate) / 0.30) * 0.10;
-        epsilon = Math.max(0.02, Math.min(0.12, linearEpsilon));
+        const linearEpsilon = 0.02 + ((0.50 - rollingWinRate) / 0.30) * 0.04;
+        epsilon = Math.max(0.02, Math.min(0.06, linearEpsilon));
       }
     }
 
