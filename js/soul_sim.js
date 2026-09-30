@@ -5,11 +5,12 @@
  *  - Real-Time Chi-Budget Action Masking
  *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
  *  - Composite Soft-Q Action Selection (Top-K Filtered)
+ *  - Soft Expected Value Target TD Calculation
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3-history";
+  const BUILD = "round-discount-master-guide-v3-history-v3";
 
   const E = g.SoulEnv;
   const N = g.SoulNN;
@@ -601,6 +602,8 @@
             const currentQValues = net.predict(pending[i].s);
             const nextQValues = net.predict(s1);
 
+            // Soft Expected Value Target over legal actions (Temperature T = 0.15)
+            const T = 0.15;
             let maxNextQ = -Infinity;
             for (let j = 0; j < m1.length; j++) {
               if (m1[j] && nextQValues[j] > maxNextQ) {
@@ -609,7 +612,19 @@
             }
             if (maxNextQ === -Infinity) maxNextQ = 0.0;
 
-            const targetQ = stepReward + discount * maxNextQ;
+            let expSum = 0;
+            let expectedNextQ = 0;
+
+            for (let j = 0; j < m1.length; j++) {
+              if (m1[j]) {
+                const weight = Math.exp((nextQValues[j] - maxNextQ) / T);
+                expSum += weight;
+                expectedNextQ += weight * nextQValues[j];
+              }
+            }
+
+            const softV = expSum > 0 ? (expectedNextQ / expSum) : maxNextQ;
+            const targetQ = stepReward + discount * softV;
             const currentQ = currentQValues[pending[i].a] ?? 0.0;
             tdError = Math.abs(targetQ - currentQ);
           }
