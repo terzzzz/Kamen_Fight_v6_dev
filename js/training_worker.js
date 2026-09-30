@@ -101,14 +101,24 @@ async function run(job) {
     ? job.hidden[1]
     : (old?.net?.sizes?.[2] || (spec.hidden ? spec.hidden[1] : 128));
 
+  // --- AUTOMATIC CHECKPOINT DIMENSION MIGRATION ---
   if (old && old.net) {
     const sizes = old.net.sizes || [];
-    const inputMismatch = sizes[0] !== spec.input;
     const actionMismatch = sizes[3] !== 16 && sizes[3] !== 10;
 
-    if (inputMismatch || actionMismatch) {
-      console.warn(`[Worker] Checkpoint dimension mismatch [${sizes.join(", ")}] vs expected input [${spec.input}]. Discarding checkpoint.`);
+    if (actionMismatch) {
+      console.warn(`[Worker] Action dimension mismatch [${sizes.join(", ")}]. Discarding checkpoint.`);
       old = null;
+    } else if (sizes[0] !== spec.input) {
+      console.log(`[Worker] Upgrading checkpoint input dimension from ${sizes[0]} to expected ${spec.input} via zero-extension.`);
+      try {
+        old.net = SoulEnv.upgradeMatrixForTelemetry(old.net);
+        old.version = VERSION;
+        old.spec = spec;
+      } catch (err) {
+        console.warn(`[Worker] Failed to upgrade checkpoint: ${err.message}. Discarding checkpoint.`);
+        old = null;
+      }
     } else {
       old.version = VERSION;
       old.spec = spec;
@@ -116,9 +126,7 @@ async function run(job) {
   }
 
   if (!training && !old) {
-    throw new Error(
-      "There is no neural checkpoint to evaluate."
-    );
+    throw new Error("There is no neural checkpoint to evaluate.");
   }
 
   const seed = Number(job.seed) >>> 0;
@@ -133,7 +141,7 @@ async function run(job) {
       );
 
   if (net.sizes[0] !== spec.input) {
-    throw new Error("Worker network input mismatch.");
+    throw new Error(`Worker network input mismatch: got ${net.sizes[0]}, expected ${spec.input}.`);
   }
 
   const weightsID = training
