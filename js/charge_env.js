@@ -5,8 +5,20 @@
 (function (g) {
   "use strict";
 
+  const C = g.CombatCore;
+  const K = g.KF;
+
   const BUILD = "v4-onehot136-1v1-zero";
+  const STEP = 50;
+  const DECISION = 100;
+  const REACTION = 250;
+  const DELAY = 250;
   const GAMMA = 0.95;
+
+  const SLOTS = ["p1", "p2"];
+  const DIRS = ["W", "A", "S", "D"];
+  const BUTTONS = ["I", "J", "K", "L"];
+  const INPUTS = ["WAIT", ...DIRS, ...BUTTONS, "IDLE"];
 
   const ACTION_MAP = [
     "W+J", "W+K", "W+I", "W+L",
@@ -14,6 +26,9 @@
     "S+J", "S+K", "S+I", "S+L",
     "D+J", "D+K", "D+I", "D+L"
   ];
+
+  const idle = () => ({ key: "DO_NOTHING", charge: 0 });
+  const limit = () => g.GAME_CONFIG ? g.GAME_CONFIG.ROUND_TIME_LIMIT * 1000 : 8000;
 
   function encodeOneHot(targetArray, offset, selectedIndex, totalCategories) {
     for (let i = 0; i < totalCategories; i++) {
@@ -28,25 +43,146 @@
     return idx >= 0 ? idx : 0;
   }
 
-  function makeSpec(data) {
+  function publicControl(cell) {
     return {
-      input: 136,
-      hidden: [128, 64],
-      output: 16
+      direction: cell.direction,
+      charge: cell.charge,
+      locked: cell.locked
     };
   }
 
   function create(state, previousActions = {}) {
-    return {
+    const e = {
       state,
       previousActions,
-      cells: {
-        p1: state.p1 || {},
-        p2: state.p2 || {}
-      },
-      done: Boolean(state.winner),
-      history: state.history || []
+      t: 0,
+      cells: {},
+      past: [],
+      done: false,
+      history: state?.history || []
     };
+
+    for (const slot of SLOTS) {
+      const fainted = !!(state[slot] && state[slot].isFainted);
+      e.cells[slot] = {
+        direction: null,
+        start: 0,
+        charge: 0,
+        locked: fainted,
+        action: fainted ? idle() : null
+      };
+    }
+
+    e.past.push({
+      t: -Infinity,
+      p1: publicControl(e.cells.p1),
+      p2: publicControl(e.cells.p2)
+    });
+
+    e.done = SLOTS.every(s => e.cells[s].locked);
+    return e;
+  }
+
+  function refresh(e) {
+    for (const slot of SLOTS) {
+      const c = e.cells[slot];
+      if (!c.locked && c.direction) {
+        const duration = C.chargeMs ? C.chargeMs(e.state[slot], c.direction) : 3000;
+        c.charge = K.clamp(
+          Math.floor(100 * Math.max(0, e.t - c.start) / duration),
+          0,
+          100
+        );
+      }
+    }
+  }
+
+  function lock(e, slot, action) {
+    const c = e.cells[slot];
+    if (C.isLegal && !C.isLegal(e.state, slot, action)) return false;
+
+    c.action = C.normalizeAction ? C.normalizeAction(e.state, slot, action) : action;
+    c.locked = true;
+    c.charge = c.action.charge || 0;
+
+    if (c.action.key === "DO_NOTHING") {
+      c.direction = null;
+    }
+    return true;
+  }
+
+  function apply(e, slot, input) {
+    const name = typeof input === "number" ? INPUTS[input] : input;
+    const c = e.cells[slot];
+
+    if (!c || !name) return false;
+    if (name === "WAIT") return true;
+    if (c.locked || e.t >= limit()) return false;
+
+    if (DIRS.includes(name)) {
+      // PRESERVE START TIME IF SAME DIRECTION REPEATED
+      if (c.direction !== name) {
+        c.direction = name;
+        c.start = e.t;
+        c.charge = 0;
+      }
+      return true;
+    }
+
+    if (name === "IDLE") {
+      return lock(e, slot, idle());
+    }
+
+    if (BUTTONS.includes(name) && c.direction) {
+      return lock(e, slot, {
+        key: c.direction + "+" + name,
+        charge: c.charge
+      });
+    }
+
+    return false;
+  }
+
+  function step(e, inputs = {}) {
+    if (e.done) return [];
+
+    const rejected = [];
+
+    for (const slot of SLOTS) {
+      const sequence = Array.isArray(inputs[slot])
+        ? inputs[slot]
+        : [inputs[slot] ?? 0];
+
+      for (const input of sequence) {
+        if (!apply(e, slot, input)) {
+          rejected.push({ slot, input });
+        }
+      }
+    }
+
+    e.past.push({
+      t: e.t,
+      p1: publicControl(e.cells.p1),
+      p2: publicControl(e.cells.p2)
+    });
+
+    e.t = Math.min(limit(), e.t + STEP);
+    refresh(e);
+
+    while (e.past.length > 2 && e.past[1].t <= e.t - DELAY) {
+      e.past.shift();
+    }
+
+    if (e.t >= limit()) {
+      for (const slot of SLOTS) {
+        if (!e.cells[slot].locked) {
+          lock(e, slot, idle());
+        }
+      }
+    }
+
+    e.done = SLOTS.every(s => e.cells[s].locked);
+    return rejected;
   }
 
   function observe(env, slot) {
@@ -62,9 +198,12 @@
     const historyFrames = [];
     for (let i = 0; i < 4; i++) {
       const turn = recent[i];
-      if (turn && turn.actions) {
-        const selfActKey = turn.actions[selfSlot]?.key || turn.actions[selfSlot] || "NONE";
-        const enemyActKey = turn.actions[enemySlot]?.key || turn.actions[enemySlot] || "NONE";
+      if (turn && (turn.actions || turn[selfSlot])) {
+        const selfAct = turn.actions?.[selfSlot] || turn[selfSlot];
+        const enemyAct = turn.actions?.[enemySlot] || turn[enemySlot];
+
+        const selfActKey = typeof selfAct === "object" ? selfAct.key : selfAct;
+        const enemyActKey = typeof enemyAct === "object" ? enemyAct.key : enemyAct;
 
         historyFrames.push({
           selfActionIndex: getActionIndexByKey(selfActKey),
@@ -78,7 +217,8 @@
     // Calculate rolling stance ratios over last 4 turns
     let w = 0, a = 0, s = 0, d = 0;
     recent.forEach(turn => {
-      const key = turn?.actions?.[enemySlot]?.key || turn?.actions?.[enemySlot] || "";
+      const enemyAct = turn?.actions?.[enemySlot] || turn?.[enemySlot];
+      const key = typeof enemyAct === "object" ? (enemyAct.key || "") : String(enemyAct || "");
       if (key.startsWith("W+")) w++;
       else if (key.startsWith("A+")) a++;
       else if (key.startsWith("S+")) s++;
@@ -128,6 +268,14 @@
     return vec;
   }
 
+  function makeSpec(data) {
+    return {
+      input: 136,
+      hidden: [128, 64],
+      output: 16
+    };
+  }
+
   function mask(env, slot) {
     const m = new Uint8Array(16);
     const selfState = env.cells?.[slot] || env.state?.[slot] || {};
@@ -155,13 +303,9 @@
 
   function actions(env) {
     return {
-      p1: env.cells?.p1?.action || { key: "DO_NOTHING" },
-      p2: env.cells?.p2?.action || { key: "DO_NOTHING" }
+      p1: env.cells?.p1?.action || idle(),
+      p2: env.cells?.p2?.action || idle()
     };
-  }
-
-  function step(env, inputs = {}) {
-    return [];
   }
 
   class Frames {
@@ -201,13 +345,13 @@
     GAMMA,
     makeSpec,
     create,
+    step,
     observe,
     vector,
     mask,
     actionFromIndex,
     actions,
     isDecision,
-    step,
     Frames,
     planned,
     scripted
