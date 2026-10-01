@@ -1,13 +1,14 @@
 /* js/ai.js
  * Central AI Decision Dispatcher mapping:
  * - NOVICE (easy), BALANCED, MASTER, SOUL -> ForeseeEngine (Search Trees)
- * - RIDER (rider / mcts)                  -> MCTSEngine + SoulNN (AlphaZero Matrix)
+ * - RIDER (rider / mcts)                  -> MCTSEngine + SoulNN (1v1 Neural Matrix)
+ * Build: v4-onehot136-1v1-zero
  */
 
 (function (g) {
   "use strict";
 
-  const VERSION = "rider-v1";
+  const VERSION = "v4-onehot136-1v1-zero";
   const K = g.KF;
   const C = g.CombatCore;
 
@@ -39,38 +40,69 @@
       });
     }
 
-    // --- LEVEL 5: RIDER MODE (MCTSEngine AlphaZero + Neural Matrix) ---
+    // --- LEVEL 5: RIDER MODE (MCTSEngine / ForeseeEngine + 1v1 Neural Matrix) ---
     const isRider = rawDiff === "rider" || rawDiff === "mcts" || context.useMCTS === true;
 
     if (isRider) {
-      if (!g.MCTSEngine || typeof g.MCTSEngine.search !== "function") {
-        throw new Error("MCTSEngine module is not loaded.");
+      // Auto-fallback: fetch active 1v1 matrix from SoulAgent if not explicitly passed
+      const checkpoint = context.policyWeights || (
+        g.SoulAgent && typeof g.SoulAgent.getSection === "function"
+          ? g.SoulAgent.getSection(player.id, opponent.id, "active")
+          : null
+      );
+
+      const net = checkpoint?.net ? g.SoulNN.Network.fromJSON(checkpoint.net) : null;
+      const spec = g.SoulEnv ? g.SoulEnv.makeSpec(context.data || { riders: [player, opponent], moves: state.moves }) : null;
+
+      if (g.MCTSEngine && typeof g.MCTSEngine.search === "function") {
+        const mctsResult = g.MCTSEngine.search({
+          state: C.copyState(state),
+          slot,
+          net,
+          spec,
+          iterations: context.mctsIterations || 200,
+          cPUCT: context.cPUCT || 1.41,
+          seed: context.seed ?? 12345
+        });
+
+        const actionKey = mctsResult.actionKey;
+        const normAction = C.normalizeAction(state, slot, {
+          key: actionKey,
+          charge: player.charge || 0
+        });
+
+        return stamp({
+          action: normAction,
+          debug: {
+            difficulty: "rider",
+            strategy: `RIDER Mode AlphaZero [${mctsResult.visits} visits]`,
+            expectedValue: Number((mctsResult.expectedValue || 0).toFixed(3))
+          }
+        });
       }
 
-      const mctsResult = g.MCTSEngine.search({
-        state: C.copyState(state),
-        slot,
-        net: context.policyWeights ? g.SoulNN.Network.fromJSON(context.policyWeights.net) : null,
-        spec: g.SoulEnv ? g.SoulEnv.makeSpec(context.data || { riders: [player, opponent], moves: state.moves }) : null,
-        iterations: context.mctsIterations || 200,
-        cPUCT: context.cPUCT || 1.41,
-        seed: context.seed ?? 12345
-      });
+      // Fallback to ForeseeEngine with direct Neural Evaluator if MCTSEngine is absent
+      if (g.ForeseeEngine && typeof g.ForeseeEngine.search === "function") {
+        const res = g.ForeseeEngine.search({
+          state: C.copyState(state),
+          slot,
+          history: context.history || [],
+          difficulty: "soul",
+          evaluator: net && spec && g.SoulSim ? g.SoulSim.makeNeuralEvaluator?.(net, spec) : null
+        });
 
-      const actionKey = mctsResult.actionKey;
-      const normAction = C.normalizeAction(state, slot, {
-        key: actionKey,
-        charge: player.charge || 0
-      });
+        const bestAction = res.rows?.[0]?.action || { key: "DO_NOTHING", charge: 0 };
+        return stamp({
+          action: C.normalizeAction(state, slot, bestAction),
+          debug: {
+            difficulty: "rider",
+            strategy: "RIDER Mode Foresee Tree (1v1 Matrix Evaluator)",
+            chosenScore: Number((res.rows?.[0]?.score || 0).toFixed(2))
+          }
+        });
+      }
 
-      return stamp({
-        action: normAction,
-        debug: {
-          difficulty: "rider",
-          strategy: `RIDER Mode AlphaZero [${mctsResult.visits} visits]`,
-          expectedValue: Number((mctsResult.expectedValue || 0).toFixed(3))
-        }
-      });
+      throw new Error("Neither MCTSEngine nor ForeseeEngine module is available for RIDER mode.");
     }
 
     // --- LEVELS 1-4: NOVICE, BALANCED, MASTER, SOUL (ForeseeEngine Search Trees) ---
@@ -78,7 +110,6 @@
       throw new Error("ForeseeEngine search module is missing.");
     }
 
-    // FIX: Resolves difficulty correctly even if context uses 'mode' instead of 'difficulty'
     const searchDifficulty = (rawDiff === "soul") ? "soul" : K.difficulty(context.difficulty || context.mode);
 
     const result = g.ForeseeEngine.search(Object.assign({}, context, { difficulty: searchDifficulty }));
@@ -136,14 +167,23 @@
 
   function remember(history, before, selected) {
     const list = Array.isArray(history) ? history.slice() : [];
+    
+    const p1Act = Object.assign({}, selected.p1);
+    const p2Act = Object.assign({}, selected.p2);
+
     list.push({
-      p1: Object.assign({}, selected.p1),
-      p2: Object.assign({}, selected.p2),
+      p1: p1Act,
+      p2: p2Act,
+      actions: {
+        p1: p1Act,
+        p2: p2Act
+      },
       fainted: {
-        p1: before.p1.isFainted,
-        p2: before.p2.isFainted
+        p1: Boolean(before?.p1?.isFainted),
+        p2: Boolean(before?.p2?.isFainted)
       }
     });
+    
     return list.slice(-24);
   }
 
