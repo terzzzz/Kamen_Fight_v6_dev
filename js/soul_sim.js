@@ -1,12 +1,12 @@
 /* js/soul_sim.js
  * Rule-Regularized Composite Soft-Q Combat Simulator Engine.
  * Features:
- *  - Dynamic EV-Based Stochastic Execution Charge Optimization
- *  - Real-Time Chi-Budget Action Masking
- *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
- *  - Composite Soft-Q Action Selection (Top-K Filtered)
- *  - Soft Expected Value Target TD Calculation
- *  - Slot-Aware Perspective Neural Evaluator (No Traitor AI Leak)
+ *   - Dynamic EV-Based Stochastic Execution Charge Optimization
+ *   - Real-Time Chi-Budget Action Masking
+ *   - Accuracy, Evasion, & Speed Priority Trade-off Modeling
+ *   - Composite Soft-Q Action Selection (Top-K Filtered)
+ *   - Soft Expected Value Target TD Calculation
+ *   - Slot-Aware Perspective Neural Evaluator (No Traitor AI Leak)
  * Build: v4-onehot136-1v1-zero
  */
 (function (g) {
@@ -91,7 +91,6 @@
     const remainingTimer = state.roundTimer ?? state.timer ?? 8.0;
     const timerCapPercent = Math.floor(Math.min(1.0, Math.max(0.3, remainingTimer / 8.0)) * 100);
 
-    // FIX: Only lock charge if enemy is fainted or currently locked in cell state
     const isEnemyActionFixed = Boolean(
       enemyPlayer.isFainted ||
       state.cells?.[enemySlot]?.locked
@@ -438,7 +437,7 @@
     const oppMaxLp = state[enemySlot]?.maxLp ?? 3000;
     let minOppLp = state[enemySlot]?.lp ?? oppMaxLp;
 
-    // FIX: Dispatch real Search Tree decisions during guided play
+    // Dispatch real Search Tree decisions during guided play
     const teacherDifficulty = typeof teacher === "string" ? teacher : "master";
     const teacherFn = function (env, slot) {
       const decision = g.KF_AI.choose({
@@ -464,7 +463,7 @@
       const learner = reactor(spec, net, K.rng(K.hash(seed, "ctrl", state.round, learnerSlot)), {
         epsilon,
         guide: guidedRound,
-        teacher: teacherFn, // FIX: Pass real Search Tree function into reactor
+        teacher: teacherFn,
         mode: activeLearnerMode,
         frames: learnerFrames,
         state,
@@ -495,11 +494,12 @@
           opponentPlanner = env => plan(env, enemySlot);
         } else {
           const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state, history, isTraining: false });
-          opponentPlanner = env => actor.decide(env, enemySlot)?.a ?? 0;
+          opponentPlanner = env => actor.decide(env, enemySlot)?.a ?? null;
         }
       } else if (opponentMode === "mixed") {
         const fastScripted = E.scripted(K.rng(K.hash(seed, "fast-opp", state.round)), "reactive");
         opponentPlanner = env => {
+          if (!E.isDecision(env) || env.cells[enemySlot].locked) return null;
           const obs = E.observe(env, enemySlot);
           const mask = Uint8Array.from(E.mask(env, enemySlot));
           return fastScripted(obs, mask);
@@ -534,18 +534,29 @@
       const preOppLp   = e.cells[enemySlot]?.lp ?? state[enemySlot]?.lp ?? 0;
       const preSelfChi = e.cells[learnerSlot]?.chi ?? state[learnerSlot]?.chi ?? 0;
 
+      // Track active actions across sub-ticks (Fixes sub-tick action overwrite bug)
+      let currentLearnerAction = null;
+      let currentOpponentAction = null;
+
       while (!e.done) {
         const ownDecision = learner.decide(e, learnerSlot);
-        const rawActionIndex = ownDecision?.a ?? 0;
-
-        if (ownDecision) {
+        if (ownDecision && typeof ownDecision.a === "number") {
+          currentLearnerAction = ownDecision.a;
           pending.push(Object.assign({}, ownDecision));
         }
 
-        const opposingAction = opponentPlanner(e);
-        const rawOpponentIndex = typeof opposingAction === "number" ? opposingAction : (opposingAction?.a ?? 0);
+        const opposingDecision = opponentPlanner(e);
+        if (opposingDecision !== null && opposingDecision !== undefined) {
+          currentOpponentAction = typeof opposingDecision === "number"
+            ? opposingDecision
+            : opposingDecision.a;
+        }
 
-        E.step(e, { [learnerSlot]: rawActionIndex, [enemySlot]: rawOpponentIndex });
+        const stepPayload = {};
+        if (currentLearnerAction !== null) stepPayload[learnerSlot] = currentLearnerAction;
+        if (currentOpponentAction !== null) stepPayload[enemySlot] = currentOpponentAction;
+
+        E.step(e, stepPayload);
         ticks++;
         if (ticks % 8 === 0) yield { type: "clock" };
       }
@@ -632,7 +643,6 @@
             const currentQValues = net.predict(pending[i].s);
             const nextQValues = net.predict(s1);
 
-            const T = 0.15;
             let maxNextQ = -Infinity;
             for (let j = 0; j < m1.length; j++) {
               if (m1[j] && nextQValues[j] > maxNextQ) {
@@ -641,19 +651,7 @@
             }
             if (maxNextQ === -Infinity) maxNextQ = 0.0;
 
-            let expSum = 0;
-            let expectedNextQ = 0;
-
-            for (let j = 0; j < m1.length; j++) {
-              if (m1[j]) {
-                const weight = Math.exp((nextQValues[j] - maxNextQ) / T);
-                expSum += weight;
-                expectedNextQ += weight * nextQValues[j];
-              }
-            }
-
-            const softV = expSum > 0 ? (expectedNextQ / expSum) : maxNextQ;
-            const targetQ = stepReward + discount * softV;
+            const targetQ = stepReward + discount * maxNextQ;
             const currentQ = currentQValues[pending[i].a] ?? 0.0;
             tdError = Math.abs(targetQ - currentQ);
           }
