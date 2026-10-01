@@ -1,12 +1,15 @@
-/* js/soul_agent.js */
+/* js/soul_agent.js
+ * 1v1 Matchup Matrix Manager & Storage Bridge
+ * Build: v4-onehot136-1v1-zero
+ */
 (function (g) {
   "use strict";
 
-  // Version constants locking v3 history matrix metadata
-  const VERSION = "round-discount-master-guide-v3-history";
-  const MASTER_VERSION = "kf-soul-matrix-v3";
-  const WORKER_VERSION = "kf-soul-ddqn-v3";
-  const STORAGE_KEY = "kf_soul_agent_data_v3";
+  // Version constants locked to v4-onehot136-1v1-zero
+  const VERSION = "v4-onehot136-1v1-zero";
+  const MASTER_VERSION = "kf-soul-matrix-v4-onehot136";
+  const WORKER_VERSION = "kf-soul-ddqn-v4-onehot136";
+  const STORAGE_KEY = "kf_soul_agent_data_v4_onehot136";
 
   const RIDER_CODES = {
     ichigo: "001",
@@ -70,8 +73,11 @@
       if (sizes.length < 3) {
         return { valid: false, error: "Invalid network layer configuration in checkpoint." };
       }
-      if (sizes[sizes.length - 1] !== 10) {
-        return { valid: false, error: `Output action layer mismatch: got ${sizes[sizes.length - 1]}, expected 10.` };
+      if (sizes[0] !== 136) {
+        return { valid: false, error: `Input layer mismatch: got ${sizes[0]}, expected 136.` };
+      }
+      if (sizes[sizes.length - 1] !== 16) {
+        return { valid: false, error: `Output action layer mismatch: got ${sizes[sizes.length - 1]}, expected 16.` };
       }
     }
 
@@ -284,8 +290,8 @@
     if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
 
     const spec = g.SoulEnv.makeSpec(cachedData);
-    const inputDim = Number.isFinite(spec?.input) ? spec.input : 476;
-    const net = new g.SoulNN.Network(inputDim, 128, 128, 10);
+    const inputDim = Number.isFinite(spec?.input) ? spec.input : 136;
+    const net = new g.SoulNN.Network(inputDim, 128, 64, 16);
     const targetKey = getCanonicalKey(learnerId, opponentId);
 
     for (const [key, section] of Object.entries(store.active.matchups)) {
