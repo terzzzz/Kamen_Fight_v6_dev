@@ -37,10 +37,11 @@
     return offset + totalCategories;
   }
 
+  // FIX: Return -1 for idle/none so uninitialized history frames do not encode as Action 0 ("W+J")
   function getActionIndexByKey(key) {
-    if (!key || key === "NONE" || key === "IDLE" || key === "DO_NOTHING") return 0;
+    if (!key || key === "NONE" || key === "IDLE" || key === "DO_NOTHING") return -1;
     const idx = ACTION_MAP.indexOf(key);
-    return idx >= 0 ? idx : 0;
+    return idx >= 0 ? idx : -1;
   }
 
   function publicControl(cell) {
@@ -86,8 +87,8 @@
   function refresh(e) {
     for (const slot of SLOTS) {
       const c = e.cells[slot];
-      if (!c.locked && c.direction) {
-        const duration = C.chargeMs ? C.chargeMs(e.state[slot], c.direction) : 3000;
+      if (!c.locked && (c.direction || c.start > 0)) {
+        const duration = C.chargeMs ? C.chargeMs(e.state[slot], c.direction || "D") : 3000;
         c.charge = K.clamp(
           Math.floor(100 * Math.max(0, e.t - c.start) / duration),
           0,
@@ -115,26 +116,35 @@
     const c = e.cells[slot];
     if (!c || c.locked || e.t >= limit()) return false;
 
-    // 1. Direct Integer Action Map Index (0..15)
+    // FIX 1: Direct Action Object Input
+    if (typeof input === "object" && input !== null) {
+      const key = input.key || "DO_NOTHING";
+      const charge = typeof input.charge === "number" ? input.charge : c.charge;
+      return lock(e, slot, { key, charge });
+    }
+
+    // FIX 2: Preserve accumulated c.charge when locking integer action index (0..15)
     if (typeof input === "number" && input >= 0 && input < 16) {
       const key = ACTION_MAP[input];
-      return lock(e, slot, { key, charge: 0 });
+      return lock(e, slot, { key, charge: c.charge });
     }
 
-    // 2. Direct Action Key String (e.g. "W+J")
+    // FIX 3: Preserve accumulated c.charge when locking action key string
     if (typeof input === "string" && ACTION_MAP.includes(input)) {
-      return lock(e, slot, { key: input, charge: 0 });
+      return lock(e, slot, { key: input, charge: c.charge });
     }
 
-    // 3. Tick-level Primitive Inputs ("WAIT", "W", "I", "IDLE", etc.)
+    // Tick-level Primitive Inputs ("WAIT", "W", "I", "IDLE", etc.)
     const name = typeof input === "number" ? INPUTS[input] : input;
     if (!name || name === "WAIT") return true;
 
+    // FIX 4: Preserve charge clock across stance switches (SOUL rule requirement)
     if (DIRS.includes(name)) {
       if (c.direction !== name) {
         c.direction = name;
-        c.start = e.t;
-        c.charge = 0;
+        if (c.start === 0) {
+          c.start = e.t;
+        }
       }
       return true;
     }
@@ -220,7 +230,7 @@
           enemyActionIndex: getActionIndexByKey(enemyActKey)
         });
       } else {
-        historyFrames.push({ selfActionIndex: 0, enemyActionIndex: 0 });
+        historyFrames.push({ selfActionIndex: -1, enemyActionIndex: -1 });
       }
     }
 
@@ -253,8 +263,8 @@
     let idx = 0;
 
     for (let f = 0; f < 4; f++) {
-      const selfAction  = obs.historyFrames?.[f]?.selfActionIndex ?? 0;
-      const enemyAction = obs.historyFrames?.[f]?.enemyActionIndex ?? 0;
+      const selfAction  = obs.historyFrames?.[f]?.selfActionIndex ?? -1;
+      const enemyAction = obs.historyFrames?.[f]?.enemyActionIndex ?? -1;
 
       idx = encodeOneHot(vec, idx, selfAction, 16);
       idx = encodeOneHot(vec, idx, enemyAction, 16);
