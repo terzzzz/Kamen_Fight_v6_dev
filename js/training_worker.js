@@ -1,8 +1,8 @@
 /* js/training_worker.js */
 "use strict";
 
-const BUILD = "round-discount-master-guide-v3-history";
-const VERSION = "kf-soul-ddqn-v3";
+const BUILD = "v4-onehot136-1v1-zero";
+const VERSION = "kf-soul-ddqn-v4-onehot136";
 
 const MIN_IMITATION = 0.01;
 const INITIAL_IMITATION = 0.05;
@@ -99,7 +99,7 @@ async function run(job) {
 
   const h2 = Array.isArray(job.hidden)
     ? job.hidden[1]
-    : (old?.net?.sizes?.[2] || (spec.hidden ? spec.hidden[1] : 128));
+    : (old?.net?.sizes?.[2] || (spec.hidden ? spec.hidden[1] : 64));
 
   if (old && old.net) {
     const sizes = old.net.sizes || [];
