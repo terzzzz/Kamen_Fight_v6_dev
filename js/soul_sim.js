@@ -91,12 +91,10 @@
     const remainingTimer = state.roundTimer ?? state.timer ?? 8.0;
     const timerCapPercent = Math.floor(Math.min(1.0, Math.max(0.3, remainingTimer / 8.0)) * 100);
 
-    // STATE 1: OPPONENT ACTION FIXED / FAINTED / LOCKED -> MAX CHARGE DUMP (100%)
+    // FIX: Only lock charge if enemy is fainted or currently locked in cell state
     const isEnemyActionFixed = Boolean(
       enemyPlayer.isFainted ||
-      enemyPlayer.locked ||
-      state.cells?.[enemySlot]?.locked ||
-      (state.previousActions && state.previousActions[enemySlot])
+      state.cells?.[enemySlot]?.locked
     );
 
     if (isEnemyActionFixed) {
@@ -104,7 +102,6 @@
       return K.clamp(timerCapPercent + organicJitter, 80, 100);
     }
 
-    // STATE 2: RANGE ADVANTAGE (PROJECTILE / REACH vs PURE MELEE) -> MAX CHARGE DUMP
     const myRangeType = String(moveMeta?.rangeType || "MELEE").toUpperCase();
     const isEnemyPureMelee = (enemyRiderId === "ichigo" || enemyRiderId === "001");
 
@@ -113,7 +110,6 @@
       return K.clamp(timerCapPercent + organicJitter, 80, 100);
     }
 
-    // STATE 3: SIMULTANEOUS CONTESTED NEUTRAL PLAY -> STOCHASTIC EV CURVE OPTIMIZATION
     const candidates = [];
     const stepSize = 10;
 
@@ -410,7 +406,7 @@
     const {
       data, spec, net, learnerSlot, learnerId = "ichigo",
       opponent, opponentMode = "mixed", opponentNet = null,
-      seed = 1, epsilon = 0, guideProbability = 0,
+      seed = 1, epsilon = 0, guideProbability = 0, teacher = "master",
       rewardMode = "standard", initialStateOverride = null,
       learnerMode = null, isEvaluation = false
     } = options;
@@ -442,6 +438,20 @@
     const oppMaxLp = state[enemySlot]?.maxLp ?? 3000;
     let minOppLp = state[enemySlot]?.lp ?? oppMaxLp;
 
+    // FIX: Dispatch real Search Tree decisions during guided play
+    const teacherDifficulty = typeof teacher === "string" ? teacher : "master";
+    const teacherFn = function (env, slot) {
+      const decision = g.KF_AI.choose({
+        state: C.copyState(env.state || state),
+        slot: slot,
+        history: env.history || history || [],
+        difficulty: teacherDifficulty,
+        evaluator: null,
+        disableAgent: true
+      });
+      return E.planned(decision.action)(env, slot);
+    };
+
     while (!state.winner) {
       if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) break;
       const e = E.create(state, previousActions);
@@ -454,6 +464,7 @@
       const learner = reactor(spec, net, K.rng(K.hash(seed, "ctrl", state.round, learnerSlot)), {
         epsilon,
         guide: guidedRound,
+        teacher: teacherFn, // FIX: Pass real Search Tree function into reactor
         mode: activeLearnerMode,
         frames: learnerFrames,
         state,
@@ -506,13 +517,12 @@
         const plan = E.planned(res.rows[0]?.action);
         opponentPlanner = env => plan(env, enemySlot);
       } else {
-        // Standard Search Tree Opponents (NOVICE, BALANCED, MASTER, SOUL)
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
           history,
           difficulty: opponentMode,
-          evaluator: null, // Guaranteed clean search tree evaluation
+          evaluator: null,
           disableAgent: true
         });
         const plan = E.planned(decision.action);
