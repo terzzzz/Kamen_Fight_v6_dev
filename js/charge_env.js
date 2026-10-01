@@ -112,15 +112,25 @@
   }
 
   function apply(e, slot, input) {
-    const name = typeof input === "number" ? INPUTS[input] : input;
     const c = e.cells[slot];
+    if (!c || c.locked || e.t >= limit()) return false;
 
-    if (!c || !name) return false;
-    if (name === "WAIT") return true;
-    if (c.locked || e.t >= limit()) return false;
+    // 1. Direct Integer Action Map Index (0..15)
+    if (typeof input === "number" && input >= 0 && input < 16) {
+      const key = ACTION_MAP[input];
+      return lock(e, slot, { key, charge: 0 });
+    }
+
+    // 2. Direct Action Key String (e.g. "W+J")
+    if (typeof input === "string" && ACTION_MAP.includes(input)) {
+      return lock(e, slot, { key: input, charge: 0 });
+    }
+
+    // 3. Tick-level Primitive Inputs ("WAIT", "W", "I", "IDLE", etc.)
+    const name = typeof input === "number" ? INPUTS[input] : input;
+    if (!name || name === "WAIT") return true;
 
     if (DIRS.includes(name)) {
-      // PRESERVE START TIME IF SAME DIRECTION REPEATED
       if (c.direction !== name) {
         c.direction = name;
         c.start = e.t;
@@ -214,7 +224,6 @@
       }
     }
 
-    // Calculate rolling stance ratios over last 4 turns
     let w = 0, a = 0, s = 0, d = 0;
     recent.forEach(turn => {
       const enemyAct = turn?.actions?.[enemySlot] || turn?.[enemySlot];
@@ -243,23 +252,20 @@
     const vec = new Float32Array(spec.input);
     let idx = 0;
 
-    // 1. One-Hot Dual 4-Frame History (128 floats: 64 self + 64 enemy)
     for (let f = 0; f < 4; f++) {
       const selfAction  = obs.historyFrames?.[f]?.selfActionIndex ?? 0;
       const enemyAction = obs.historyFrames?.[f]?.enemyActionIndex ?? 0;
 
-      idx = encodeOneHot(vec, idx, selfAction, 16);  // Your card (16 floats)
-      idx = encodeOneHot(vec, idx, enemyAction, 16); // Enemy card (16 floats)
+      idx = encodeOneHot(vec, idx, selfAction, 16);
+      idx = encodeOneHot(vec, idx, enemyAction, 16);
     }
 
-    // 2. Rolling Opponent Stance Tendencies (4 floats)
     const stanceRatios = obs.rollingStances || [0.25, 0.25, 0.25, 0.25];
-    vec[idx++] = stanceRatios[0]; // W ratio
-    vec[idx++] = stanceRatios[1]; // A ratio
-    vec[idx++] = stanceRatios[2]; // S ratio
-    vec[idx++] = stanceRatios[3]; // D ratio
+    vec[idx++] = stanceRatios[0];
+    vec[idx++] = stanceRatios[1];
+    vec[idx++] = stanceRatios[2];
+    vec[idx++] = stanceRatios[3];
 
-    // 3. Continuous LP & Chi states (4 floats)
     vec[idx++] = (obs.selfLp || 0) / (obs.selfMaxLp || 2500);
     vec[idx++] = (obs.enemyLp || 0) / (obs.enemyMaxLp || 2500);
     vec[idx++] = (obs.selfChi || 0) / 16.0;
