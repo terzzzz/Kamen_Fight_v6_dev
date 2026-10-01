@@ -6,7 +6,8 @@
  *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
  *  - Composite Soft-Q Action Selection (Top-K Filtered)
  *  - Soft Expected Value Target TD Calculation
- *  - 136-Input Discrete Dual-History Matrix Specification (Build: v4-onehot136-1v1-zero)
+ *  - Slot-Aware Perspective Neural Evaluator (No Traitor AI Leak)
+ * Build: v4-onehot136-1v1-zero
  */
 (function (g) {
   "use strict";
@@ -278,22 +279,27 @@
     return pool[0].index;
   }
 
-  function makeNeuralEvaluator(net, spec) {
+  function makeNeuralEvaluator(net, spec, learnerSlot = "p1") {
     if (!net) return null;
     return function (state, slot, history = []) {
       if (state.winner) {
-        if (state.winner === slot) return 100.0;
+        if (state.winner === slot) return 100000.0;
         if (state.winner === "draw") return 0.0;
-        return -100.0;
+        return -100000.0;
       }
       const env = E.create(state, {});
       env.history = history;
-      const obs = E.observe(env, slot);
+
+      const obs = E.observe(env, learnerSlot);
       const rawVec = E.vector(obs, spec);
       const frames = new E.Frames(spec);
       const stackedVec = frames.push(rawVec);
-      const mask = Uint8Array.from(E.mask(env, slot));
-      const qValues = net.predict(stackedVec);
+      const mask = Uint8Array.from(E.mask(env, learnerSlot));
+
+      const predictFn = typeof net.predict === "function" ? net.predict.bind(net) : (typeof net.evaluate === "function" ? net.evaluate.bind(net) : null);
+      if (!predictFn) return 0.0;
+
+      const qValues = predictFn(stackedVec);
 
       let maxQ = -Infinity;
       for (let i = 0; i < mask.length; i++) {
@@ -301,7 +307,10 @@
           maxQ = qValues[i];
         }
       }
-      return maxQ === -Infinity ? 0 : maxQ;
+      const score = maxQ === -Infinity ? 0 : maxQ;
+
+      // Invert score if evaluating from opponent's perspective so opponent minimizes learner's advantage
+      return slot === learnerSlot ? score : -score;
     };
   }
 
@@ -312,7 +321,10 @@
     const frames = existingFrames || new E.Frames(spec);
     const stackedVec = frames.push(rawVec);
     const mask = Uint8Array.from(E.mask(env, slot));
-    const qValues = net.predict(stackedVec);
+    const predictFn = typeof net.predict === "function" ? net.predict.bind(net) : (typeof net.evaluate === "function" ? net.evaluate.bind(net) : null);
+    if (!predictFn) return null;
+
+    const qValues = predictFn(stackedVec);
 
     const candidates = [];
     for (let i = 0; i < mask.length; i++) {
@@ -368,7 +380,7 @@
             history: options.history || [],
             difficulty: options.difficulty || "soul",
             candidates: topKeys,
-            evaluator: makeNeuralEvaluator(net, spec),
+            evaluator: makeNeuralEvaluator(net, spec, slot),
             isTraining: Boolean(options.isTraining)
           });
 
@@ -465,7 +477,7 @@
             history,
             difficulty: "soul",
             candidates: topKeys,
-            evaluator: makeNeuralEvaluator(opponentNet, spec),
+            evaluator: makeNeuralEvaluator(opponentNet, spec, enemySlot),
             isTraining
           });
           const plan = E.planned(res.rows[0]?.action);
@@ -487,16 +499,20 @@
           slot: enemySlot,
           history,
           difficulty: "soul",
+          candidates: getTopCandidates(net, spec, e, enemySlot, 3, opponentFrames),
+          evaluator: makeNeuralEvaluator(net, spec, learnerSlot),
           isTraining
         });
         const plan = E.planned(res.rows[0]?.action);
         opponentPlanner = env => plan(env, enemySlot);
       } else {
+        // Standard Search Tree Opponents (NOVICE, BALANCED, MASTER, SOUL)
         const decision = g.KF_AI.choose({
           state: C.copyState(state),
           slot: enemySlot,
           history,
           difficulty: opponentMode,
+          evaluator: null, // Guaranteed clean search tree evaluation
           disableAgent: true
         });
         const plan = E.planned(decision.action);
@@ -519,7 +535,6 @@
         const opposingAction = opponentPlanner(e);
         const rawOpponentIndex = typeof opposingAction === "number" ? opposingAction : (opposingAction?.a ?? 0);
 
-        // Pass raw integer indices directly to SoulEnv.step
         E.step(e, { [learnerSlot]: rawActionIndex, [enemySlot]: rawOpponentIndex });
         ticks++;
         if (ticks % 8 === 0) yield { type: "clock" };
@@ -527,7 +542,6 @@
 
       const selected = E.actions(e);
 
-      // Dynamically calculate and attach EV charges before round resolution
       if (selected.p1 && selected.p1.key) {
         const rngP1 = K.rng(K.hash(seed, "charge-p1", state.round));
         selected.p1.charge = resolveExecutionCharge(selected.p1.key, state, "p1", data, rngP1);
@@ -608,7 +622,6 @@
             const currentQValues = net.predict(pending[i].s);
             const nextQValues = net.predict(s1);
 
-            // Soft Expected Value Target over legal actions (Temperature T = 0.15)
             const T = 0.15;
             let maxNextQ = -Infinity;
             for (let j = 0; j < m1.length; j++) {
@@ -675,5 +688,5 @@
     yield { type: "end", result: { state, rounds, ticks, avgQ: finalAvgQ, qSumDelta: finalQSumDelta, qCountDelta: finalQCountDelta } };
   }
 
-  g.SoulSim = { BUILD, reactor, episode, resolveExecutionCharge };
+  g.SoulSim = { BUILD, reactor, episode, resolveExecutionCharge, makeNeuralEvaluator };
 })(globalThis);
