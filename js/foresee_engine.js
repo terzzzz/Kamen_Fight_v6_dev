@@ -10,7 +10,7 @@
 
   /** Generates unique key string for move+charge pair. */
   function actionId(action) {
-    return `${action.key}@${action.charge}`;
+    return `${action.key}@${action.charge ?? 0}`;
   }
 
   /**
@@ -49,7 +49,7 @@
    * - 50% -> 1st best (Index 0)
    * - 30% -> 2nd best (Index 1)
    * - 15% -> 3rd best (Index 2)
-   * -  5% -> 5th best (Index 4)
+   * -  5% -> 4th best (Index 3)
    *
    * Falls back safely to the highest available index if candidate count is small.
    */
@@ -66,7 +66,7 @@
     } else if (roll < 0.95) {
       targetIndex = 2;
     } else {
-      targetIndex = 4;
+      targetIndex = 3;
     }
 
     const safeIndex = Math.min(targetIndex, rows.length - 1);
@@ -93,7 +93,7 @@
       counts[action.key] = (counts[action.key] || 0) + weight;
 
       if (action.key !== "DO_NOTHING") {
-        charges.push({ charge: action.charge, weight });
+        charges.push({ charge: action.charge ?? 0, weight });
       }
     }
 
@@ -127,7 +127,8 @@
       (groups[action.key] ||= []).push(action);
     }
 
-    const tree = B.intent(state, slot, difficulty);
+    const tree = B.intent(state, slot, difficulty) || {};
+    const preferredMoves = Array.isArray(tree.preferred) ? tree.preferred : [];
     const entries = [];
 
     for (const [key, group] of Object.entries(groups)) {
@@ -135,20 +136,21 @@
         3 * B.prior(state, slot, group[0], difficulty) +
         (observed.counts[key] || 0);
 
-      if (rolloutSelf && tree.preferred.includes(key)) {
+      if (rolloutSelf && preferredMoves.includes(key)) {
         keyWeight *= 3;
       }
 
       const local = group.map(action => {
-        let weight = action.charge >= 90 ? 1.3 : 0.65;
+        const actCharge = action.charge ?? 0;
+        let weight = actCharge >= 90 ? 1.3 : 0.65;
 
         for (const item of observed.charges) {
           weight += item.weight *
-            Math.exp(-Math.abs(action.charge - item.charge) / 12);
+            Math.exp(-Math.abs(actCharge - item.charge) / 12);
         }
 
         if (state[C.other(slot)].isFainted) {
-          weight *= action.charge === 100 ? 5 : 0.2;
+          weight *= actCharge === 100 ? 5 : 0.2;
         }
 
         return { action, weight };
@@ -162,7 +164,7 @@
       for (const entry of local) {
         entries.push({
           action: entry.action,
-          weight: keyWeight * entry.weight / localTotal
+          weight: keyWeight * (localTotal > 0 ? entry.weight / localTotal : 1.0)
         });
       }
     }
@@ -174,7 +176,7 @@
 
     return entries.map(entry => ({
       action: entry.action,
-      probability: entry.weight / total
+      probability: total > 0 ? entry.weight / total : 1 / entries.length
     }));
   }
 
@@ -232,7 +234,6 @@
       ? evaluator
       : (s, sl) => B.evaluate(s, sl);
 
-    // Safe evaluator wrapper: falls back to RiderBrains heuristic if neural eval throws or returns NaN on cloned states
     const evalFn = (s, sl) => {
       try {
         const val = rawEvalFn(s, sl);
@@ -243,7 +244,6 @@
 
     const difficulty = K.difficulty(context.difficulty);
 
-    // Copy levels configuration and enforce speed caps during training OR whenever a neural evaluator is attached
     const settings = { ...K.levels[difficulty] };
     if (isTraining || typeof evaluator === "function") {
       settings.horizon = Math.min(settings.horizon, 2);   // Cap lookahead depth to 2 max
@@ -259,7 +259,7 @@
         const observed = turn[opponentSlot];
 
         if (observed && !turn.fainted?.[opponentSlot]) {
-          chargeChoices.push(Math.max(0, observed.charge - 1));
+          chargeChoices.push(Math.max(0, (observed.charge ?? 0) - 1));
         }
       }
     }
@@ -416,7 +416,8 @@
       // Rule 1: 10% chance to DO_NOTHING (pretend charging with no attack buttons)
       if (roll < 0.10) {
         const doNothingBase = ownActions.find(a => a.key === "DO_NOTHING") || { key: "DO_NOTHING", charge: 0 };
-        const pretendCharge = [4, 45,  85, 100][Math.floor(rng() * 5)];
+        const chargesPool = [4, 45, 85, 100];
+        const pretendCharge = chargesPool[Math.floor(rng() * chargesPool.length)];
         const doNothingChoice = Object.assign({}, doNothingBase, { charge: pretendCharge });
 
         return {
@@ -433,7 +434,8 @@
       // Rule 2: 40% chance to select a completely random move with random charge %
       if (roll < 0.50) {
         const randomBase = ownActions[Math.floor(rng() * ownActions.length)];
-        const randomCharge = [0, 25, 50, 75, 100][Math.floor(rng() * 5)];
+        const chargesPool = [0, 25, 50, 75, 100];
+        const randomCharge = chargesPool[Math.floor(rng() * chargesPool.length)];
         const randomChoice = Object.assign({}, randomBase, { charge: randomCharge });
 
         return {
@@ -447,7 +449,7 @@
         };
       }
 
-      // Rule 3: Remaining 50% chance — never pick #1 best move; select 2nd or 3rd best candidate
+      // Rule 3: Remaining 50% chance — select 2nd or 3rd best candidate
       let noviceRows = [];
       if (rows.length >= 3) {
         const choiceIdx = rng() < 0.5 ? 1 : 2;
@@ -472,7 +474,6 @@
       const turnIndex = history.length + 1;
       const rng = K.rng(K.hash(seed, "balanced_variation", turnIndex));
 
-      // Rule: Every 5th or 6th turn (or ~18% chance), drop search tree and execute a random legal move
       if (turnIndex % 5 === 0 || turnIndex % 6 === 0 || rng() < 0.18) {
         const randomChoice = ownActions[Math.floor(rng() * ownActions.length)];
         return {
@@ -490,19 +491,18 @@
       const turnIndex = history.length + 1;
       const rng = K.rng(K.hash(seed, "master_charge_shortening", turnIndex));
 
-      // Rule: 15% chance to adopt a 50% shorter charge duration/level requirement
       if (finalists.length > 0 && rng() < 0.15) {
         const bestRow = finalists[0];
-        const shortenedCharge = Math.round(bestRow.action.charge * 0.5);
+        const shortenedCharge = Math.round((bestRow.action.charge ?? 0) * 0.5);
 
-        finalists[0] = Object.assign({}, bestRow, {
-          action: Object.assign({}, bestRow.action, { charge: shortenedCharge })
-        });
+        finalists[0] = {
+          ...bestRow,
+          action: { ...bestRow.action, charge: shortenedCharge }
+        };
       }
     }
 
     // --- WEIGHTED RANK SELECTION (STRICTLY FOR RIDER / NEURAL AGENT) ---
-    // Executes only when candidates array is passed (invoked by SoulNN in RIDER mode)
     let orderedFinalists = finalists;
 
     if (Array.isArray(candidates) && candidates.length > 0) {
@@ -518,7 +518,7 @@
       rows: orderedFinalists,
       debug: {
         difficulty,
-        strategy: B.intent(state, slot, difficulty).name,
+        strategy: (B.intent(state, slot, difficulty) || {}).name || "default",
         rootActions: ownActions.length,
         opponentActions: opponentPolicy.length,
         completedHorizon,
