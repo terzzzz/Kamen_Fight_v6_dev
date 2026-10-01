@@ -1,10 +1,11 @@
 /* js/neural_core.js
  * CPU neural network + Adam + Double DQN + Softmax Action Sampler
+ * Build: v4-onehot136-1v1-zero
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3-history";
+  const BUILD = "v4-onehot136-1v1-zero";
   const K = g.KF || {
     rng: (seed) => {
       let s = seed || 1;
@@ -497,7 +498,7 @@
         this.fold();
       }
 
-      // Gradient Step Interval updated from 16 to 32 ticks
+      // Gradient Step Interval updated to 32 ticks
       if (
         this.steps % 32 !== 0 ||
         this.replay.items.length < 256
@@ -538,7 +539,6 @@
         };
       });
 
-      // Learning rate updated from 0.0003 to 0.0001
       this.loss = this.net.train(
         rows,
         0.0001,
