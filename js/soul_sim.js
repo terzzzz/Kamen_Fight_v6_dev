@@ -6,11 +6,12 @@
  *  - Accuracy, Evasion, & Speed Priority Trade-off Modeling
  *  - Composite Soft-Q Action Selection (Top-K Filtered)
  *  - Soft Expected Value Target TD Calculation
+ *  - 136-Input Discrete Dual-History Matrix Specification (Build: v4-onehot136-1v1-zero)
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3-history";
+  const BUILD = "v4-onehot136-1v1-zero";
 
   const E = g.SoulEnv;
   const N = g.SoulNN;
@@ -279,13 +280,14 @@
 
   function makeNeuralEvaluator(net, spec) {
     if (!net) return null;
-    return function (state, slot) {
+    return function (state, slot, history = []) {
       if (state.winner) {
         if (state.winner === slot) return 100.0;
         if (state.winner === "draw") return 0.0;
         return -100.0;
       }
       const env = E.create(state, {});
+      env.history = history;
       const obs = E.observe(env, slot);
       const rawVec = E.vector(obs, spec);
       const frames = new E.Frames(spec);
@@ -340,6 +342,7 @@
       decide(e, slot) {
         if (!E.isDecision(e) || e.cells[slot].locked) return null;
 
+        if (options.history) e.history = options.history;
         const observation = E.observe(e, slot);
         const stacked = assertObservationSize(
           spec,
@@ -430,6 +433,8 @@
     while (!state.winner) {
       if (rounds >= g.COMBAT_RULES.MAX_ROUNDS) break;
       const e = E.create(state, previousActions);
+      e.history = history;
+
       const guidedRound = choices() < guideProbability;
 
       const activeLearnerMode = learnerMode || (isEvaluation && (opponentMode === "rider" || opponentMode === "mcts") ? "rider" : null);
@@ -466,7 +471,7 @@
           const plan = E.planned(res.rows[0]?.action);
           opponentPlanner = env => plan(env, enemySlot);
         } else {
-          const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state, isTraining: false });
+          const actor = reactor(spec, opponentNet, K.rng(K.hash(seed, "ctrl", state.round, enemySlot)), { state, history, isTraining: false });
           opponentPlanner = env => actor.decide(env, enemySlot)?.a ?? 0;
         }
       } else if (opponentMode === "mixed") {
@@ -568,6 +573,7 @@
 
       if (pending.length > 0) {
         const nextEnv = E.create(state, previousActions);
+        nextEnv.history = history;
         const nextObs = E.observe(nextEnv, learnerSlot);
         const s1 = assertObservationSize(
           spec,
