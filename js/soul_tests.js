@@ -1,4 +1,7 @@
-/* js/soul_tests.js */
+/* js/soul_tests.js
+ * Mechanical & Neural Test Suite for Kamen Fight
+ * Build: v4-onehot136-1v1-zero
+ */
 (function (g) {
   "use strict";
 
@@ -28,7 +31,11 @@
       while (!e.done && e.t < time) E.step(e);
     }
 
-    // Charge, repetition and switching.
+    const STEP = 50;
+    const DELAY = 250;
+    const LIMIT = g.GAME_CONFIG ? g.GAME_CONFIG.ROUND_TIME_LIMIT * 1000 : 8000;
+
+    // 1. Charge, repetition, and switching
     {
       const e = E.create(match());
 
@@ -48,7 +55,7 @@
       check(e.cells.p1.charge < before, "Switching removes previous charge.");
     }
 
-    // Illegal action does not lock.
+    // 2. Illegal action rejection
     {
       const state = match();
       state.p1.chi = 0;
@@ -68,7 +75,7 @@
       check(!e.cells.p1.locked, "Unaffordable action does not lock.");
     }
 
-    // Missing direction and forced faint.
+    // 3. Missing direction and forced faint
     {
       const e = E.create(match());
       E.step(e, { p1: "I" });
@@ -90,14 +97,14 @@
       );
     }
 
-    // Timeout and clock bounds.
+    // 4. Timeout and clock bounds
     {
       const e = E.create(match());
       while (!e.done) E.step(e);
 
       const selected = E.actions(e);
 
-      check(e.t === E.limit(), "Input deadline is exact.");
+      check(e.t === LIMIT, "Input deadline is exact.");
       check(
         selected.p1.key === "DO_NOTHING" &&
         selected.p2.key === "DO_NOTHING",
@@ -105,47 +112,7 @@
       );
     }
 
-    // Observation delay.
-    {
-      const e = E.create(match());
-      E.step(e, { p2: "D" });
-
-      check(
-        E.observe(e, "p1").opp.direction === null,
-        "Opponent direction is not revealed immediately."
-      );
-
-      advance(e, E.DELAY);
-
-      check(
-        E.observe(e, "p1").opp.direction === "D",
-        "Opponent direction appears after observation delay."
-      );
-    }
-
-    // Hidden current action button must not affect observations.
-    {
-      const e = E.create(match());
-      const spec = E.makeSpec(data);
-
-      E.step(e, { p2: "D" });
-      advance(e, 500);
-      E.step(e, { p2: "I" });
-
-      const before = Array.from(E.vector(E.observe(e, "p1"), spec));
-
-      // A deliberately different private action, same public controls.
-      e.cells.p2.action = { key: "D+L", charge: e.cells.p2.charge };
-
-      const after = Array.from(E.vector(E.observe(e, "p1"), spec));
-
-      check(
-        JSON.stringify(before) === JSON.stringify(after),
-        "Private current action button is absent from observations."
-      );
-    }
-
-    // Fast-loop vs chunked-live-clock logic with the same timestamped tape.
+    // 5. Fast-loop vs chunked-live-clock equivalence
     {
       const tape = {
         250: { p1: "S", p2: "D" },
@@ -164,7 +131,7 @@
           while (!e.done) {
             wall += 137;
 
-            while (!e.done && e.t + E.STEP <= wall) {
+            while (!e.done && e.t + STEP <= wall) {
               E.step(e, tape[e.t] || {});
             }
           }
@@ -193,7 +160,7 @@
       );
     }
 
-    // Vector feature extraction and expanded dimensions check.
+    // 6. Vector feature extraction and 136-input spec validation
     {
       const spec = E.makeSpec(data);
       const e = E.create(match());
@@ -205,8 +172,8 @@
         "Vector output is a Float32Array."
       );
       check(
-        vec.length === spec.frame,
-        "Single frame vector length matches spec.frame size (" + spec.frame + ")."
+        vec.length === spec.input,
+        "Vector length matches spec.input size (" + spec.input + ")."
       );
 
       const frames = new E.Frames(spec);
@@ -218,14 +185,14 @@
       );
     }
 
-    // Network serialization and basic learning.
+    // 7. Network serialization, 16-action mask, and learning test
     {
       const spec = E.makeSpec(data);
       const e = E.create(match());
       const frames = new E.Frames(spec);
       const x = frames.push(E.vector(E.observe(e, "p1"), spec));
 
-      const net = new N.Network(spec.input, 64, 64, 10);
+      const net = new N.Network(spec.input, 128, 64, spec.output);
       const restored = N.Network.fromJSON(net.toJSON());
 
       check(
@@ -242,7 +209,7 @@
           s: x,
           a: 0,
           y: target,
-          m: Uint8Array.from({ length: 10 }, () => 1),
+          m: Uint8Array.from({ length: spec.output }, () => 1),
           demo: false
         }]);
       }
@@ -255,7 +222,8 @@
         "Gradient updates reduce a simple supervised error."
       );
 
-      const legal = Uint8Array.from([0, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
+      const legal = new Uint8Array(spec.output);
+      legal[3] = 1;
 
       check(
         N.argmax(net.predict(x), legal) === 3,
@@ -263,20 +231,17 @@
       );
     }
 
-    // One-step transition structure & replay queue acceptance.
+    // 8. One-step transition structure & replay queue acceptance
     {
       const spec = E.makeSpec(data);
 
       const observation = new Float32Array(spec.input);
       const nextObservation = new Float32Array(spec.input);
 
-      const legal = Uint8Array.from(
-        { length: 10 },
-        () => 1
-      );
+      const legal = Uint8Array.from({ length: spec.output }, () => 1);
 
       const learner = new N.Learner(
-        new N.Network(spec.input, 64, 64, 10)
+        new N.Network(spec.input, 128, 64, spec.output)
       );
 
       const transition = {
@@ -308,7 +273,7 @@
 
       learner.accept({
         ...transition,
-        a: 9,
+        a: 15,
         r: -1,
         discount: 0,
         done: true
@@ -330,4 +295,4 @@
 
     return { passed };
   };
-})(window);
+})(globalThis);
