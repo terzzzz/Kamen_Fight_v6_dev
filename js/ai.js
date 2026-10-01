@@ -1,6 +1,6 @@
 /* js/ai.js
  * Central AI Decision Dispatcher mapping:
- * - NOVICE (easy), BALANCED, MASTER, SOUL -> ForeseeEngine (Search Trees)
+ * - NOVICE (easy), BALANCED, MASTER, SOUL -> ForeseeEngine (Pure Search Trees)
  * - RIDER (rider / mcts)                  -> MCTSEngine + SoulNN (1v1 Neural Matrix)
  * Build: v4-onehot136-1v1-zero
  */
@@ -88,7 +88,7 @@
           slot,
           history: context.history || [],
           difficulty: "soul",
-          evaluator: net && spec && g.SoulSim ? g.SoulSim.makeNeuralEvaluator?.(net, spec) : null
+          evaluator: net && spec && g.SoulSim ? g.SoulSim.makeNeuralEvaluator?.(net, spec, slot) : null
         });
 
         const bestAction = res.rows?.[0]?.action || { key: "DO_NOTHING", charge: 0 };
@@ -105,14 +105,21 @@
       throw new Error("Neither MCTSEngine nor ForeseeEngine module is available for RIDER mode.");
     }
 
-    // --- LEVELS 1-4: NOVICE, BALANCED, MASTER, SOUL (ForeseeEngine Search Trees) ---
+    // --- LEVELS 1-4: NOVICE, BALANCED, MASTER, SOUL (ForeseeEngine Pure Search Trees) ---
     if (!g.ForeseeEngine || typeof g.ForeseeEngine.search !== "function") {
       throw new Error("ForeseeEngine search module is missing.");
     }
 
     const searchDifficulty = (rawDiff === "soul") ? "soul" : K.difficulty(context.difficulty || context.mode);
 
-    const result = g.ForeseeEngine.search(Object.assign({}, context, { difficulty: searchDifficulty }));
+    // Explicitly sanitize context: force evaluator to null so search trees never leak neural weights
+    const cleanContext = Object.assign({}, context, {
+      difficulty: searchDifficulty,
+      evaluator: null,
+      isTraining: false
+    });
+
+    const result = g.ForeseeEngine.search(cleanContext);
 
     const rows = result.rows;
 
