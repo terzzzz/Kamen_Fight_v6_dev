@@ -1,8 +1,10 @@
-/* js/training_ui.js */
+/* js/training_ui.js
+ * Build: v4-onehot136-1v1-zero
+ */
 (function (g) {
   "use strict";
 
-  const BUILD = "round-discount-master-guide-v3-history";
+  const BUILD = "v4-onehot136-1v1-zero";
   let initialized = false;
 
   async function initialize() {
