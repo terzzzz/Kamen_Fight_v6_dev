@@ -1,15 +1,14 @@
 /* js/soul_agent.js
- * 1v1 Matchup Matrix Manager & Storage Bridge
- * Build: v4-onehot136-1v1-zero
+ * Exact-matchup checkpoint storage.
+ * Build: v5-state256-action17
  */
 (function (g) {
   "use strict";
 
-  // Version constants locked to v4-onehot136-1v1-zero
-  const VERSION = "v4-onehot136-1v1-zero";
-  const MASTER_VERSION = "kf-soul-matrix-v4-onehot136";
-  const WORKER_VERSION = "kf-soul-ddqn-v4-onehot136";
-  const STORAGE_KEY = "kf_soul_agent_data_v4_onehot136";
+  const VERSION = "v5-state256-action17";
+  const MASTER_VERSION = "kf-soul-matrix-v5-state256-action17";
+  const WORKER_VERSION = "kf-soul-ddqn-v5-state256-action17";
+  const STORAGE_KEY = "kf_soul_agent_data_v5_state256_action17";
 
   const RIDER_CODES = {
     ichigo: "001",
@@ -20,323 +19,381 @@
     amazon: "006"
   };
 
-  const REVERSE_CODES = {};
-  Object.keys(RIDER_CODES).forEach(function (id) {
-    REVERSE_CODES[RIDER_CODES[id]] = id;
-  });
-
-  let readyPromise = null;
-  let cachedData = null;
-  let lastStorageWarning = "";
+  const REVERSE_CODES = Object.fromEntries(
+    Object.entries(RIDER_CODES).map(([id, code]) => [code, id])
+  );
 
   const store = {
     candidate: { matchups: {}, legacy: null },
     active: { matchups: {}, legacy: null }
   };
 
-  function getBaseURI() {
-    if (typeof document !== "undefined" && document.baseURI) {
-      return document.baseURI;
-    }
-    if (typeof self !== "undefined" && self.location && self.location.href) {
-      return self.location.href;
-    }
-    return "";
-  }
+  let readyPromise = null;
+  let cachedData = null;
+  let storageWarning = "";
+  const warnings = [];
 
-  function toCode(riderId) {
-    if (!riderId) return "000";
-    const key = String(riderId).toLowerCase();
-    if (RIDER_CODES[key]) return RIDER_CODES[key];
-    if (/^\d{3}$/.test(key)) return key;
-    return "000";
+  function toCode(id) {
+    const value = String(id || "").toLowerCase();
+
+    if (RIDER_CODES[value]) return RIDER_CODES[value];
+    if (REVERSE_CODES[value]) return value;
+
+    throw new Error("Unknown rider ID/code: " + id);
   }
 
   function fromCode(code) {
     return REVERSE_CODES[code] || code;
   }
 
-  function getCanonicalKey(rider1, rider2) {
-    return `${toCode(rider1)}_${toCode(rider2)}`;
+  function getCanonicalKey(learner, opponent) {
+    return `${toCode(learner)}_${toCode(opponent)}`;
   }
 
-  function validateCheckpoint(checkpoint, expectedLearner = null, expectedOpponent = null) {
-    if (!checkpoint || typeof checkpoint !== "object") {
-      return { valid: false, error: "Checkpoint is empty or invalid object." };
-    }
-    if (!checkpoint.net || !checkpoint.net.layers || !Array.isArray(checkpoint.net.layers)) {
-      return { valid: false, error: "Missing or corrupted neural network layers ('net.layers')." };
-    }
+  function fingerprint(checkpoint) {
+    return String(g.KF.hash(JSON.stringify(checkpoint.net)));
+  }
 
-    if (Array.isArray(checkpoint.net.sizes)) {
+  function validateCheckpoint(checkpoint, expectedLearner, expectedOpponent) {
+    try {
+      if (!checkpoint || typeof checkpoint !== "object") {
+        throw new Error("Checkpoint is missing.");
+      }
+
+      if (checkpoint.version !== WORKER_VERSION) {
+        throw new Error("Checkpoint version is incompatible with this build.");
+      }
+
+      g.SoulEnv.assertSpec(checkpoint.spec);
+      g.SoulNN.validateJSON(checkpoint.net);
+
       const sizes = checkpoint.net.sizes;
-      if (sizes.length < 3) {
-        return { valid: false, error: "Invalid network layer configuration in checkpoint." };
-      }
-      if (sizes[0] !== 136) {
-        return { valid: false, error: `Input layer mismatch: got ${sizes[0]}, expected 136.` };
-      }
-      if (sizes[sizes.length - 1] !== 16) {
-        return { valid: false, error: `Output action layer mismatch: got ${sizes[sizes.length - 1]}, expected 16.` };
-      }
-    }
 
-    let weightCount = 0;
-    for (let lIdx = 0; lIdx < checkpoint.net.layers.length; lIdx++) {
-      const layer = checkpoint.net.layers[lIdx];
-      const rawWeights = layer.weights || layer.w || layer.W || layer.data;
-
-      if (!rawWeights) {
-        return { valid: false, error: `Layer ${lIdx} is missing weight data.` };
+      if (
+        sizes[0] !== checkpoint.spec.input ||
+        sizes[sizes.length - 1] !== checkpoint.spec.output
+      ) {
+        throw new Error("Checkpoint network/schema dimensions disagree.");
       }
 
-      const flatWeights = Array.isArray(rawWeights) ? rawWeights.flat(Infinity) : rawWeights;
+      const key = getCanonicalKey(
+        checkpoint.learnerId,
+        checkpoint.opponentId
+      );
 
-      if (!flatWeights || (typeof flatWeights.length !== "number" && typeof flatWeights.byteLength !== "number")) {
-        return { valid: false, error: `Layer ${lIdx} has non-iterable weight format.` };
+      if (checkpoint.canonicalKey && checkpoint.canonicalKey !== key) {
+        throw new Error("Checkpoint IDs disagree with its canonical key.");
       }
 
-      for (let wIdx = 0; wIdx < flatWeights.length; wIdx++) {
-        const w = flatWeights[wIdx];
-        if (typeof w !== "number" || !Number.isFinite(w)) {
-          return { valid: false, error: `Corrupted weight (NaN/Inf) at layer ${lIdx}, index ${wIdx}.` };
+      if (expectedLearner && expectedOpponent) {
+        const expected = getCanonicalKey(expectedLearner, expectedOpponent);
+
+        if (key !== expected) {
+          throw new Error(`Matchup mismatch: got ${key}, expected ${expected}.`);
         }
-        weightCount++;
       }
-    }
 
-    if (weightCount === 0) {
-      return { valid: false, error: "Neural network contains 0 parameter weights." };
-    }
-
-    const key = checkpoint.canonicalKey || (checkpoint.learnerId && checkpoint.opponentId ? getCanonicalKey(checkpoint.learnerId, checkpoint.opponentId) : null);
-
-    if (expectedLearner && expectedOpponent && expectedOpponent !== "*") {
-      const expectedKey = getCanonicalKey(expectedLearner, expectedOpponent);
-      if (key && key !== expectedKey) {
-        return { valid: false, error: `Matchup key mismatch! Checkpoint key is '${key}', expected '${expectedKey}'.` };
+      for (const field of ["games", "steps"]) {
+        if (
+          !Number.isSafeInteger(checkpoint[field]) ||
+          checkpoint[field] < 0
+        ) {
+          throw new Error("Invalid checkpoint counter: " + field);
+        }
       }
-    }
 
-    return {
-      valid: true,
-      canonicalKey: key,
-      learnerId: checkpoint.learnerId || "unknown",
-      opponentId: checkpoint.opponentId || "unknown",
-      games: checkpoint.games || 0,
-      steps: checkpoint.steps || 0,
-      weightCount
-    };
+      const weightCount = checkpoint.net.layers.reduce(
+        (sum, layer) => sum + layer.w.length + layer.b.length,
+        0
+      );
+
+      return {
+        valid: true,
+        canonicalKey: key,
+        learnerId: checkpoint.learnerId,
+        opponentId: checkpoint.opponentId,
+        games: checkpoint.games,
+        steps: checkpoint.steps,
+        weightCount
+      };
+    } catch (error) {
+      return { valid: false, error: error.message };
+    }
+  }
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
   }
 
   function saveToLocalStorage() {
     try {
       if (!g.localStorage) {
-        lastStorageWarning = "NOTICE: LocalStorage unavailable. Models run in RAM only.";
-        return;
-      }
-      const data = { version: MASTER_VERSION, candidate: store.candidate, active: store.active };
-      const serialized = JSON.stringify(data);
-
-      if (serialized.length > 4.5 * 1024 * 1024) {
-        lastStorageWarning = "NOTICE: LocalStorage cap exceeded. Active models stored in RAM — export .json to save.";
+        storageWarning = "LocalStorage unavailable. Export checkpoints to save.";
         return;
       }
 
-      g.localStorage.setItem(STORAGE_KEY, serialized);
-      lastStorageWarning = "";
-    } catch (e) {
-      lastStorageWarning = "STORAGE NOTICE: LocalStorage quota reached. Models safe in RAM.";
+      g.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: MASTER_VERSION,
+        candidate: { matchups: store.candidate.matchups },
+        active: { matchups: store.active.matchups }
+      }));
+
+      storageWarning = "";
+    } catch (error) {
+      storageWarning =
+        "Persistent save failed. Models remain in RAM; export them before closing.";
     }
   }
 
   function loadFromLocalStorage() {
     try {
-      if (!g.localStorage) return false;
-      const raw = g.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return false;
-      const data = JSON.parse(raw);
-      if (data?.version === MASTER_VERSION) {
-        if (data.candidate?.matchups) store.candidate.matchups = data.candidate.matchups;
-        if (data.active?.matchups) store.active.matchups = data.active.matchups;
-        if (data.candidate?.legacy) store.candidate.legacy = data.candidate.legacy;
-        if (data.active?.legacy) store.active.legacy = data.active.legacy;
-        return true;
+      const raw = g.localStorage?.getItem(STORAGE_KEY);
+      if (!raw) return;
+
+      const payload = JSON.parse(raw);
+      if (payload.version !== MASTER_VERSION) return;
+
+      for (const target of ["candidate", "active"]) {
+        for (const [key, checkpoint] of Object.entries(
+          payload[target]?.matchups || {}
+        )) {
+          const validation = validateCheckpoint(checkpoint);
+
+          if (validation.valid && validation.canonicalKey === key) {
+            store[target].matchups[key] = checkpoint;
+            store[target].legacy = checkpoint;
+          } else {
+            warnings.push(`Ignored invalid stored ${target} checkpoint ${key}.`);
+          }
+        }
       }
-    } catch (e) {
-      console.warn("[SoulAgent] LocalStorage load error:", e);
+    } catch (error) {
+      warnings.push("Could not read stored checkpoints: " + error.message);
     }
-    return false;
+  }
+
+  function projectBase() {
+    if (typeof document !== "undefined") {
+      return document.baseURI;
+    }
+
+    // ai_worker.js lives in js/, while data/ is at the project root.
+    return new URL("../", g.location.href).href;
+  }
+
+  function matchupURL(key) {
+    const url = new URL(`data/matrix/${key}.json`, projectBase());
+    url.searchParams.set("v", VERSION);
+    return url;
+  }
+
+  async function fetchMatchupFromCDN(learner, opponent) {
+    const key = getCanonicalKey(learner, opponent);
+
+    const response = await fetch(matchupURL(key), {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`Cannot fetch ${key}.json: HTTP ${response.status}.`);
+    }
+
+    const checkpoint = await response.json();
+    const validation = validateCheckpoint(checkpoint, learner, opponent);
+
+    if (!validation.valid) {
+      throw new Error(`${key}.json: ${validation.error}`);
+    }
+
+    store.active.matchups[key] = clone(checkpoint);
+    store.active.legacy = store.active.matchups[key];
+
+    if (!store.candidate.matchups[key]) {
+      store.candidate.matchups[key] = clone(checkpoint);
+    }
+
+    saveToLocalStorage();
+    return store.active.matchups[key];
   }
 
   async function scanAllMatchupsFromRepo() {
-    const codes = ["001", "002", "003", "004", "005", "006"];
-    const fetchPromises = [];
-    let foundCount = 0;
-    const base = getBaseURI();
+    let found = 0;
+    let incompatible = 0;
 
-    for (const lCode of codes) {
-      for (const oCode of codes) {
-        const key = `${lCode}_${oCode}`;
-        const path = `data/matrix/${key}.json?t=${Date.now()}`;
-        const targetURL = new URL(path, base);
+    const jobs = [];
 
-        fetchPromises.push(
-          fetch(targetURL)
-            .then(async res => {
-              if (res.ok) {
-                const checkpoint = await res.json();
-                const val = validateCheckpoint(checkpoint);
-                if (val.valid) {
-                  store.active.matchups[key] = checkpoint;
-                  if (!store.candidate.matchups[key]) {
-                    store.candidate.matchups[key] = JSON.parse(JSON.stringify(checkpoint));
-                  }
-                  foundCount++;
-                }
-              }
-            })
-            .catch(() => { /* Gracefully ignores missing 0g matchups */ })
-        );
+    for (const learner of Object.keys(RIDER_CODES)) {
+      for (const opponent of Object.keys(RIDER_CODES)) {
+        const key = getCanonicalKey(learner, opponent);
+
+        // Do not overwrite locally activated models during startup.
+        if (store.active.matchups[key]) continue;
+
+        jobs.push((async () => {
+          try {
+            const response = await fetch(matchupURL(key), {
+              cache: "no-store"
+            });
+
+            if (!response.ok) return;
+
+            const checkpoint = await response.json();
+            const validation = validateCheckpoint(
+              checkpoint,
+              learner,
+              opponent
+            );
+
+            if (!validation.valid) {
+              incompatible++;
+              return;
+            }
+
+            store.active.matchups[key] = checkpoint;
+            store.active.legacy = checkpoint;
+
+            if (!store.candidate.matchups[key]) {
+              store.candidate.matchups[key] = clone(checkpoint);
+            }
+
+            found++;
+          } catch (error) {
+            // Missing/offline files do not prevent fresh training.
+          }
+        })());
       }
     }
 
-    await Promise.all(fetchPromises);
-    saveToLocalStorage();
-    return foundCount;
-  }
+    await Promise.all(jobs);
 
-  async function fetchMatchupFromCDN(learnerId, opponentId) {
-    const key = getCanonicalKey(learnerId, opponentId);
-    const path = `data/matrix/${key}.json?t=${Date.now()}`;
-    const targetURL = new URL(path, getBaseURI());
-
-    console.log(`[SoulAgent] Fetching ${path}...`);
-    const res = await fetch(targetURL);
-    if (!res.ok) throw new Error(`File 'data/matrix/${key}.json' not found on server (HTTP ${res.status}).`);
-
-    const checkpoint = await res.json();
-    const val = validateCheckpoint(checkpoint, learnerId, opponentId);
-    if (!val.valid) throw new Error(`Fetched ${key}.json invalid: ${val.error}`);
-
-    store.active.matchups[key] = checkpoint;
-    if (!store.candidate.matchups[key]) {
-      store.candidate.matchups[key] = JSON.parse(JSON.stringify(checkpoint));
+    if (incompatible) {
+      warnings.push(
+        `Ignored ${incompatible} incompatible repository checkpoints. ` +
+        "Old 136/16 models need retraining."
+      );
     }
+
     saveToLocalStorage();
-    return checkpoint;
+    return found;
   }
 
-  async function ready(forceFetch = false) {
+  function ready(forceFetch = false) {
     if (!readyPromise || forceFetch) {
       readyPromise = (async () => {
-        const loadedData = await g.KF.loadData();
-        cachedData = loadedData;
-
+        cachedData = await g.KF.loadData();
         loadFromLocalStorage();
         await scanAllMatchupsFromRepo();
-
         return { data: cachedData };
-      })();
-    }
-    return readyPromise;
-  }
-
-  function getSection(learnerId, opponentId, target = "candidate") {
-    const bucket = store[target] || store.candidate;
-    if (!learnerId || !opponentId) return bucket.legacy || null;
-    const key = getCanonicalKey(learnerId, opponentId);
-    return bucket.matchups[key] || null;
-  }
-
-  function snapshot(target = "candidate") {
-    const bucket = store[target] || store.candidate;
-    return bucket.legacy || Object.values(bucket.matchups)[0] || null;
-  }
-
-  function setCandidate(checkpoint) {
-    if (!checkpoint) return;
-
-    const cloned = JSON.parse(JSON.stringify(checkpoint));
-    store.candidate.legacy = cloned;
-
-    const learner = cloned.learnerId || cloned.learner;
-    const opponent = cloned.opponentId || cloned.opponent;
-
-    if (learner && opponent) {
-      const targetKey = getCanonicalKey(learner, opponent);
-
-      for (const [key, section] of Object.entries(store.active.matchups)) {
-        if (!store.candidate.matchups[key]) {
-          store.candidate.matchups[key] = JSON.parse(JSON.stringify(section));
-        }
-      }
-
-      store.candidate.matchups[targetKey] = Object.assign({}, cloned, {
-        version: WORKER_VERSION,
-        canonicalKey: targetKey,
-        learnerId: learner,
-        opponentId: opponent,
-        games: cloned.games || 0,
-        steps: cloned.steps || 0,
-        updatedAt: new Date().toISOString()
+      })().catch(error => {
+        readyPromise = null;
+        throw error;
       });
     }
 
+    return readyPromise;
+  }
+
+  function getSection(learner, opponent, target = "candidate") {
+    const bucket = store[target];
+    if (!bucket) throw new Error("Unknown checkpoint target.");
+
+    if (!learner || !opponent) return bucket.legacy;
+    return bucket.matchups[getCanonicalKey(learner, opponent)] || null;
+  }
+
+  function snapshot(target = "candidate") {
+    return store[target]?.legacy || null;
+  }
+
+  function setCandidate(checkpoint) {
+    const validation = validateCheckpoint(checkpoint);
+
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
+    const saved = clone(checkpoint);
+    saved.canonicalKey = validation.canonicalKey;
+
+    store.candidate.matchups[validation.canonicalKey] = saved;
+    store.candidate.legacy = saved;
+
+    saveToLocalStorage();
+    return saved;
+  }
+
+  function importCandidate(payload) {
+    return setCandidate(payload);
+  }
+
+  function recordEvaluation(target, report) {
+    const checkpoint = getSection(
+      report.learner,
+      report.opponent,
+      target
+    );
+
+    if (!checkpoint) throw new Error("Evaluated checkpoint no longer exists.");
+
+    if (
+      report.cancelled ||
+      report.games !== report.requested ||
+      report.games < 2 ||
+      String(report.weightsID) !== fingerprint(checkpoint)
+    ) {
+      throw new Error("Evaluation is incomplete or belongs to different weights.");
+    }
+
+    checkpoint.evaluation = clone(report);
+    checkpoint.evaluated = true;
     saveToLocalStorage();
   }
 
-  function seedFromSearchEngine(learnerId, opponentId, searchDifficulty = "master", sampleMatches = 50) {
-    if (!cachedData) throw new Error("SoulAgent data is not initialized. Call ready() first.");
+  function promote(learner, opponent) {
+    const checkpoint = learner && opponent
+      ? getSection(learner, opponent, "candidate")
+      : store.candidate.legacy;
 
-    const spec = g.SoulEnv.makeSpec(cachedData);
-    const inputDim = Number.isFinite(spec?.input) ? spec.input : 136;
-    const net = new g.SoulNN.Network(inputDim, 128, 64, 16);
-    const targetKey = getCanonicalKey(learnerId, opponentId);
+    if (!checkpoint) throw new Error("No candidate exists.");
 
-    for (const [key, section] of Object.entries(store.active.matchups)) {
-      if (!store.candidate.matchups[key]) {
-        store.candidate.matchups[key] = JSON.parse(JSON.stringify(section));
-      }
+    const evaluation = checkpoint.evaluation;
+
+    if (
+      !evaluation ||
+      evaluation.cancelled ||
+      evaluation.games !== evaluation.requested ||
+      evaluation.learnerPolicy !== "rider" ||
+      String(evaluation.weightsID) !== fingerprint(checkpoint)
+    ) {
+      throw new Error(
+        "Evaluate this candidate with the RIDER learner policy before activation."
+      );
     }
 
-    const checkpoint = {
-      version: WORKER_VERSION,
-      spec,
-      net: net.toJSON(),
-      games: sampleMatches,
-      steps: sampleMatches * 15,
-      savedAt: new Date().toISOString(),
-      seed: 12345,
-      evaluation: null,
-      trainerBuild: VERSION,
-      learnerId,
-      opponentId,
-      canonicalKey: targetKey,
-      distilledFrom: searchDifficulty
-    };
+    const validation = validateCheckpoint(checkpoint);
+    if (!validation.valid) throw new Error(validation.error);
 
-    store.candidate.matchups[targetKey] = checkpoint;
-    store.candidate.legacy = checkpoint;
+    const saved = clone(checkpoint);
+    store.active.matchups[validation.canonicalKey] = saved;
+    store.active.legacy = saved;
 
     saveToLocalStorage();
-    return checkpoint;
+    return saved;
   }
 
   function getMatchupBreakdown(target = "candidate") {
-    const bucket = store[target] || store.candidate;
-    const codes = ["001", "002", "003", "004", "005", "006"];
     const matrix = {};
 
-    for (const lCode of codes) {
-      matrix[lCode] = {};
-      for (const oCode of codes) {
-        const key = `${lCode}_${oCode}`;
-        const model = bucket.matchups[key];
-        matrix[lCode][oCode] = {
-          hasModel: Boolean(model),
-          games: model?.games || 0,
-          steps: model?.steps || 0
+    for (const learner of Object.values(RIDER_CODES)) {
+      matrix[learner] = {};
+
+      for (const opponent of Object.values(RIDER_CODES)) {
+        const checkpoint = store[target].matchups[`${learner}_${opponent}`];
+
+        matrix[learner][opponent] = {
+          hasModel: Boolean(checkpoint),
+          games: checkpoint?.games || 0,
+          steps: checkpoint?.steps || 0
         };
       }
     }
@@ -344,67 +401,45 @@
     return matrix;
   }
 
-  function promote() {
-    if (!store.candidate.legacy && Object.keys(store.candidate.matchups).length === 0) {
-      throw new Error("No candidate model exists to activate.");
-    }
+  function downloadMatchupFile(learner, opponent, target = "candidate") {
+    const checkpoint = getSection(learner, opponent, target);
+    const validation = validateCheckpoint(checkpoint, learner, opponent);
 
-    store.active.matchups = Object.assign({}, store.active.matchups, JSON.parse(JSON.stringify(store.candidate.matchups)));
+    if (!validation.valid) throw new Error(validation.error);
 
-    if (store.candidate.legacy) {
-      store.active.legacy = JSON.parse(JSON.stringify(store.candidate.legacy));
-    }
+    const fileName = validation.canonicalKey + ".json";
 
-    saveToLocalStorage();
-  }
+    const blob = new Blob(
+      [JSON.stringify(checkpoint, null, 2)],
+      { type: "application/json" }
+    );
 
-  function recordEvaluation(target, report) {
-    const bucket = store[target] || store.candidate;
-    if (bucket.legacy) {
-      bucket.legacy.evaluated = true;
-      bucket.legacy.evaluation = report;
-    }
-    if (report.learner && report.opponent) {
-      const key = getCanonicalKey(report.learner, report.opponent);
-      if (bucket.matchups[key]) {
-        bucket.matchups[key].evaluated = true;
-        bucket.matchups[key].evaluation = report;
-      }
-    }
-    saveToLocalStorage();
-  }
-
-  function importCandidate(payload) {
-    const val = validateCheckpoint(payload);
-    if (!val.valid) throw new Error("Invalid checkpoint payload: " + val.error);
-    setCandidate(payload);
-  }
-
-  function downloadMatchupFile(learnerId, opponentId, target = "candidate") {
-    const checkpoint = getSection(learnerId, opponentId, target);
-    if (!checkpoint) {
-      throw new Error(`No ${target} checkpoint exists for matchup ${learnerId} -> ${opponentId}.`);
-    }
-
-    const val = validateCheckpoint(checkpoint, learnerId, opponentId);
-    if (!val.valid) throw new Error(`Cannot export invalid checkpoint: ${val.error}`);
-
-    const key = val.canonicalKey;
-    const fileName = `${key}.json`;
-    const jsonString = JSON.stringify(checkpoint, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
-    const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
-
-    if (typeof document !== "undefined" && document.createElement) {
+    if (typeof document !== "undefined") {
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
+      const anchor = document.createElement("a");
+
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    return { fileName, key, sizeMB, games: checkpoint.games || 0 };
+    return {
+      fileName,
+      key: validation.canonicalKey,
+      sizeMB: (blob.size / 1048576).toFixed(2),
+      games: checkpoint.games
+    };
+  }
+
+  function seedFromSearchEngine() {
+    throw new Error(
+      "Synchronous search-to-network conversion is not supported. " +
+      "Use GUIDED WARM-START in the trainer; it runs real matches and updates."
+    );
   }
 
   function status() {
@@ -416,8 +451,8 @@
       active: store.active.legacy,
       candidateMatchupsCount: Object.keys(store.candidate.matchups).length,
       activeMatchupsCount: Object.keys(store.active.matchups).length,
-      storageWarning: lastStorageWarning || (g.localStorage ? "" : "LocalStorage unavailable. Models run in RAM only."),
-      warnings: []
+      storageWarning,
+      warnings: [...new Set(warnings)]
     };
   }
 
@@ -426,21 +461,22 @@
     MASTER_VERSION,
     WORKER_VERSION,
     ready,
-    scanAllMatchupsFromRepo,
-    fetchMatchupFromCDN,
     toCode,
     fromCode,
     getCanonicalKey,
+    fingerprint,
+    validateCheckpoint,
     getSection,
     snapshot,
     setCandidate,
-    seedFromSearchEngine,
-    getMatchupBreakdown,
-    promote,
-    recordEvaluation,
     importCandidate,
+    recordEvaluation,
+    promote,
+    getMatchupBreakdown,
     downloadMatchupFile,
-    validateCheckpoint,
+    fetchMatchupFromCDN,
+    scanAllMatchupsFromRepo,
+    seedFromSearchEngine,
     status
   };
 })(globalThis);
