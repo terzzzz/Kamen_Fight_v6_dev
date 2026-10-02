@@ -1,16 +1,19 @@
-/* js/soul_model_config.js */
+/* js/soul_model_config.js
+ * Shared neural network architecture configuration.
+ */
 (function (g) {
   "use strict";
 
   const INPUT = 136;
   const ACTIONS = 16;
 
-  // Change the larger network's hidden dimensions here.
+  // All newly initialized training networks use these hidden sizes.
   const HIDDEN = Object.freeze([512, 256]);
 
   const SIZES = Object.freeze([
     INPUT,
-    ...HIDDEN,
+    HIDDEN[0],
+    HIDDEN[1],
     ACTIONS
   ]);
 
