@@ -1,10 +1,10 @@
 /* js/training_ui.js
- * Build: v4-onehot136-1v1-zero
+ * Build: v5-state256-action17
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "v4-onehot136-1v1-zero";
+  const BUILD = "v5-state256-action17";
   let initialized = false;
 
   async function initialize() {
@@ -22,174 +22,98 @@
     host.classList.add("soul-tools");
 
     host.innerHTML = `
-      <h2>KAMEN FIGHT — NEURAL SOUL TRAINER</h2>
+      <h2>KAMEN FIGHT — SOUL TRAINER</h2>
 
       <p>
-        Training is headless. ACTIVE is not changed by training.
-        Evaluate a candidate before activating it.
+        Build: <strong>${BUILD}</strong><br>
+        256 inputs / 17 actions. Old 136/16 models are not compatible.
       </p>
 
       <p>
-        <strong>Trainer build:</strong> ${BUILD}<br>
-        <strong>Guided-round teacher:</strong> MASTER.<br>
-        <strong>Reward discount clock:</strong> completed combat rounds.
+        Training uses the direct neural controller with exploration and
+        optional search demonstrations. Evaluation can use the live
+        RIDER search controller.
       </p>
 
       <div class="soul-fields">
-        <label>
-          Learner Rider
+        <label>Learner
           <select data-field="learner"></select>
         </label>
 
-        <label>
-          Opponent
+        <label>Opponent
           <select data-field="opponent"></select>
         </label>
 
-        <label>
-          Opponent controller
+        <label>Opponent controller
           <select data-field="mode">
-            <option value="mixed" selected>
-              Scripted Fast Trainer (Fastest — O(1) Rule Bot)
-            </option>
-            <option value="easy">
-              NOVICE search tree
-            </option>
-            <option value="balanced">
-              BALANCED search tree
-            </option>
-            <option value="master">
-              MASTER search tree
-            </option>
-            <option value="soul">
-              SOUL search tree — peak lookahead
-            </option>
-            <option value="rider">
-              RIDER Mode — Neural Foresee Engine
-            </option>
+            <option value="mixed">Random legal moves — fast baseline</option>
+            <option value="easy">NOVICE search</option>
+            <option value="balanced">BALANCED search</option>
+            <option value="master">MASTER search</option>
+            <option value="soul">SOUL search</option>
+            <option value="rider">RIDER — reverse active matchup model</option>
           </select>
         </label>
 
-        <label>
-          Reward Strategy
+        <label>Reward
           <select data-field="reward-mode">
-            <option value="standard" selected>
-              Standard (Dense HP Delta & Shaping)
-            </option>
-            <option value="terminal_only">
-              Terminal Only (Sparse Match Win/Loss)
-            </option>
+            <option value="standard">Dense LP / CHI + terminal</option>
+            <option value="terminal_only">Terminal win/loss only</option>
           </select>
         </label>
 
-        <label>
-          Training matches
-          <input
-            data-field="train-count"
-            type="number"
-            min="2"
-            max="100000"
-            step="1"
-            value="400"
-          >
+        <label>Evaluation learner policy
+          <select data-field="evaluation-policy">
+            <option value="rider">RIDER — live search policy</option>
+            <option value="network">Direct network — diagnostic</option>
+          </select>
         </label>
 
-        <label>
-          Evaluation matches
-          <input
-            data-field="eval-count"
-            type="number"
-            min="2"
-            max="100000"
-            step="2"
-            value="100"
-          >
+        <label>Training matches
+          <input data-field="train-count" type="number"
+            min="2" max="100000" step="1" value="400">
         </label>
 
-        <label>
-          Guide Hold Until %
-          <input
-            data-field="guide-hold-pct"
-            type="number"
-            min="0"
-            max="100"
-            step="1"
-            value="20"
-          >
+        <label>Evaluation matches
+          <input data-field="eval-count" type="number"
+            min="2" max="100000" step="2" value="100">
         </label>
 
-        <label>
-          Guide Reaches 0% At
-          <input
-            data-field="guide-zero-pct"
-            type="number"
-            min="0"
-            max="100"
-            step="1"
-            value="80"
-          >
+        <label>Guide hold until % of this job
+          <input data-field="guide-hold-pct" type="number"
+            min="0" max="100" value="20">
         </label>
 
-        <label>
-          Seed
-          <input
-            data-field="seed"
-            type="number"
-            min="0"
-            max="4294967295"
-            step="1"
-            value="12345"
-          >
+        <label>Guide reaches zero at %
+          <input data-field="guide-zero-pct" type="number"
+            min="0" max="100" value="80">
+        </label>
+
+        <label>Seed
+          <input data-field="seed" type="number"
+            min="0" max="4294967295" value="12345">
         </label>
       </div>
 
       <div class="soul-buttons">
-        <button type="button" data-action="train">
-          TRAIN / RESUME CANDIDATE
-        </button>
-        <button type="button" data-action="distill-matrix">
-          WARM-START FROM SEARCH
-        </button>
-        <button type="button" data-action="eval-candidate">
-          EVALUATE CANDIDATE
-        </button>
-        <button type="button" data-action="eval-active">
-          EVALUATE ACTIVE
-        </button>
-        <button type="button" data-action="promote">
-          ACTIVATE CANDIDATE
-        </button>
-        <button type="button" data-action="stop" disabled>
-          STOP
-        </button>
+        <button data-action="train">TRAIN / RESUME</button>
+        <button data-action="warm">GUIDED WARM-START</button>
+        <button data-action="eval-candidate">EVALUATE CANDIDATE</button>
+        <button data-action="eval-active">EVALUATE ACTIVE</button>
+        <button data-action="promote">ACTIVATE SELECTED CANDIDATE</button>
+        <button data-action="stop" disabled>STOP</button>
       </div>
 
       <div class="soul-buttons">
-        <button type="button" data-action="export-matchup">
-          EXPORT MATCHUP (.json)
-        </button>
-        <button type="button" data-action="import">
-          IMPORT CHECKPOINT
-        </button>
-        <button type="button" data-action="sync-cdn">
-          SYNC FROM REPO
-        </button>
-        <button type="button" data-action="tests">
-          RUN MECHANICAL TESTS
-        </button>
-        ${
-          dedicated
-            ? ""
-            : '<button type="button" data-action="close">CLOSE</button>'
-        }
+        <button data-action="export">EXPORT SELECTED CANDIDATE</button>
+        <button data-action="import">IMPORT CHECKPOINT</button>
+        <button data-action="sync">LOAD SELECTED REPO MODEL</button>
+        <button data-action="tests">RUN PIPELINE TESTS</button>
+        ${dedicated ? "" : '<button data-action="close">CLOSE</button>'}
       </div>
 
-      <input
-        data-field="file"
-        type="file"
-        accept=".json,application/json"
-        hidden
-      >
+      <input data-field="file" type="file"
+        accept=".json,application/json" hidden>
 
       <pre data-field="status"></pre>
       <pre data-field="output" aria-live="polite">Loading…</pre>
@@ -200,8 +124,8 @@
     style.textContent = `
       .soul-tools {
         box-sizing: border-box;
-        width: min(950px, 94vw);
-        max-height: 90vh;
+        width: min(1050px, 95vw);
+        max-height: 92vh;
         overflow: auto;
         padding: 20px;
         color: #e9fff9;
@@ -210,446 +134,379 @@
         border-radius: 12px;
         font: 15px/1.5 system-ui, sans-serif;
       }
-
-      dialog.soul-tools::backdrop {
-        background: rgba(0, 0, 0, .82);
-      }
-
-      .soul-tools h2 {
-        color: #00ffcc;
-      }
-
-      .soul-fields,
-      .soul-buttons {
+      dialog.soul-tools::backdrop { background: #000c; }
+      .soul-tools h2 { color: #00ffcc; }
+      .soul-fields, .soul-buttons {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
         margin: 14px 0;
       }
-
       .soul-fields label {
         display: flex;
         flex-direction: column;
         gap: 4px;
       }
-
-      .soul-tools input,
-      .soul-tools select,
-      .soul-tools button {
-        font: inherit;
+      .soul-tools input, .soul-tools select, .soul-tools button {
         padding: 8px;
+        font: inherit;
       }
-
       .soul-tools button {
         cursor: pointer;
-        color: #effffb;
+        color: white;
         background: #174b43;
         border: 1px solid #00bda0;
         border-radius: 5px;
       }
-
-      .soul-tools button[data-action="promote"] {
-        background: #8b0000;
-        border: 1px solid #cc0000;
-        color: #ffffff;
-      }
-
-      .soul-tools button:disabled {
-        opacity: .4;
-        cursor: not-allowed;
-      }
-
-      .soul-tools pre {
-        white-space: pre;
-        overflow-x: auto;
-      }
+      .soul-tools button:disabled { opacity: .4; cursor: default; }
+      .soul-tools pre { white-space: pre-wrap; overflow-wrap: anywhere; }
     `;
 
     document.head.appendChild(style);
 
-    const field = name => host.querySelector('[data-field="' + name + '"]');
-    const action = name => host.querySelector('[data-action="' + name + '"]');
+    const field = name => host.querySelector(`[data-field="${name}"]`);
+    const button = name => host.querySelector(`[data-action="${name}"]`);
 
-    let worker = null;
+    let data = null;
     let busy = false;
-    let evaluationTarget = null;
-
-    const modeLabels = {
-      mixed: "Scripted Fast Trainer (O(1) Rule Bot)",
-      easy: "NOVICE Search Tree",
-      balanced: "BALANCED Search Tree",
-      master: "MASTER Search Tree",
-      soul: "SOUL Search Tree",
-      rider: "RIDER Mode (Neural Foresee Engine)",
-      mcts: "RIDER Mode (Neural Foresee Engine)",
-      net: "Frozen Candidate Network"
-    };
+    let worker = null;
 
     function output(text) {
       field("output").textContent = text;
     }
 
-    function renderMatrixTable(breakdown) {
-      const codes = ["001", "002", "003", "004", "005", "006"];
-      const names = {
-        "001": "Ichigo",
-        "002": "Nigo",
-        "003": "V3",
-        "004": "Riderman",
-        "005": "Rider X",
-        "006": "Amazon"
+    function pair() {
+      return {
+        learner: field("learner").value,
+        opponent: field("opponent").value
       };
-
-      const header = "Learner \\ Opp  | " + codes.map(c => c.padStart(7, " ")).join(" | ");
-      const divider = "-".repeat(header.length);
-      const rows = [
-        "--- 1v1 MATCHUP MATRIX PROGRESS (data/matrix/) ---",
-        header,
-        divider
-      ];
-
-      for (const lCode of codes) {
-        const rowLabel = `${lCode} (${names[lCode].padEnd(7, " ")})`;
-        const cells = [];
-        for (const oCode of codes) {
-          const info = breakdown[lCode]?.[oCode];
-          const gStr = info?.hasModel ? `${info.games}g` : "0g";
-          cells.push(gStr.padStart(7, " "));
-        }
-        rows.push(`${rowLabel} | ` + cells.join(" | "));
-      }
-
-      return rows.join("\n");
     }
 
     function refresh() {
-      const state = g.SoulAgent.status();
-      const learnerVal = field("learner")?.value || "ichigo";
-      const oppVal = field("opponent")?.value || "nigo";
+      const selected = pair();
+      const validPair = Boolean(selected.learner && selected.opponent);
 
-      const pairKey = g.SoulAgent.getCanonicalKey(learnerVal, oppVal);
-      const candSection = g.SoulAgent.getSection(learnerVal, oppVal, "candidate");
-      const actSection = g.SoulAgent.getSection(learnerVal, oppVal, "active");
+      const candidate = validPair
+        ? g.SoulAgent.getSection(selected.learner, selected.opponent, "candidate")
+        : null;
 
-      const breakdown = typeof g.SoulAgent.getMatchupBreakdown === "function"
-        ? g.SoulAgent.getMatchupBreakdown("candidate")
-        : {};
+      const active = validPair
+        ? g.SoulAgent.getSection(selected.learner, selected.opponent, "active")
+        : null;
+
+      const status = g.SoulAgent.status();
 
       const lines = [
-        `ACTIVE MATCHUP KEY: ${pairKey}`,
-        `SELECTED 1v1 MATCHUP (${learnerVal} -> ${oppVal}):\n  Candidate: ${candSection ? candSection.games + " games (" + candSection.steps + " steps)" : "0 games"}\n  Active:    ${actSection ? actSection.games + " games (" + actSection.steps + " steps)" : "0 games"}`,
-        "",
-        typeof g.SoulAgent.getMatchupBreakdown === "function"
-          ? renderMatrixTable(breakdown)
-          : "[Warning: Reloading Matrix script…]",
-        "",
-        state.storageWarning,
-        ...(state.warnings || [])
+        validPair
+          ? "Selected matchup: " +
+            g.SoulAgent.getCanonicalKey(selected.learner, selected.opponent)
+          : "Loading matchup data…",
+        `Candidate: ${candidate ? `${candidate.games} games / ${candidate.steps} decisions` : "none — fresh training available"}`,
+        `Active: ${active ? `${active.games} games / ${active.steps} decisions` : "none"}`,
+        status.storageWarning,
+        ...status.warnings
       ].filter(Boolean);
 
-      field("status").textContent = lines.join("\n");
+      if (data) {
+        lines.push("", "CANDIDATE MATCHUP GAMES");
 
-      host.querySelectorAll("button").forEach(button => {
-        button.disabled = busy;
-      });
+        const matrix = g.SoulAgent.getMatchupBreakdown("candidate");
+        const codes = ["001", "002", "003", "004", "005", "006"];
 
-      host.querySelectorAll("select, input:not([type=file])").forEach(element => {
-        element.disabled = busy;
-      });
+        lines.push("     " + codes.map(code => code.padStart(7)).join(" "));
 
-      action("stop").disabled = !busy;
-
-      if (!busy) {
-        action("eval-candidate").disabled = !state.candidate && !candSection;
-        action("promote").disabled = !candSection && !state.candidate;
-        action("eval-active").disabled = !state.active && !actSection && state.activeMatchupsCount === 0;
-      }
-    }
-
-    function formatReport(r) {
-      const training = r.kind === "train";
-
-      const heading = training
-        ? "TRAINING RESULTS — include exploration / guided play"
-        : "EVALUATION — no exploration or learning";
-
-      const learnerName = String(r.learner ?? "Unknown");
-      const opponent = String(r.opponent ?? "Unknown");
-      const pairKey = g.SoulAgent.getCanonicalKey(r.learner, r.opponent);
-      const controller = modeLabels[r.mode] || String(r.mode ?? "Unknown");
-
-      const lines = [
-        heading,
-        "Matchup Code: " + pairKey,
-        "Learner Rider: " + learnerName,
-        "Trainer build: " + (r.build || "Unavailable"),
-        ""
-      ];
-
-      if (!training) {
-        lines.push(
-          "Evaluated checkpoint: " + (evaluationTarget ? evaluationTarget.toUpperCase() : "UNKNOWN"),
-          "Checkpoint fingerprint: " + (r.weightsID ?? "Unavailable"),
-          "Loaded-network fingerprint: " + (r.loadedWeightsID ?? "Unavailable"),
-          ""
-        );
-      }
-
-      lines.push(
-        "Opponent: " + opponent,
-        "Opponent controller: " + controller
-      );
-
-      if (training) {
-        const rModeLabel = r.rewardMode === "terminal_only"
-          ? "Terminal Only (Sparse Match Win/Loss)"
-          : "Standard (Dense HP Delta & Shaping)";
-
-        lines.push(
-          "Reward strategy: " + rModeLabel,
-          "Teacher: " + (r.teacher || "none"),
-          "Guided-round probability: " + (100 * r.guideProbability).toFixed(1) + "%",
-          "Exploration probability: " + (100 * r.epsilon).toFixed(1) + "%",
-          "Imitation coefficient: " + r.imitationCoefficient.toFixed(5),
-          "Discount clock: completed combat rounds"
-        );
-      }
-
-      lines.push(
-        "",
-        "Completed: " + r.games + " / " + r.requested,
-        "Wins / losses / draws: " + r.wins + " / " + r.losses + " / " + r.draws,
-        "Win rate: " + r.winRate.toFixed(1) + "%",
-        "Average rounds: " + r.averageRounds.toFixed(1),
-        "Matches/minute: " + r.matchesPerMinute.toFixed(1),
-        "Decision transitions/second: " + r.decisionsPerSecond.toFixed(1)
-      );
-
-      if (training) {
-        lines.push(
-          "Replay entries: " + r.replaySize,
-          "Latest TD loss: " + r.loss.toFixed(5)
-        );
-        if (r.avgQ !== undefined) {
-          lines.push("Avg Q-Value (Recent): " + r.avgQ.toFixed(4));
-        }
-        if (r.updateStats) {
+        for (const code of codes) {
           lines.push(
-            "Matrix updates (Win/Dmg/Loss/Neu): " +
-            r.updateStats.win + " / " +
-            r.updateStats.damage + " / " +
-            r.updateStats.loss + " / " +
-            r.updateStats.neutral
+            code + "  " +
+            codes.map(opponent => {
+              const entry = matrix[code][opponent];
+              return (entry.hasModel ? String(entry.games) : "-").padStart(7);
+            }).join(" ")
           );
         }
       }
 
-      if (r.wasdRatio && r.wasdRatio.counts) {
-        const counts = r.wasdRatio.counts;
-        const totalWasd = Math.max(1, counts.W + counts.A + counts.S + counts.D + counts.IDLE);
-        const pct = val => (100 * val / totalWasd).toFixed(1) + "%";
+      field("status").textContent = lines.join("\n");
 
+      host.querySelectorAll("button").forEach(element => {
+        element.disabled = busy || !data;
+      });
+
+      host.querySelectorAll("select, input:not([type=file])").forEach(element => {
+        element.disabled = busy || !data;
+      });
+
+      button("stop").disabled = !busy;
+
+      if (!busy && data) {
+        button("eval-candidate").disabled = !candidate;
+        button("eval-active").disabled = !active;
+        button("export").disabled = !candidate;
+        button("promote").disabled = !candidate?.evaluation;
+      }
+    }
+
+    function integer(name, min, max) {
+      const value = Number(field(name).value);
+
+      if (!Number.isSafeInteger(value) || value < min || value > max) {
+        throw new Error(`${name} must be an integer from ${min} to ${max}.`);
+      }
+
+      return value;
+    }
+
+    function formatReport(report) {
+      const training = report.kind === "train";
+
+      const lines = [
+        training
+          ? report.warmStart ? "GUIDED WARM-START" : "TRAINING"
+          : "EVALUATION",
+        `Build: ${report.build}`,
+        `Matchup: ${report.learner} -> ${report.opponent}`,
+        `Learner policy: ${report.learnerPolicy}`,
+        `Opponent: ${report.effectiveOpponent}`,
+        `Reward: ${report.rewardMode}`,
+        "",
+        `Completed: ${report.games} / ${report.requested}`,
+        `W / L / D: ${report.wins} / ${report.losses} / ${report.draws}`,
+        `Win rate: ${report.winRate.toFixed(1)}%`,
+        `Average rounds: ${report.averageRounds.toFixed(1)}`,
+        `Matches/minute: ${report.matchesPerMinute.toFixed(1)}`,
+        `Recorded round decisions: ${report.transitions}`,
+        `Elapsed: ${report.seconds.toFixed(1)}s`,
+        `Mean selected Q, this job: ${report.avgQ.toFixed(4)}`
+      ];
+
+      if (training) {
         lines.push(
           "",
-          "--- WASD STANCE & SKILL USAGE RATIO ---",
-          `W (Up / Special)    : ${pct(counts.W).padStart(6)} (${counts.W.toLocaleString()})`,
-          `A (Back / Guard)    : ${pct(counts.A).padStart(6)} (${counts.A.toLocaleString()})  <-- Defense & Omni-Guards`,
-          `S (Down / Heavy)    : ${pct(counts.S).padStart(6)} (${counts.S.toLocaleString()})`,
-          `D (Forward / Light) : ${pct(counts.D).padStart(6)} (${counts.D.toLocaleString()})`
+          `Guided rounds: ${(100 * report.guideProbability).toFixed(1)}%`,
+          `Epsilon: ${(100 * report.epsilon).toFixed(1)}%`,
+          `Imitation coefficient: ${report.imitationCoefficient.toFixed(4)}`,
+          `Replay entries: ${report.replaySize}`,
+          `Gradient updates: ${report.updates}`,
+          `Latest combined training loss: ${report.loss.toFixed(6)}`,
+          "Resume keeps weights/counters; optimizer and replay restart."
+        );
+
+        if (report.updateStats) {
+          const s = report.updateStats;
+
+          lines.push(
+            `Replay samples used — Win/Dmg/Loss/Other: ` +
+            `${s.win}/${s.damage}/${s.loss}/${s.neutral}`
+          );
+        }
+      } else {
+        lines.push(
+          "",
+          `Checkpoint fingerprint: ${report.weightsID}`,
+          `Loaded fingerprint: ${report.loadedWeightsID}`,
+          "No gradient updates or epsilon exploration."
         );
       }
 
-      if (r.moveBreakdown && r.moveBreakdown.moveMatrix) {
-        const matrix = r.moveBreakdown.moveMatrix;
-        const jkil = r.moveBreakdown.jkilCounts || {};
-        const totalMoves = Math.max(1, Object.values(jkil).reduce((a, b) => a + b, 0));
-        const pctAll = val => (100 * val / totalMoves).toFixed(1) + "%";
+      const counts = report.wasdRatio?.counts;
 
-        lines.push(
-          "",
-          "--- FINAL TURN RESOLUTIONS (1 PER COMBAT ROUND) ---",
-          `J : ${pctAll(jkil.J || 0).padStart(6)} (${(jkil.J || 0).toLocaleString()})`,
-          `K : ${pctAll(jkil.K || 0).padStart(6)} (${(jkil.K || 0).toLocaleString()})`,
-          `I : ${pctAll(jkil.I || 0).padStart(6)} (${(jkil.I || 0).toLocaleString()})`,
-          `L : ${pctAll(jkil.L || 0).padStart(6)} (${(jkil.L || 0).toLocaleString()})`,
-          `NONE (Movement Only): ${pctAll(jkil.NONE || 0).padStart(6)} (${(jkil.NONE || 0).toLocaleString()})`,
-          "",
-          "Stance \\ Attack |      J |      K |      I |      L |   NONE |  Total",
-          "-------------------------------------------------------------------"
+      if (counts) {
+        const total = Math.max(
+          1,
+          Object.values(counts).reduce((sum, value) => sum + value, 0)
         );
 
-        const stances = ["W", "A", "S", "D", "IDLE"];
-        const stanceNames = { W: "W (Up)", A: "A (Back)", S: "S (Down)", D: "D (Fwd)", IDLE: "IDLE" };
-        const buttons = ["J", "K", "I", "L", "NONE"];
+        lines.push("", "ROUND ACTION USAGE — includes forced recovery");
 
-        for (const st of stances) {
-          const rowObj = matrix[st] || {};
-          let rowTotal = 0;
-          const cells = buttons.map(b => {
-            const cnt = rowObj[b] || 0;
-            rowTotal += cnt;
-            return pctAll(cnt).padStart(6);
-          });
-          const label = (stanceNames[st] || st).padEnd(15, " ");
-          lines.push(`${label} | ` + cells.join(" | ") + " | " + pctAll(rowTotal).padStart(6));
+        for (const [stance, count] of Object.entries(counts)) {
+          lines.push(
+            `${stance.padEnd(4)} ${String(count).padStart(7)} ` +
+            `${(100 * count / total).toFixed(1)}%`
+          );
+        }
+
+        lines.push("", "STANCE: J / K / I / L / NONE");
+
+        for (const [stance, row] of Object.entries(
+          report.moveBreakdown?.moveMatrix || {}
+        )) {
+          lines.push(
+            `${stance}: ${row.J} / ${row.K} / ${row.I} / ${row.L} / ${row.NONE}`
+          );
         }
       }
 
-      lines.push(
-        "",
-        "Elapsed: " + r.seconds.toFixed(1) + "s",
-        "Seed: " + r.seed
-      );
+      lines.push("", "BREAKDOWN");
 
-      if (r.cancelled) {
-        lines.push("", "STOPPED — this is a partial run.");
+      for (const [label, row] of Object.entries(report.breakdown || {})) {
+        lines.push(`${label}: ${row.wins}W ${row.losses}L ${row.draws}D`);
       }
 
-      lines.push("", "BREAKDOWN");
-      for (const [name, row] of Object.entries(r.breakdown || {})) {
-        lines.push(name + ": " + row.wins + "W / " + row.losses + "L / " + row.draws + "D");
+      if (report.cancelled) {
+        lines.push("", "STOPPED — partial job.");
       }
 
       return lines.join("\n");
     }
 
     function finishWorker() {
-      if (worker) {
-        worker.onmessage = null;
-        worker.onerror = null;
-        worker.onmessageerror = null;
-        worker.terminate();
-      }
-
+      if (worker) worker.terminate();
       worker = null;
       busy = false;
-      evaluationTarget = null;
       refresh();
     }
 
-    function numberField(name, minimum, maximum) {
-      const value = Number(field(name).value);
-      if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-        throw new Error(name + " must be an integer from " + minimum + " to " + maximum);
+    async function start(kind, target = "candidate", warmStart = false) {
+      if (busy) return;
+      if (!data) throw new Error("Training data is not ready.");
+
+      if (location.protocol === "file:") {
+        throw new Error("Serve the project over HTTP/HTTPS.");
       }
-      return value;
-    }
 
-    async function start(kind, target = "candidate") {
-      if (busy) return;
-
-      const ready = await g.SoulAgent.ready();
-      if (busy) return;
-
-      const learnerVal = field("learner").value;
-      const opponentVal = field("opponent").value;
-      const rewardModeVal = field("reward-mode").value || "standard";
+      const selected = pair();
       const training = kind === "train";
 
-      let checkpoint = training
-        ? (g.SoulAgent.getSection(learnerVal, opponentVal, "candidate") ||
-           g.SoulAgent.getSection(learnerVal, opponentVal, "active") ||
-           g.SoulAgent.snapshot("candidate") ||
-           g.SoulAgent.snapshot("active"))
-        : (g.SoulAgent.getSection(learnerVal, opponentVal, target) ||
-           g.SoulAgent.snapshot(target));
+      const checkpoint = training
+        ? (
+            g.SoulAgent.getSection(selected.learner, selected.opponent, "candidate") ||
+            g.SoulAgent.getSection(selected.learner, selected.opponent, "active")
+          )
+        : g.SoulAgent.getSection(selected.learner, selected.opponent, target);
 
-      if (!checkpoint) {
-        throw new Error("No " + target + " checkpoint exists for this matchup.");
+      if (!training && !checkpoint) {
+        throw new Error("No checkpoint exists for this exact matchup.");
       }
 
-      if (typeof g.SoulAgent.validateCheckpoint === "function") {
-        const val = g.SoulAgent.validateCheckpoint(checkpoint, learnerVal, opponentVal);
-        if (!val.valid) throw new Error(`PRE-TRAINING VERIFICATION FAILED: ${val.error}`);
+      if (checkpoint) {
+        const validation = g.SoulAgent.validateCheckpoint(
+          checkpoint,
+          selected.learner,
+          selected.opponent
+        );
+
+        if (!validation.valid) throw new Error(validation.error);
       }
 
-      let count = numberField(training ? "train-count" : "eval-count", 2, 100000);
-      if (!training && count % 2 !== 0) {
-        count++;
-        field("eval-count").value = count;
+      let matches = integer(training ? "train-count" : "eval-count", 2, 100000);
+
+      if (!training && matches % 2) {
+        matches++;
+        field("eval-count").value = matches;
       }
 
-      const guideHoldPct = numberField("guide-hold-pct", 0, 100);
-      const guideZeroPct = numberField("guide-zero-pct", 0, 100);
+      const guideHoldPct = integer("guide-hold-pct", 0, 100);
+      const guideZeroPct = integer("guide-zero-pct", 0, 100);
+
       if (guideHoldPct > guideZeroPct) {
-        throw new Error("Guide Hold Until % cannot be greater than Guide Reaches 0% At %.");
+        throw new Error("Guide hold cannot exceed guide-zero percentage.");
       }
 
-      const seed = numberField("seed", 0, 4294967295);
-      if (location.protocol === "file:") {
-        throw new Error("Serve the project over HTTP/HTTPS, not file://.");
-      }
+      const mode = field("mode").value;
+
+      const teacher = warmStart && ["easy", "balanced", "master", "soul"].includes(mode)
+        ? mode
+        : "master";
+
+      const opponentCheckpoint = mode === "rider"
+        ? g.SoulAgent.getSection(
+            selected.opponent,
+            selected.learner,
+            "active"
+          )
+        : null;
+
+      const job = {
+        build: BUILD,
+        kind,
+        data,
+        checkpoint,
+        opponentCheckpoint,
+        matches,
+        seed: integer("seed", 0, 4294967295),
+        learner: selected.learner,
+        opponent: selected.opponent,
+        mode,
+        rewardMode: field("reward-mode").value,
+        guideHoldPct,
+        guideZeroPct,
+        teacher,
+        warmStart,
+        learnerPolicy: training
+          ? "network"
+          : field("evaluation-policy").value
+      };
 
       busy = true;
-      evaluationTarget = training ? null : target;
       refresh();
-
-      output(`Starting ${kind} worker…\nExpected build: ${BUILD}`);
+      output("Starting worker…");
 
       try {
-        const workerURL = new URL("js/training_worker.js", document.baseURI);
-        workerURL.searchParams.set("v", BUILD);
+        const url = new URL("js/training_worker.js", document.baseURI);
+        url.searchParams.set("v", BUILD);
 
-        worker = new Worker(workerURL);
+        worker = new Worker(url);
 
         worker.onerror = event => {
           output("WORKER ERROR\n" + event.message);
           finishWorker();
         };
 
+        worker.onmessageerror = () => {
+          output("WORKER ERROR\nCould not deserialize a worker message.");
+          finishWorker();
+        };
+
         worker.onmessage = event => {
           try {
             const message = event.data;
-            if (message?.build !== BUILD) throw new Error("Worker version mismatch.");
 
-            if (message.type === "progress") {
-              output(formatReport(message.report));
-            } else if (message.type === "checkpoint") {
-              if (typeof g.SoulAgent.validateCheckpoint === "function") {
-                const postVal = g.SoulAgent.validateCheckpoint(message.checkpoint, learnerVal, opponentVal);
-                if (!postVal.valid) throw new Error(`POST-TRAINING VERIFICATION FAILED: ${postVal.error}`);
-              }
+            if (message?.build !== BUILD) {
+              throw new Error("Worker build mismatch. Clear stale script caches.");
+            }
+
+            if (message.type === "checkpoint") {
+              const validation = g.SoulAgent.validateCheckpoint(
+                message.checkpoint,
+                selected.learner,
+                selected.opponent
+              );
+
+              if (!validation.valid) throw new Error(validation.error);
+
               g.SoulAgent.setCandidate(message.checkpoint);
               refresh();
+            } else if (message.type === "progress") {
+              output(formatReport(message.report));
             } else if (message.type === "done") {
               const report = message.report;
-              const completeEvaluation = !training && !report.cancelled && report.games >= 2 && report.games === report.requested;
 
-              if (evaluationTarget && completeEvaluation) {
-                g.SoulAgent.recordEvaluation(evaluationTarget, report);
+              if (
+                !training &&
+                !report.cancelled &&
+                report.games === report.requested
+              ) {
+                g.SoulAgent.recordEvaluation(target, report);
               }
 
-              let ending = training ? "\n\nVERIFIED & SAVED: Candidate updated in RAM." : "\n\nEvaluation finished.";
-              output(formatReport(report) + ending);
+              output(
+                formatReport(report) +
+                (training
+                  ? "\n\nCandidate retained. Check persistence warnings and export."
+                  : "\n\nEvaluation finished.")
+              );
+
               finishWorker();
             } else if (message.type === "error") {
-              output("JOB ERROR\n" + message.error);
-              finishWorker();
+              throw new Error(message.error);
             }
           } catch (error) {
-            output("ERROR\n" + error.message);
+            output("JOB ERROR\n" + error.message);
             finishWorker();
           }
         };
 
-        worker.postMessage({
-          type: "start",
-          job: {
-            build: BUILD,
-            kind,
-            data: ready.data,
-            checkpoint,
-            matches: count,
-            seed,
-            learner: learnerVal,
-            opponent: opponentVal,
-            mode: field("mode").value,
-            rewardMode: rewardModeVal,
-            guideHoldPct,
-            guideZeroPct
-          }
-        });
-
+        worker.postMessage({ type: "start", job });
       } catch (error) {
         finishWorker();
         throw error;
@@ -660,32 +517,20 @@
     field("opponent").addEventListener("change", refresh);
 
     host.addEventListener("click", async event => {
-      const button = event.target?.closest?.("[data-action]");
-      if (!button || button.disabled) return;
+      const clicked = event.target.closest("[data-action]");
+      if (!clicked || clicked.disabled) return;
 
       try {
-        switch (button.dataset.action) {
+        const selected = pair();
+
+        switch (clicked.dataset.action) {
           case "train":
             await start("train");
             break;
 
-          case "distill-matrix": {
-            const learnerVal = field("learner").value;
-            const opponentVal = field("opponent").value;
-            const searchMode = field("mode").value;
-
-            if (!["easy", "balanced", "master", "soul"].includes(searchMode)) {
-              output("ERROR\nSelect a search tree option (NOVICE, BALANCED, MASTER, or SOUL) in Opponent Controller first.");
-              break;
-            }
-
-            output(`Distilling ${searchMode.toUpperCase()} search algorithm into ${learnerVal} -> ${opponentVal} matrix...`);
-            g.SoulAgent.seedFromSearchEngine(learnerVal, opponentVal, searchMode, 50);
-
-            refresh();
-            output(`SUCCESS\nConverted ${searchMode.toUpperCase()} search algorithm directly into candidate matrix!`);
+          case "warm":
+            await start("train", "candidate", true);
             break;
-          }
 
           case "eval-candidate":
             await start("evaluate", "candidate");
@@ -700,24 +545,28 @@
             break;
 
           case "promote":
-            if (!window.confirm("Activate this candidate model for live matches?")) break;
-            g.SoulAgent.promote();
+            if (!confirm("Activate this exact matchup candidate?")) break;
+
+            g.SoulAgent.promote(selected.learner, selected.opponent);
             refresh();
-            output("Candidate activated.");
+
+            output(
+              "Selected candidate activated.\n" +
+              "Live AI workers must receive context.policyWeights."
+            );
             break;
 
-          case "export-matchup": {
-            const learnerVal = field("learner").value;
-            const opponentVal = field("opponent").value;
+          case "export": {
+            const result = g.SoulAgent.downloadMatchupFile(
+              selected.learner,
+              selected.opponent,
+              "candidate"
+            );
 
-            const result = g.SoulAgent.downloadMatchupFile(learnerVal, opponentVal, "candidate");
             output(
-              `EXPORT SUCCESSFUL\n` +
-              `File: ${result.fileName}\n` +
-              `Matchup Key: ${result.key}\n` +
-              `File Size: ${result.sizeMB} MB\n` +
-              `Games Trained: ${result.games}\n\n` +
-              `Upload '${result.fileName}' directly into 'data/matrix/' in GitHub!`
+              `Exported ${result.fileName}\n` +
+              `${result.games} games; ${result.sizeMB} MB\n` +
+              "This is a v5 checkpoint. Keep old exports separately."
             );
             break;
           }
@@ -726,33 +575,38 @@
             field("file").click();
             break;
 
-          case "sync-cdn": {
+          case "sync":
+            if (!confirm("Replace the selected ACTIVE model with its repository file?")) {
+              break;
+            }
+
             busy = true;
             refresh();
-            const learnerVal = field("learner").value;
-            const opponentVal = field("opponent").value;
-            const key = g.SoulAgent.getCanonicalKey(learnerVal, opponentVal);
 
-            output(`Fetching ${key}.json from data/matrix/...`);
             try {
-              await g.SoulAgent.fetchMatchupFromCDN(learnerVal, opponentVal);
-              output(`SUCCESS\nLoaded and verified ${key}.json from data/matrix/!`);
-            } catch (err) {
-              output("SYNC ERROR\n" + err.message);
+              await g.SoulAgent.fetchMatchupFromCDN(
+                selected.learner,
+                selected.opponent
+              );
+
+              output("Compatible repository model loaded into ACTIVE.");
+            } finally {
+              busy = false;
+              refresh();
             }
-            busy = false;
-            refresh();
             break;
-          }
 
           case "tests":
             busy = true;
             refresh();
-            output("Running mechanical tests…");
+
             try {
-              if (typeof g.runSoulTests !== "function") throw new Error("soul_tests.js not loaded.");
-              const result = await g.runSoulTests();
-              output("SOUL TESTS: " + result.passed + " passed.");
+              if (typeof g.runSoulPipelineTests !== "function") {
+                throw new Error("Load soul_pipeline_tests.js first.");
+              }
+
+              const result = await g.runSoulPipelineTests();
+              output(result.lines.join("\n"));
             } finally {
               busy = false;
               refresh();
@@ -763,7 +617,6 @@
             if (!busy) host.close();
             break;
         }
-
       } catch (error) {
         output("ERROR\n" + error.message);
         refresh();
@@ -772,7 +625,8 @@
 
     field("file").addEventListener("change", async event => {
       const input = event.target;
-      const file = input.files[0];
+      const file = input.files?.[0];
+
       if (!file || busy) {
         input.value = "";
         return;
@@ -782,10 +636,9 @@
       refresh();
 
       try {
-        await g.SoulAgent.ready();
         const payload = JSON.parse(await file.text());
         g.SoulAgent.importCandidate(payload);
-        output("1v1 Matchup checkpoint verified and imported into CANDIDATE.");
+        output("Compatible checkpoint imported into CANDIDATE.");
       } catch (error) {
         output("IMPORT ERROR\n" + error.message);
       } finally {
@@ -795,34 +648,33 @@
       }
     });
 
+    refresh();
+
     try {
-      const readyData = await g.SoulAgent.ready();
-      const learnerSelect = field("learner");
-      const opponentSelect = field("opponent");
+      data = (await g.SoulAgent.ready()).data;
 
-      for (const rider of readyData.data.riders) {
-        const code = g.SoulAgent.toCode(rider.id);
-
-        const lOption = document.createElement("option");
-        lOption.value = rider.id;
-        lOption.textContent = `${rider.name} [${code}]`;
-        learnerSelect.appendChild(lOption);
-
-        const oOption = document.createElement("option");
-        oOption.value = rider.id;
-        oOption.textContent = `${rider.name} [${code}]`;
-        opponentSelect.appendChild(oOption);
+      for (const rider of data.riders) {
+        for (const name of ["learner", "opponent"]) {
+          const option = document.createElement("option");
+          option.value = rider.id;
+          option.textContent = `${rider.name} [${g.SoulAgent.toCode(rider.id)}]`;
+          field(name).appendChild(option);
+        }
       }
 
-      learnerSelect.value = readyData.data.riders[0]?.id || "ichigo";
-      opponentSelect.value = readyData.data.riders[1]?.id || "nigo";
+      field("learner").value = data.riders[0].id;
+      field("opponent").value = (data.riders[1] || data.riders[0]).id;
 
-      output("Ready.\nTrainer build: " + BUILD);
-      refresh();
-
+      output(
+        "Ready.\n" +
+        "Fresh training needs no checkpoint.\n" +
+        "Guided warm-start runs real training matches; it is not instant distillation."
+      );
     } catch (error) {
       output("INITIALIZATION ERROR\n" + error.message);
     }
+
+    refresh();
   }
 
   if (document.readyState === "loading") {
