@@ -1,7 +1,18 @@
 /* js/training_worker.js */
 "use strict";
 
-const BUILD = "v4-onehot136-1v1-zero";
+importScripts("soul_model_config.js?v=large-matrix-r1");
+
+const MODEL = globalThis.SoulModelConfig;
+
+if (!MODEL) {
+  throw new Error("SoulModelConfig failed to load.");
+}
+
+const BUILD = MODEL.BUILD;
+
+// Keep the checkpoint format version: input encoding and actions
+// have not changed. Actual network dimensions live in net.sizes.
 const VERSION = "kf-soul-ddqn-v4-onehot136";
 
 const MIN_IMITATION = 0.01;
