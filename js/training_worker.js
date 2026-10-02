@@ -1,4 +1,15 @@
-/* js/training_worker.js */
+/* js/training_worker.js
+ * Shared-architecture training worker.
+ *
+ * Training:
+ *   - Fresh jobs always use SoulModelConfig.SIZES.
+ *   - Matching checkpoints resume.
+ *   - Different architectures restart from zero.
+ *
+ * Evaluation:
+ *   - Keeps the checkpoint's original hidden-layer sizes.
+ *   - Requires compatible input and action dimensions.
+ */
 "use strict";
 
 importScripts("soul_model_config.js?v=large-matrix-r1");
@@ -11,8 +22,8 @@ if (!MODEL) {
 
 const BUILD = MODEL.BUILD;
 
-// Keep the checkpoint format version: input encoding and actions
-// have not changed. Actual network dimensions live in net.sizes.
+// The checkpoint format remains compatible.
+// Actual architecture is recorded in net.sizes.
 const VERSION = "kf-soul-ddqn-v4-onehot136";
 
 const MIN_IMITATION = 0.01;
@@ -27,14 +38,14 @@ const scriptsToLoad = [
   "charge_env.js",
   "neural_core.js",
   "soul_sim.js"
-].map(file => file + "?v=" + BUILD);
+].map(file => file + "?v=" + encodeURIComponent(BUILD));
 
 importScripts.apply(null, scriptsToLoad);
 
 let busy = false;
 let cancelled = false;
 
-// MessageChannel bypasses background tab timer throttling
+// Yield without relying on setTimeout.
 const yieldChannel = new MessageChannel();
 let yieldResolver = null;
 
@@ -53,20 +64,34 @@ const pause = () => new Promise(resolve => {
 
 function send(type, payload = {}) {
   postMessage({
+    ...payload,
     type,
-    build: BUILD,
-    ...payload
+    build: BUILD
   });
 }
 
 function validateJob(job) {
   if (!job || !["train", "evaluate"].includes(job.kind)) {
-    throw new Error("Invalid job type. Must be 'train' or 'evaluate'.");
+    throw new Error(
+      "Invalid job type. Must be 'train' or 'evaluate'."
+    );
+  }
+
+  if (job.build !== BUILD) {
+    throw new Error(
+      `Training build mismatch: got '${job.build}', ` +
+      `expected '${BUILD}'. Update training_ui.js and reload.`
+    );
+  }
+
+  if (!job.data || !Array.isArray(job.data.riders)) {
+    throw new Error("Invalid training dataset: missing riders.");
   }
 
   const rawMode = String(job.mode || "mixed").toLowerCase();
+
   const modeMap = {
-    mixed: "mixed",      // Fast O(1) scripted bot
+    mixed: "mixed",
     novice: "easy",
     easy: "easy",
     balanced: "balanced",
@@ -83,46 +108,155 @@ function validateJob(job) {
   }
 
   if (job.matches > 100000) {
-    throw new Error("Match count exceeds maximum allowed limit (100,000).");
+    throw new Error(
+      "Match count exceeds maximum allowed limit (100,000)."
+    );
   }
+}
+
+function isCompatibleNetworkShape(sizes, inputSize) {
+  return (
+    Array.isArray(sizes) &&
+    sizes.length === 4 &&
+    sizes.every(
+      size => Number.isSafeInteger(size) && size > 0
+    ) &&
+    sizes[0] === inputSize &&
+    sizes[sizes.length - 1] === MODEL.ACTIONS
+  );
+}
+
+function checkpointCounter(value, name) {
+  if (value === undefined || value === null) {
+    return 0;
+  }
+
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(
+      `Invalid checkpoint ${name}: expected a non-negative integer.`
+    );
+  }
+
+  return value;
 }
 
 async function run(job) {
   validateJob(job);
 
   const data = job.data;
-  const spec = SoulEnv.makeSpec(data);
   const training = job.kind === "train";
 
-  const guideHoldPct = Number.isFinite(job.guideHoldPct) ? job.guideHoldPct : 3;
-  const guideZeroPct = Number.isFinite(job.guideZeroPct) ? job.guideZeroPct : 5;
+  const spec = {
+    ...SoulEnv.makeSpec(data)
+  };
+
+  if (spec.input !== MODEL.INPUT) {
+    throw new Error(
+      `Environment input mismatch: got ${spec.input}, ` +
+      `expected ${MODEL.INPUT}.`
+    );
+  }
+
+  const guideHoldPct = Number.isFinite(job.guideHoldPct)
+    ? job.guideHoldPct
+    : 3;
+
+  const guideZeroPct = Number.isFinite(job.guideZeroPct)
+    ? job.guideZeroPct
+    : 5;
+
+  if (
+    guideHoldPct < 0 ||
+    guideHoldPct > 100 ||
+    guideZeroPct < 0 ||
+    guideZeroPct > 100 ||
+    guideHoldPct > guideZeroPct
+  ) {
+    throw new Error(
+      "Invalid guide schedule. Require " +
+      "0 <= guideHoldPct <= guideZeroPct <= 100."
+    );
+  }
 
   const rewardMode = job.rewardMode || "standard";
+  const teacher = String(job.teacher || "master").toLowerCase();
 
-  let old = job.checkpoint || null;
+  if (!["easy", "balanced", "master", "soul"].includes(teacher)) {
+    throw new Error(
+      `Unsupported guided-play teacher '${teacher}'.`
+    );
+  }
 
   const learnerId = job.learner || "ichigo";
   const opponentId = job.opponent || "*";
 
-  const h1 = Array.isArray(job.hidden)
-    ? job.hidden[0]
-    : (old?.net?.sizes?.[1] || (spec.hidden ? spec.hidden[0] : 128));
+  const learnerRider = data.riders.find(
+    rider => rider.id === learnerId
+  );
 
-  const h2 = Array.isArray(job.hidden)
-    ? job.hidden[1]
-    : (old?.net?.sizes?.[2] || (spec.hidden ? spec.hidden[1] : 64));
+  if (!learnerRider) {
+    throw new Error(
+      `Learner rider '${learnerId}' not found in dataset.`
+    );
+  }
 
-  if (old && old.net) {
-    const sizes = old.net.sizes || [];
-    const inputMismatch = sizes[0] !== spec.input;
-    const actionMismatch = sizes[3] !== 16 && sizes[3] !== 10;
+  const opponents = opponentId === "*"
+    ? data.riders
+    : data.riders.filter(
+        rider => rider.id === opponentId
+      );
 
-    if (inputMismatch || actionMismatch) {
-      console.warn(`[Worker] Checkpoint dimension mismatch [${sizes.join(", ")}] vs expected input [${spec.input}]. Discarding checkpoint.`);
-      old = null;
+  if (!opponents.length) {
+    throw new Error("Opponent not found.");
+  }
+
+  const freshRequested = training && job.fresh === true;
+
+  // A fresh job must not inherit weights, steps, games, or task history.
+  let old = freshRequested
+    ? null
+    : (job.checkpoint || null);
+
+  let initialization = training
+    ? (
+        freshRequested
+          ? "fresh-requested"
+          : "fresh-no-checkpoint"
+      )
+    : "evaluation";
+
+  // Catch accidental cross-matchup checkpoint selection.
+  if (old) {
+    if (old.learnerId && old.learnerId !== learnerId) {
+      throw new Error(
+        `Checkpoint learner mismatch: '${old.learnerId}' ` +
+        `versus '${learnerId}'.`
+      );
+    }
+
+    if (old.opponentId && old.opponentId !== opponentId) {
+      throw new Error(
+        `Checkpoint opponent mismatch: '${old.opponentId}' ` +
+        `versus '${opponentId}'.`
+      );
+    }
+  }
+
+  // Training never resumes a differently sized network.
+  // It initializes the configured larger architecture instead.
+  if (training && old) {
+    if (MODEL.isTrainingShape(old.net?.sizes)) {
+      initialization = "resumed";
     } else {
-      old.version = VERSION;
-      old.spec = spec;
+      console.warn(
+        "[Worker] Checkpoint architecture differs from training configuration.",
+        "Previous:", old.net?.sizes,
+        "Required:", MODEL.SIZES,
+        "Starting a fresh network with zero training counters."
+      );
+
+      old = null;
+      initialization = "fresh-architecture-change";
     }
   }
 
@@ -132,20 +266,46 @@ async function run(job) {
     );
   }
 
+  // Older hidden widths remain valid for evaluation.
+  if (
+    old &&
+    !isCompatibleNetworkShape(old.net?.sizes, spec.input)
+  ) {
+    throw new Error(
+      `Checkpoint network is incompatible: ` +
+      `${JSON.stringify(old.net?.sizes)}. Expected ` +
+      `${spec.input} inputs, two hidden layers, and ` +
+      `${MODEL.ACTIONS} actions.`
+    );
+  }
+
   const seed = Number(job.seed) >>> 0;
 
   const net = old
     ? SoulNN.Network.fromJSON(old.net)
     : new SoulNN.Network(
         spec.input,
-        h1,
-        h2,
-        16
+        MODEL.HIDDEN[0],
+        MODEL.HIDDEN[1],
+        MODEL.ACTIONS
       );
 
-  if (net.sizes[0] !== spec.input) {
-    throw new Error("Worker network input mismatch.");
+  if (!isCompatibleNetworkShape(net.sizes, spec.input)) {
+    throw new Error(
+      `Loaded network dimensions are invalid: ` +
+      `${JSON.stringify(net.sizes)}.`
+    );
   }
+
+  if (training && !MODEL.isTrainingShape(net.sizes)) {
+    throw new Error(
+      `Training requires ${MODEL.SIZES.join(" -> ")}, ` +
+      `but the network created ${net.sizes.join(" -> ")}.`
+    );
+  }
+
+  // Keep checkpoint spec metadata consistent with the actual network.
+  spec.hidden = net.sizes.slice(1, -1);
 
   const weightsID = training
     ? null
@@ -155,16 +315,23 @@ async function run(job) {
     ? null
     : KF.hash(JSON.stringify(net.toJSON()));
 
+  const baseGames = checkpointCounter(
+    old?.games,
+    "games"
+  );
+
+  const baseSteps = checkpointCounter(
+    old?.steps,
+    "steps"
+  );
+
   const learner = training
     ? new SoulNN.Learner(
         net,
         KF.hash(seed, "replay"),
-        old?.steps || 0
+        baseSteps
       )
     : null;
-
-  const baseGames = old?.games || 0;
-  const baseSteps = old?.steps || 0;
 
   const taskKey = JSON.stringify([
     BUILD,
@@ -181,21 +348,6 @@ async function run(job) {
     previousTask.games >= 0
       ? previousTask.games
       : 0;
-
-  const learnerRider = data.riders.find(r => r.id === learnerId);
-  if (!learnerRider) {
-    throw new Error(`Learner rider '${learnerId}' not found in dataset.`);
-  }
-
-  const opponents = opponentId === "*"
-    ? data.riders
-    : data.riders.filter(
-        rider => rider.id === opponentId
-      );
-
-  if (!opponents.length) {
-    throw new Error("Opponent not found.");
-  }
 
   const pool = [];
 
@@ -225,8 +377,22 @@ async function run(job) {
   let currentImitation = 0;
   let currentEpsilon = 0;
 
-  const wasdCounts = { W: 0, A: 0, S: 0, D: 0, IDLE: 0 };
-  const jkilCounts = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
+  const wasdCounts = {
+    W: 0,
+    A: 0,
+    S: 0,
+    D: 0,
+    IDLE: 0
+  };
+
+  const jkilCounts = {
+    J: 0,
+    K: 0,
+    I: 0,
+    L: 0,
+    NONE: 0
+  };
+
   const moveMatrix = {
     W: { J: 0, K: 0, I: 0, L: 0, NONE: 0 },
     A: { J: 0, K: 0, I: 0, L: 0, NONE: 0 },
@@ -251,11 +417,25 @@ async function run(job) {
       learnerId,
       opponentId,
       rewardMode,
+      teacher,
       trainingTask: {
         key: taskKey,
         games: taskBaseGames + games
       }
     };
+  }
+
+  function accumulateQ(delta) {
+    if (
+      delta &&
+      Number.isFinite(delta.qSumDelta) &&
+      Number.isFinite(delta.qCountDelta) &&
+      delta.qCountDelta > 0
+    ) {
+      // A sum of zero is still a valid batch of Q observations.
+      jobCumulativeQSum += delta.qSumDelta;
+      jobCumulativeQCount += delta.qCountDelta;
+    }
   }
 
   function report() {
@@ -266,10 +446,16 @@ async function run(job) {
 
     const totalWasd = Math.max(
       1,
-      wasdCounts.W + wasdCounts.A + wasdCounts.S + wasdCounts.D + wasdCounts.IDLE
+      wasdCounts.W +
+      wasdCounts.A +
+      wasdCounts.S +
+      wasdCounts.D +
+      wasdCounts.IDLE
     );
 
-    const cumulativeAvgQ = jobCumulativeQCount > 0 ? (jobCumulativeQSum / jobCumulativeQCount) : 0;
+    const cumulativeAvgQ = jobCumulativeQCount > 0
+      ? jobCumulativeQSum / jobCumulativeQCount
+      : 0;
 
     return {
       build: BUILD,
@@ -305,12 +491,16 @@ async function run(job) {
       weightsID,
       loadedWeightsID,
 
-      teacher: training ? "master" : null,
+      teacher: training ? teacher : null,
       guideProbability: currentGuideProbability,
       guideHoldPct,
       guideZeroPct,
-      guideHoldMatch: Math.round(job.matches * (guideHoldPct / 100)),
-      guideZeroMatch: Math.round(job.matches * (guideZeroPct / 100)),
+      guideHoldMatch: Math.round(
+        job.matches * (guideHoldPct / 100)
+      ),
+      guideZeroMatch: Math.round(
+        job.matches * (guideZeroPct / 100)
+      ),
       imitationCoefficient: currentImitation,
       epsilon: currentEpsilon,
       rewardMode,
@@ -319,7 +509,11 @@ async function run(job) {
       learner: learnerId,
       opponent: opponentId,
       mode: job.mode,
+
+      networkSizes: net.sizes.slice(),
       hiddenSizes: net.sizes.slice(1, -1),
+      initialization,
+
       cancelled,
       breakdown,
 
@@ -328,7 +522,9 @@ async function run(job) {
         A: (100 * wasdCounts.A / totalWasd).toFixed(1) + "%",
         S: (100 * wasdCounts.S / totalWasd).toFixed(1) + "%",
         D: (100 * wasdCounts.D / totalWasd).toFixed(1) + "%",
-        IDLE: (100 * wasdCounts.IDLE / totalWasd).toFixed(1) + "%",
+        IDLE: (
+          100 * wasdCounts.IDLE / totalWasd
+        ).toFixed(1) + "%",
         counts: { ...wasdCounts }
       },
 
@@ -338,6 +534,11 @@ async function run(job) {
       }
     };
   }
+
+  // Expose the selected architecture immediately.
+  send("progress", {
+    report: report()
+  });
 
   for (
     let i = 0;
@@ -358,7 +559,7 @@ async function run(job) {
       KF.hash(matchSeed, "opponent-choice")
     );
 
-    const isMirrorMatch = (learnerId === opponent.id);
+    const isMirrorMatch = learnerId === opponent.id;
     let opponentNet = null;
 
     if (
@@ -372,9 +573,11 @@ async function run(job) {
       ];
     }
 
-    const batchProgressPct = (i / Math.max(1, job.matches)) * 100;
+    const batchProgressPct =
+      (i / Math.max(1, job.matches)) * 100;
 
     let guideProbability = 0.0;
+
     if (training) {
       if (batchProgressPct <= guideHoldPct) {
         guideProbability = 1.0;
@@ -382,31 +585,51 @@ async function run(job) {
         guideProbability = 0.0;
       } else {
         const pctRange = guideZeroPct - guideHoldPct;
+
         if (pctRange > 0) {
-          const decayRatio = (batchProgressPct - guideHoldPct) / pctRange;
-          guideProbability = Math.max(0.0, Math.min(1.0, 1.0 - decayRatio));
+          const decayRatio =
+            (batchProgressPct - guideHoldPct) / pctRange;
+
+          guideProbability = Math.max(
+            0.0,
+            Math.min(1.0, 1.0 - decayRatio)
+          );
         } else {
           guideProbability = 0.0;
         }
       }
     }
 
-    // Epsilon max cap updated from 0.12 to 0.06
+    // Exploration remains capped at 0.06.
     let epsilon = 0;
+
     if (training) {
       if (recentOutcomes.length < 5) {
         epsilon = 0.06;
       } else {
-        const winsInWindow = recentOutcomes.reduce((a, b) => a + b, 0);
-        const rollingWinRate = winsInWindow / recentOutcomes.length;
+        const winsInWindow = recentOutcomes.reduce(
+          (a, b) => a + b,
+          0
+        );
 
-        const linearEpsilon = 0.02 + ((0.50 - rollingWinRate) / 0.30) * 0.04;
-        epsilon = Math.max(0.02, Math.min(0.06, linearEpsilon));
+        const rollingWinRate =
+          winsInWindow / recentOutcomes.length;
+
+        const linearEpsilon =
+          0.02 + ((0.50 - rollingWinRate) / 0.30) * 0.04;
+
+        epsilon = Math.max(
+          0.02,
+          Math.min(0.06, linearEpsilon)
+        );
       }
     }
 
     const imitation = training
-      ? Math.max(MIN_IMITATION, INITIAL_IMITATION * guideProbability)
+      ? Math.max(
+          MIN_IMITATION,
+          INITIAL_IMITATION * guideProbability
+        )
       : 0;
 
     currentGuideProbability = guideProbability;
@@ -425,6 +648,7 @@ async function run(job) {
       seed: matchSeed,
       epsilon,
       guideProbability,
+      teacher,
       rewardMode,
       isEvaluation: !training
     });
@@ -445,47 +669,53 @@ async function run(job) {
         }
 
         if (event.transition.isFinalRoundResolution) {
-          const moveKey = event.transition.resolvedActionKey || event.transition.actionKey || "DO_NOTHING";
+          const moveKey =
+            event.transition.resolvedActionKey ||
+            event.transition.actionKey ||
+            "DO_NOTHING";
 
           let dir = "IDLE";
           let attackBtn = "NONE";
 
-          if (moveKey && moveKey !== "DO_NOTHING" && moveKey !== "IDLE") {
+          if (
+            moveKey &&
+            moveKey !== "DO_NOTHING" &&
+            moveKey !== "IDLE"
+          ) {
             if (moveKey.includes("+")) {
               const parts = moveKey.split("+");
               dir = parts[0] || "IDLE";
               attackBtn = parts[1] || "NONE";
-            } else if (["W", "A", "S", "D"].includes(moveKey)) {
+            } else if (
+              ["W", "A", "S", "D"].includes(moveKey)
+            ) {
               dir = moveKey;
               attackBtn = "NONE";
-            } else if (["J", "K", "I", "L"].includes(moveKey)) {
+            } else if (
+              ["J", "K", "I", "L"].includes(moveKey)
+            ) {
               dir = event.transition.direction || "IDLE";
               attackBtn = moveKey;
             }
           }
 
-          if (!["W", "A", "S", "D"].includes(dir)) dir = "IDLE";
-          if (!["J", "K", "I", "L"].includes(attackBtn)) attackBtn = "NONE";
-
-          wasdCounts[dir] = (wasdCounts[dir] || 0) + 1;
-          jkilCounts[attackBtn] = (jkilCounts[attackBtn] || 0) + 1;
-
-          if (!moveMatrix[dir]) {
-            moveMatrix[dir] = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
+          if (!["W", "A", "S", "D"].includes(dir)) {
+            dir = "IDLE";
           }
-          moveMatrix[dir][attackBtn] = (moveMatrix[dir][attackBtn] || 0) + 1;
+
+          if (!["J", "K", "I", "L"].includes(attackBtn)) {
+            attackBtn = "NONE";
+          }
+
+          wasdCounts[dir]++;
+          jkilCounts[attackBtn]++;
+          moveMatrix[dir][attackBtn]++;
         }
       } else if (event.type === "round") {
-        if (event.qSumDelta && event.qCountDelta) {
-          jobCumulativeQSum += event.qSumDelta;
-          jobCumulativeQCount += event.qCountDelta;
-        }
+        accumulateQ(event);
       } else if (event.type === "end") {
         result = event.result;
-        if (event.result.qSumDelta && event.result.qCountDelta) {
-          jobCumulativeQSum += event.result.qSumDelta;
-          jobCumulativeQCount += event.result.qCountDelta;
-        }
+        accumulateQ(event.result);
       }
 
       const now = performance.now();
@@ -523,7 +753,10 @@ async function run(job) {
       draws++;
     }
 
-    recentOutcomes.push(outcome === "wins" ? 1 : 0);
+    recentOutcomes.push(
+      outcome === "wins" ? 1 : 0
+    );
+
     if (recentOutcomes.length > WINDOW_SIZE) {
       recentOutcomes.shift();
     }
@@ -533,12 +766,14 @@ async function run(job) {
       (opponentNet ? "frozen-self" : job.mode) +
       " / learner " + learnerSlot;
 
-    const row = (breakdown[label] = breakdown[label] || {
-      games: 0,
-      wins: 0,
-      losses: 0,
-      draws: 0
-    });
+    const row = (
+      breakdown[label] = breakdown[label] || {
+        games: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0
+      }
+    );
 
     row.games++;
     row[outcome]++;
@@ -585,8 +820,8 @@ self.onmessage = async event => {
   } catch (error) {
     send("error", {
       error:
-        error.stack ||
-        error.message ||
+        error?.stack ||
+        error?.message ||
         String(error)
     });
   } finally {
