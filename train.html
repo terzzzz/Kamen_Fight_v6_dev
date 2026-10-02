@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
   <title>Kamen Fight — Neural Training</title>
 
   <style>
@@ -29,25 +33,34 @@
 </head>
 
 <body>
-  <p><a href="index.html">← Return to game</a></p>
+  <p>
+    <a href="index.html">← Return to game</a>
+  </p>
 
   <main id="soul-training-root"></main>
 
   <noscript>JavaScript is required.</noscript>
 
-  <script src="js/common.js?v=v4-onehot136-1v1-zero"></script>
-  <script src="js/combat_core.js?v=v4-onehot136-1v1-zero"></script>
-  <script src="js/rider_brains.js?v=v4-onehot136-1v1-zero"></script>
-  <script src="js/foresee_engine.js?v=v4-onehot136-1v1-zero"></script>
-  <script src="js/ai.js?v=v4-onehot136-1v1-zero"></script>
-  <script src="js/charge_env.js?v=v4-onehot136-1v1-zero"></script>
-  <script src="js/neural_core.js?v=v4-onehot136-1v1-zero"></script>
+  <!-- Shared architecture must exist before model consumers. -->
   <script src="js/soul_model_config.js?v=large-matrix-r1"></script>
- <!-- Keep these in their existing dependency order. -->
-<script src="js/soul_sim.js?v=large-matrix-r1"></script>
-<script src="js/soul_agent.js?v=large-matrix-r1"></script>
-<script src="js/training_ui.js?v=large-matrix-r1"></script>
-  <script src="js/soul_tests.js?v=v4-onehot136-1v1-zero"></script>
-<script src="js/training_ui.js?v=large-matrix-r1"></script>
+
+  <!-- Core dependencies: preserve dependency order. -->
+  <script src="js/common.js?v=large-matrix-r1"></script>
+  <script src="js/combat_core.js?v=large-matrix-r1"></script>
+  <script src="js/rider_brains.js?v=large-matrix-r1"></script>
+  <script src="js/foresee_engine.js?v=large-matrix-r1"></script>
+  <script src="js/ai.js?v=large-matrix-r1"></script>
+  <script src="js/charge_env.js?v=large-matrix-r1"></script>
+  <script src="js/neural_core.js?v=large-matrix-r1"></script>
+
+  <!-- Simulation and checkpoint management. -->
+  <script src="js/soul_sim.js?v=large-matrix-r1"></script>
+  <script src="js/soul_agent.js?v=large-matrix-r1"></script>
+
+  <!-- Tests before the UI that calls them. -->
+  <script src="js/soul_tests.js?v=large-matrix-r1"></script>
+
+  <!-- Load exactly once. -->
+  <script src="js/training_ui.js?v=large-matrix-r1"></script>
 </body>
 </html>
