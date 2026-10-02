@@ -1,115 +1,130 @@
 /* js/neural_core.js
- * CPU neural network + Adam + Double DQN + Softmax Action Sampler
- * Build: v4-onehot136-1v1-zero
+ * CPU MLP, Adam, masked action selection, replay, Double DQN.
+ * Build: v5-state256-action17
  */
 (function (g) {
   "use strict";
 
-  const BUILD = "v4-onehot136-1v1-zero";
-  const K = g.KF || {
-    rng: (seed) => {
-      let s = seed || 1;
-      return () => {
-        s = (s * 9301 + 49297) % 233280;
-        return s / 233280;
-      };
-    },
-    clamp: (val, min, max) => Math.max(min, Math.min(max, val))
-  };
+  const BUILD = "v5-state256-action17";
+  const K = g.KF;
 
-  /**
-   * Deterministic Argmax with Action Masking
-   */
+  function validateSizes(sizes) {
+    if (
+      !Array.isArray(sizes) ||
+      sizes.length < 2 ||
+      sizes.length > 6 ||
+      sizes.some(n => !Number.isInteger(n) || n < 1 || n > 2048)
+    ) {
+      throw new Error("Invalid neural layer sizes.");
+    }
+
+    let parameters = 0;
+
+    for (let i = 1; i < sizes.length; i++) {
+      parameters += sizes[i - 1] * sizes[i] + sizes[i];
+    }
+
+    if (parameters > 2000000) {
+      throw new Error("Network exceeds the supported parameter limit.");
+    }
+  }
+
+  function checkOutput(q, mask) {
+    if (!q || !q.length || (mask && mask.length !== q.length)) {
+      throw new Error("Neural output/mask size mismatch.");
+    }
+
+    for (const value of q) {
+      if (!Number.isFinite(value)) {
+        throw new Error("Non-finite neural output.");
+      }
+    }
+  }
+
   function argmax(q, mask) {
+    checkOutput(q, mask);
     let best = -1;
 
     for (let i = 0; i < q.length; i++) {
       if (mask && !mask[i]) continue;
-
-      if (!Number.isFinite(q[i])) {
-        throw new Error("Non-finite neural output.");
-      }
-
-      if (best < 0 || q[i] > q[best]) {
-        best = i;
-      }
+      if (best < 0 || q[i] > q[best]) best = i;
     }
 
-    if (best < 0) {
-      throw new Error("No legal controller action.");
+    if (best < 0) throw new Error("No legal neural action.");
+    return best;
+  }
+
+  function randomAction(mask, rng = Math.random) {
+    if (!mask) throw new Error("An action mask is required.");
+
+    const legal = [];
+
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i]) legal.push(i);
+    }
+
+    if (!legal.length) throw new Error("Empty action mask.");
+    return legal[Math.floor(rng() * legal.length)];
+  }
+
+  function sampleAction(q, mask, temperature = 0.15, rng = Math.random) {
+    const best = argmax(q, mask);
+    if (!(temperature > 0.001)) return best;
+
+    const probabilities = new Float64Array(q.length);
+    let total = 0;
+
+    for (let i = 0; i < q.length; i++) {
+      if (mask && !mask[i]) continue;
+      probabilities[i] = Math.exp((q[i] - q[best]) / temperature);
+      total += probabilities[i];
+    }
+
+    let cursor = rng() * total;
+
+    for (let i = 0; i < probabilities.length; i++) {
+      if (!probabilities[i]) continue;
+      cursor -= probabilities[i];
+      if (cursor <= 0) return i;
     }
 
     return best;
   }
 
-  /**
-   * Temperature-Based Softmax Action Sampler
-   * Eliminates 50% IDLE loops during evaluation (epsilon = 0)
-   */
-  function sampleAction(q, mask, temperature = 0.3, rng = Math.random) {
-    if (temperature <= 0.01) {
-      return argmax(q, mask);
+  function validateJSON(json) {
+    validateSizes(json?.sizes);
+
+    if (
+      !Array.isArray(json.layers) ||
+      json.layers.length !== json.sizes.length - 1
+    ) {
+      throw new Error("Invalid neural checkpoint layer count.");
     }
 
-    let maxQ = -Infinity;
-    for (let i = 0; i < q.length; i++) {
-      if (mask && !mask[i]) continue;
-      if (q[i] > maxQ) maxQ = q[i];
-    }
+    json.layers.forEach((layer, index) => {
+      const lengths = {
+        w: json.sizes[index] * json.sizes[index + 1],
+        b: json.sizes[index + 1]
+      };
 
-    const probs = new Float32Array(q.length);
-    let sum = 0;
-
-    for (let i = 0; i < q.length; i++) {
-      if (mask && !mask[i]) continue;
-      probs[i] = Math.exp((q[i] - maxQ) / temperature);
-      sum += probs[i];
-    }
-
-    if (sum <= 0) return argmax(q, mask);
-
-    const r = rng() * sum;
-    let acc = 0;
-
-    for (let i = 0; i < q.length; i++) {
-      if (mask && !mask[i]) continue;
-      acc += probs[i];
-      if (r <= acc) return i;
-    }
-
-    return argmax(q, mask);
-  }
-
-  function randomAction(mask, rng) {
-    const legal = [];
-
-    for (let i = 0; i < mask.length; i++) {
-      if (!mask || mask[i]) legal.push(i);
-    }
-
-    if (!legal.length) {
-      throw new Error("Empty action mask.");
-    }
-
-    return legal[Math.floor((rng || Math.random)() * legal.length)];
-  }
-
-  function getStanceGroups(actionIndex, outputSize) {
-    const stanceSize = outputSize >= 16 ? 4 : Math.max(1, Math.floor(outputSize / 4));
-    const stanceIndex = Math.floor(actionIndex / stanceSize);
-    const sameStance = [];
-    const otherStances = [];
-
-    for (let i = 0; i < outputSize; i++) {
-      if (i === actionIndex) continue;
-      if (Math.floor(i / stanceSize) === stanceIndex) {
-        sameStance.push(i);
-      } else {
-        otherStances.push(i);
+      for (const field of ["w", "b"]) {
+        if (
+          !Array.isArray(layer?.[field]) ||
+          layer[field].length !== lengths[field] ||
+          layer[field].some(value =>
+            typeof value !== "number" ||
+            !Number.isFinite(value) ||
+            !Number.isFinite(Math.fround(value))
+          )
+        ) {
+          throw new Error(
+            `Invalid neural parameters: layer ${index}, field ${field}.`
+          );
+        }
       }
-    }
+    });
 
-    return { sameStance, otherStances };
+    return true;
   }
 
   class Network {
@@ -118,9 +133,7 @@
         sizes = sizes[0];
       }
 
-      if (!sizes.length || sizes.length < 2) {
-        throw new Error("Invalid neural input or layer configuration.");
-      }
+      validateSizes(sizes);
 
       this.sizes = [...sizes];
       this.layers = [];
@@ -128,9 +141,9 @@
 
       const rng = K.rng(1);
 
-      for (let l = 0; l < this.sizes.length - 1; l++) {
-        const n = this.sizes[l];
-        const m = this.sizes[l + 1];
+      for (let i = 0; i < sizes.length - 1; i++) {
+        const n = sizes[i];
+        const m = sizes[i + 1];
         const bound = Math.sqrt(6 / n);
 
         const w = Float32Array.from(
@@ -139,9 +152,7 @@
         );
 
         this.layers.push({
-          n,
-          m,
-          w,
+          n, m, w,
           b: new Float32Array(m),
           mw: new Float32Array(w.length),
           vw: new Float32Array(w.length),
@@ -152,38 +163,46 @@
     }
 
     forward(input) {
-      if (input.length !== this.sizes[0]) {
-        throw new Error("Neural observation size mismatch.");
+      if (
+        !input ||
+        input.length !== this.sizes[0] ||
+        Array.from(input).some(value => !Number.isFinite(value))
+      ) {
+        throw new Error("Invalid neural input.");
       }
 
-      const activations = [input];
+      const tape = [input];
 
-      for (let l = 0; l < this.layers.length; l++) {
-        const layer = this.layers[l];
-        const previous = activations[l];
+      for (let index = 0; index < this.layers.length; index++) {
+        const layer = this.layers[index];
+        const previous = tape[index];
         const next = new Float32Array(layer.m);
-        const hidden = l < this.layers.length - 1;
+        const hidden = index < this.layers.length - 1;
 
         for (let j = 0; j < layer.m; j++) {
-          let sum = layer.b[j];
+          let value = layer.b[j];
           const offset = j * layer.n;
 
           for (let i = 0; i < layer.n; i++) {
-            sum += layer.w[offset + i] * previous[i];
+            value += layer.w[offset + i] * previous[i];
           }
 
-          next[j] = hidden ? Math.max(0, sum) : sum;
+          next[j] = hidden ? Math.max(0, value) : value;
+
+          if (!Number.isFinite(next[j])) {
+            throw new Error("Neural forward pass diverged.");
+          }
         }
 
-        activations.push(next);
+        tape.push(next);
       }
 
-      return activations;
+      return tape;
     }
 
     predict(input) {
-      const activations = this.forward(input);
-      return activations[activations.length - 1];
+      const tape = this.forward(input);
+      return tape[tape.length - 1];
     }
 
     toJSON() {
@@ -197,35 +216,12 @@
     }
 
     static fromJSON(json) {
-      const sizes = json?.sizes;
-
-      if (
-        !Array.isArray(sizes) ||
-        sizes.length < 2 ||
-        !Array.isArray(json.layers) ||
-        json.layers.length !== sizes.length - 1
-      ) {
-        throw new Error("Unsupported neural checkpoint architecture.");
-      }
-
-      const net = new Network(sizes);
+      validateJSON(json);
+      const net = new Network(json.sizes);
 
       json.layers.forEach((source, index) => {
-        const target = net.layers[index];
-
-        for (const field of ["w", "b"]) {
-          const values = source?.[field];
-
-          if (
-            !Array.isArray(values) ||
-            values.length !== target[field].length ||
-            values.some(value => typeof value !== "number" || !Number.isFinite(value))
-          ) {
-            throw new Error("Invalid neural checkpoint parameters.");
-          }
-
-          target[field].set(values);
-        }
+        net.layers[index].w.set(source.w);
+        net.layers[index].b.set(source.b);
       });
 
       return net;
@@ -241,87 +237,77 @@
       const outputSize = this.sizes[this.sizes.length - 1];
 
       const gradients = this.layers.map(layer => ({
-        w: new Float32Array(layer.w.length),
-        b: new Float32Array(layer.b.length)
+        w: new Float64Array(layer.w.length),
+        b: new Float64Array(layer.b.length)
       }));
 
       let loss = 0;
 
       for (const row of rows) {
-        const tape = this.forward(row.s);
-        const q = tape[tape.length - 1];
-
-        let delta = new Float32Array(outputSize);
-
-        if (row.yVector) {
-          for (let a = 0; a < outputSize; a++) {
-            const error = q[a] - row.yVector[a];
-
-            if (!Number.isFinite(error)) {
-              throw new Error("Neural training diverged.");
-            }
-
-            if (a === row.a) {
-              loss += Math.abs(error) <= 1
-                ? 0.5 * error * error
-                : Math.abs(error) - 0.5;
-            }
-
-            delta[a] = K.clamp(error, -1, 1) * (row.weightScale || 1.0);
-          }
-        } else {
-          const error = q[row.a] - row.y;
-
-          if (!Number.isFinite(error)) {
-            throw new Error("Neural training diverged.");
-          }
-
-          loss += Math.abs(error) <= 1
-            ? 0.5 * error * error
-            : Math.abs(error) - 0.5;
-
-          delta[row.a] = K.clamp(error, -1, 1) * (row.weightScale || 1.0);
+        if (
+          !Number.isInteger(row.a) ||
+          row.a < 0 ||
+          row.a >= outputSize ||
+          !Number.isFinite(row.y) ||
+          (row.m && (!row.m[row.a] || row.m.length !== outputSize))
+        ) {
+          throw new Error("Invalid training row.");
         }
 
+        const weight = row.weightScale ?? 1;
+
+        if (!Number.isFinite(weight) || weight < 0) {
+          throw new Error("Invalid training weight.");
+        }
+
+        const tape = this.forward(row.s);
+        const q = tape[tape.length - 1];
+        let delta = new Float64Array(outputSize);
+
+        const error = q[row.a] - row.y;
+        const absolute = Math.abs(error);
+
+        loss += weight * (
+          absolute <= 1 ? 0.5 * error * error : absolute - 0.5
+        );
+
+        delta[row.a] = weight * K.clamp(error, -1, 1);
+
         if (row.demo && imitation > 0) {
-          let maximum = -Infinity;
-
-          for (let a = 0; a < outputSize; a++) {
-            if (row.m && row.m[a]) {
-              maximum = Math.max(maximum, q[a]);
-            }
-          }
-
-          const probabilities = new Float32Array(outputSize);
+          const best = argmax(q, row.m);
+          const probabilities = new Float64Array(outputSize);
           let total = 0;
 
           for (let a = 0; a < outputSize; a++) {
             if (row.m && !row.m[a]) continue;
-
-            probabilities[a] = Math.exp(q[a] - (maximum === -Infinity ? 0 : maximum));
+            probabilities[a] = Math.exp(q[a] - q[best]);
             total += probabilities[a];
           }
 
           for (let a = 0; a < outputSize; a++) {
             if (row.m && !row.m[a]) continue;
 
+            const probability = probabilities[a] / total;
+
             delta[a] += imitation * (
-              probabilities[a] / (total || 1) -
-              Number(a === row.a)
+              probability - Number(a === row.a)
             );
           }
+
+          loss += imitation * (
+            Math.log(total) + q[best] - q[row.a]
+          );
         }
 
         for (let l = this.layers.length - 1; l >= 0; l--) {
           const layer = this.layers[l];
-          const grad = gradients[l];
           const previous = tape[l];
-          const back = l > 0 ? new Float32Array(layer.n) : null;
+          const grad = gradients[l];
+          const back = l > 0 ? new Float64Array(layer.n) : null;
 
           for (let j = 0; j < layer.m; j++) {
             const d = delta[j];
             const offset = j * layer.n;
-
             grad.b[j] += d;
 
             for (let i = 0; i < layer.n; i++) {
@@ -335,10 +321,9 @@
 
           if (back) {
             for (let i = 0; i < back.length; i++) {
-              if (previous[i] <= 0) {
-                back[i] = 0;
-              }
+              if (previous[i] <= 0) back[i] = 0;
             }
+
             delta = back;
           }
         }
@@ -346,9 +331,9 @@
 
       let normSquared = 0;
 
-      for (const grad of gradients) {
+      for (const gradient of gradients) {
         for (const field of ["w", "b"]) {
-          for (const value of grad[field]) {
+          for (const value of gradient[field]) {
             normSquared += (value / rows.length) ** 2;
           }
         }
@@ -358,7 +343,8 @@
         throw new Error("Non-finite neural gradient.");
       }
 
-      const scale = Math.min(1, 5 / (Math.sqrt(normSquared) || 1)) / rows.length;
+      const scale =
+        Math.min(1, 5 / (Math.sqrt(normSquared) || 1)) / rows.length;
 
       this.adamStep++;
 
@@ -370,10 +356,10 @@
           const parameters = layer[field];
           const first = layer["m" + field];
           const second = layer["v" + field];
-          const grad = gradients[index][field];
+          const gradient = gradients[index][field];
 
           for (let i = 0; i < parameters.length; i++) {
-            const d = grad[i] * scale;
+            const d = gradient[i] * scale;
 
             first[i] = 0.9 * first[i] + 0.1 * d;
             second[i] = 0.999 * second[i] + 0.001 * d * d;
@@ -383,7 +369,7 @@
               (Math.sqrt(second[i] / correction2) + 1e-8);
 
             if (!Number.isFinite(parameters[i])) {
-              throw new Error("Invalid neural parameter after update.");
+              throw new Error("Neural parameter diverged.");
             }
           }
         }
@@ -410,124 +396,99 @@
       this.cursor = (this.cursor + 1) % this.capacity;
     }
 
-    sample(count, rng) {
-      const sampler = rng || Math.random;
+    sample(count, rng = Math.random) {
+      if (!this.items.length) throw new Error("Replay is empty.");
+
       return Array.from(
         { length: count },
-        () => this.items[Math.floor(sampler() * this.items.length)]
+        () => this.items[Math.floor(rng() * this.items.length)]
       );
     }
   }
 
   class Learner {
-    constructor(net, seed = 1, previousSteps = 0) {
+    constructor(net, seed = 1, previousSteps = 0, options = {}) {
       this.net = net;
       this.target = net.clone();
       this.rng = K.rng(seed);
-      this.replay = new Replay(50000);
-      this.queue = [];
+      this.replay = new Replay(options.capacity || 50000);
       this.steps = previousSteps;
       this.updates = 0;
       this.loss = 0;
-      this.gamma = g.SoulEnv ? g.SoulEnv.GAMMA : 0.95;
-      this.updateStats = { win: 0, damage: 0, loss: 0, neutral: 0 };
+
+      this.gamma = g.SoulEnv.GAMMA;
+      this.batchSize = options.batchSize || 32;
+      this.warmup = options.warmup || 256;
+      this.interval = options.interval || 32;
+
+      this.updateStats = {
+        win: 0, damage: 0, loss: 0, neutral: 0
+      };
     }
 
-    /**
-     * Polyak Soft Target Network Update
-     * Slows target network drift to eliminate sharp Q-value jumps.
-     */
     softUpdateTarget(tau = 0.005) {
-      if (!this.target) return;
       for (let l = 0; l < this.net.layers.length; l++) {
-        const online = this.net.layers[l];
-        const target = this.target.layers[l];
-        for (let i = 0; i < online.w.length; i++) {
-          target.w[i] = tau * online.w[i] + (1 - tau) * target.w[i];
+        for (const field of ["w", "b"]) {
+          const online = this.net.layers[l][field];
+          const target = this.target.layers[l][field];
+
+          for (let i = 0; i < online.length; i++) {
+            target[i] = tau * online[i] + (1 - tau) * target[i];
+          }
         }
-        for (let i = 0; i < online.b.length; i++) {
-          target.b[i] = tau * online.b[i] + (1 - tau) * target.b[i];
-        }
       }
-    }
-
-    fold() {
-      const transition = this.queue.shift();
-      if (!transition) return;
-
-      const discount = transition.done
-        ? 0
-        : (transition.discount ?? this.gamma);
-
-      if (
-        !Number.isFinite(discount) ||
-        discount < 0 ||
-        discount > 1
-      ) {
-        throw new Error("Invalid transition discount.");
-      }
-
-      if (!Number.isFinite(transition.r)) {
-        throw new Error("Invalid transition reward.");
-      }
-
-      this.replay.add({
-        s: transition.s,
-        a: transition.a,
-        m: transition.m,
-        demo: transition.demo,
-        r: transition.r,
-        discount,
-        weightScale: transition.weightScale || 1.0,
-        s1: transition.s1,
-        m1: transition.m1,
-        rewardCategory: transition.rewardCategory || transition.category || null,
-        isLoss: transition.isLoss || transition.r < 0
-      });
     }
 
     accept(transition, imitation = 0.03) {
-      this.steps++;
-      this.queue.push(transition);
+      const discount = transition.done
+        ? 0
+        : transition.discount ?? this.gamma;
 
-      if (transition.done) {
-        while (this.queue.length) {
-          this.fold();
-        }
-      } else if (this.queue.length >= 1) {
-        this.fold();
+      if (
+        !Number.isFinite(transition.r) ||
+        !Number.isFinite(discount) ||
+        discount < 0 ||
+        discount > 1 ||
+        !transition.m?.[transition.a]
+      ) {
+        throw new Error("Invalid replay transition.");
       }
 
-      // Gradient Step Interval updated to 32 ticks
+      this.steps++;
+
+      this.replay.add({
+        ...transition,
+        discount,
+        weightScale: transition.weightScale ?? 1
+      });
+
       if (
-        this.steps % 32 !== 0 ||
-        this.replay.items.length < 256
+        this.steps % this.interval !== 0 ||
+        this.replay.items.length < this.warmup
       ) {
         return;
       }
 
-      const rows = this.replay.sample(32, this.rng).map(t => {
+      const rows = this.replay.sample(this.batchSize, this.rng).map(t => {
         let target = t.r;
 
         if (t.discount > 0) {
-          const nextAction = argmax(
-            this.net.predict(t.s1),
-            t.m1
-          );
-
+          const nextAction = argmax(this.net.predict(t.s1), t.m1);
           target += t.discount * this.target.predict(t.s1)[nextAction];
         }
 
-        // Clamp TD target to prevent gradient blowups
-        target = K.clamp(target, -5.0, 5.0);
+        target = K.clamp(target, -5, 5);
 
-        const cat = t.rewardCategory ||
-          (t.weightScale === 2.0 ? "Win" : t.weightScale === 1.5 ? "Dmg" : t.weightScale === 0.5 ? "Loss" : "Neu");
+        const category = t.rewardCategory || "Neu";
+        const key = category === "Win"
+          ? "win"
+          : category === "Dmg"
+            ? "damage"
+            : category === "Loss"
+              ? "loss"
+              : "neutral";
 
-        if (cat === "Win") this.updateStats.win++;
-        else if (cat === "Dmg") this.updateStats.damage++;
-        else if (cat === "Loss") this.updateStats.loss++;
-        else this.updateStats.neutral++;
+        this.updateStats[key]++;
 
         return {
           s: t.s,
@@ -535,21 +496,31 @@
           m: t.m,
           demo: t.demo,
           y: target,
-          weightScale: t.weightScale || 1.0
+          weightScale: t.weightScale
         };
       });
 
-      this.loss = this.net.train(
-        rows,
-        0.0001,
-        imitation
-      );
-
+      this.loss = this.net.train(rows, 0.0001, imitation);
       this.updates++;
-
-      // Soft Target Update applied on every step (tau = 0.005)
-      this.softUpdateTarget(0.005);
+      this.softUpdateTarget();
     }
+  }
+
+  function getStanceGroups(actionIndex, outputSize = 17) {
+    const stance = actionIndex < 16 ? Math.floor(actionIndex / 4) : -1;
+    const sameStance = [];
+    const otherStances = [];
+
+    for (let i = 0; i < outputSize; i++) {
+      if (i === actionIndex) continue;
+
+      const candidateStance = i < 16 ? Math.floor(i / 4) : -1;
+
+      if (candidateStance === stance) sameStance.push(i);
+      else otherStances.push(i);
+    }
+
+    return { sameStance, otherStances };
   }
 
   g.SoulNN = {
@@ -557,9 +528,10 @@
     Network,
     Learner,
     Replay,
+    validateJSON,
     argmax,
-    sampleAction,
     randomAction,
+    sampleAction,
     getStanceGroups
   };
 })(globalThis);
