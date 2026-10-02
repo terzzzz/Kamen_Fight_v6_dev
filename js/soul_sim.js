@@ -1,4 +1,422 @@
 /* js/soul_sim.js
+ * Round-based training and evaluation using CombatCore.resolve().
+ * Build: v5-state256-action17
+ */
+(function (g) {
+  "use strict";
+
+  const BUILD = "v5-state256-action17";
+
+  const E = g.SoulEnv;
+  const N = g.SoulNN;
+  const C = g.CombatCore;
+  const K = g.KF;
+
+  function assertNetworkSize(spec, net) {
+    E.assertSpec(spec);
+
+    if (
+      !net ||
+      net.sizes?.[0] !== spec.input ||
+      net.sizes?.[net.sizes.length - 1] !== spec.output
+    ) {
+      throw new Error("Network does not match the current environment.");
+    }
+  }
+
+  function resolveExecutionCharge(key, state, slot) {
+    if (!key || key === "DO_NOTHING") return 0;
+
+    const move = state.moves[slot][key];
+    if (!move) throw new Error("Cannot charge an unknown move: " + key);
+
+    // Explicit baseline, not an approximate EV optimizer.
+    return C.maxCharge(state[slot], move.direction);
+  }
+
+  function actionForIndex(env, slot, index) {
+    const key = E.ACTION_MAP[index];
+
+    if (!key) throw new Error("Unknown neural action index.");
+
+    const action = {
+      key,
+      charge: resolveExecutionCharge(key, env.state, slot)
+    };
+
+    if (!C.isLegal(env.state, slot, action)) {
+      throw new Error("Controller selected an illegal action: " + key);
+    }
+
+    return action;
+  }
+
+  function makeNeuralEvaluator(
+    net,
+    spec,
+    learnerSlot = "p1",
+    rootHistory = []
+  ) {
+    if (!net) return null;
+    assertNetworkSize(spec, net);
+
+    return function (state, perspective, history = rootHistory) {
+      if (state.winner) {
+        if (state.winner === "draw") return 0;
+        return state.winner === perspective ? 100000 : -100000;
+      }
+
+      const env = E.create(state);
+      env.history = history;
+
+      const input = E.vector(E.observe(env, learnerSlot), spec);
+      const mask = E.mask(env, learnerSlot);
+      const q = net.predict(input);
+      const value = q[N.argmax(q, mask)];
+
+      // Put learned return values in a useful range for this search adapter.
+      // This scale is a tuning parameter, not a combat-rule change.
+      const scaled = value * 500;
+
+      return perspective === learnerSlot ? scaled : -scaled;
+    };
+  }
+
+  function reactor(spec, net, rng, options = {}) {
+    E.assertSpec(spec);
+    if (net) assertNetworkSize(spec, net);
+
+    return {
+      decide(env, slot) {
+        if (env.state.winner) return null;
+
+        const history = options.history || env.history || [];
+        env.history = history;
+
+        const s = E.vector(E.observe(env, slot), spec);
+        const m = E.mask(env, slot);
+        const q = net ? net.predict(s) : null;
+
+        let action;
+        let demo = false;
+
+        if (env.state[slot].isFainted) {
+          action = { key: "DO_NOTHING", charge: 0 };
+        } else if (options.guide) {
+          demo = true;
+
+          if (typeof options.teacher === "function") {
+            action = options.teacher(env, slot);
+          } else {
+            action = g.KF_AI.choose({
+              state: C.copyState(env.state),
+              slot,
+              history,
+              difficulty: options.teacherDifficulty || "master",
+              seed: options.seed ?? 1
+            }).action;
+          }
+        } else if (options.mode === "rider") {
+          action = g.KF_AI.choose({
+            state: C.copyState(env.state),
+            slot,
+            history,
+            difficulty: "rider",
+            neuralNetwork: net,
+            neuralSpec: spec,
+            seed: options.seed ?? 1
+          }).action;
+        } else {
+          let index;
+
+          if (!net) {
+            index = E.scripted(rng)(E.observe(env, slot), m);
+          } else if (
+            options.isTraining &&
+            rng() < (options.epsilon || 0)
+          ) {
+            index = N.randomAction(m, rng);
+          } else if (options.isTraining) {
+            index = N.sampleAction(q, m, 0.15, rng);
+          } else {
+            index = N.argmax(q, m);
+          }
+
+          action = actionForIndex(env, slot, index);
+        }
+
+        if (!C.isLegal(env.state, slot, action)) {
+          throw new Error("Planner returned an illegal action.");
+        }
+
+        action = C.normalizeAction(env.state, slot, action);
+
+        const a = E.getActionIndexByKey(action.key);
+
+        if (a < 0 || !m[a]) {
+          throw new Error("Planner action is not in the neural action schema.");
+        }
+
+        const selectedQ = q ? q[a] : 0;
+        if (options.onQ) options.onQ(selectedQ);
+
+        return {
+          s: new Float32Array(s),
+          m: Uint8Array.from(m),
+          a,
+          action,
+          demo,
+          q: selectedQ
+        };
+      }
+    };
+  }
+
+  function calculateReward(before, after, slot, mode) {
+    const enemySlot = C.other(slot);
+
+    let reward = 0;
+
+    if (mode === "standard") {
+      const enemyLpChange =
+        (before[enemySlot].lp - after[enemySlot].lp) /
+        Math.max(1, before[enemySlot].maxLp);
+
+      const ownLpChange =
+        (before[slot].lp - after[slot].lp) /
+        Math.max(1, before[slot].maxLp);
+
+      reward = 1.5 * enemyLpChange - ownLpChange;
+
+      reward += 0.05 *
+        Math.max(0, after[slot].chi - before[slot].chi) /
+        Math.max(1, before[slot].maxChi);
+    } else if (mode !== "terminal_only") {
+      throw new Error("Unknown reward mode: " + mode);
+    }
+
+    if (after.winner === slot) reward += 1;
+    else if (after.winner && after.winner !== "draw") reward -= 1;
+
+    return reward;
+  }
+
+  function* episode(options) {
+    const {
+      data,
+      spec,
+      net,
+      learnerSlot = "p1",
+      learnerId,
+      opponent,
+      opponentMode = "mixed",
+      opponentNet = null,
+      seed = 1,
+      epsilon = 0,
+      guideProbability = 0,
+      teacher = "master",
+      rewardMode = "standard",
+      initialStateOverride = null,
+      learnerMode = "network",
+      isEvaluation = false
+    } = options;
+
+    assertNetworkSize(spec, net);
+
+    if (opponentNet) assertNetworkSize(spec, opponentNet);
+
+    const learnerRider = data.riders.find(r => r.id === learnerId);
+    if (!learnerRider || !opponent) {
+      throw new Error("Episode matchup is missing rider data.");
+    }
+
+    const enemySlot = C.other(learnerSlot);
+
+    let state = initialStateOverride
+      ? C.copyState(initialStateOverride)
+      : C.createMatch(
+          learnerSlot === "p1" ? learnerRider : opponent,
+          learnerSlot === "p1" ? opponent : learnerRider,
+          data.moves
+        );
+
+    let history = [...(initialStateOverride?.history || [])];
+
+    const combatRng = K.rng(K.hash(seed, "combat"));
+    const choices = K.rng(K.hash(seed, "choices"));
+
+    let rounds = 0;
+    let qSum = 0;
+    let qCount = 0;
+
+    while (!state.winner) {
+      if (rounds > g.COMBAT_RULES.MAX_ROUNDS + 1) {
+        throw new Error("CombatCore failed to terminate at its round limit.");
+      }
+
+      const env = E.create(state);
+      env.history = history;
+
+      const roundSeed = K.hash(seed, "round", state.round);
+
+      const guided =
+        !isEvaluation &&
+        choices() < guideProbability;
+
+      const controller = reactor(
+        spec,
+        net,
+        K.rng(K.hash(roundSeed, learnerSlot)),
+        {
+          history,
+          guide: guided,
+          teacherDifficulty: teacher,
+          epsilon,
+          isTraining: !isEvaluation,
+          mode: learnerMode,
+          seed: roundSeed
+        }
+      );
+
+      const decision = controller.decide(env, learnerSlot);
+      let opposingAction;
+
+      if (state[enemySlot].isFainted) {
+        opposingAction = { key: "DO_NOTHING", charge: 0 };
+      } else if (opponentMode === "mixed") {
+        const m = E.mask(env, enemySlot);
+
+        const index = E.scripted(
+          K.rng(K.hash(roundSeed, "scripted"))
+        )(E.observe(env, enemySlot), m);
+
+        opposingAction = actionForIndex(env, enemySlot, index);
+      } else if (opponentMode === "network") {
+        if (!opponentNet) {
+          throw new Error("A direct-network opponent needs its own checkpoint.");
+        }
+
+        opposingAction = reactor(
+          spec,
+          opponentNet,
+          K.rng(K.hash(roundSeed, enemySlot)),
+          { history, isTraining: false, mode: "network" }
+        ).decide(env, enemySlot).action;
+      } else {
+        // RIDER without an opponent checkpoint falls back to pure SOUL search.
+        // Never substitute the learner's different-matchup network here.
+        opposingAction = g.KF_AI.choose({
+          state: C.copyState(state),
+          slot: enemySlot,
+          history,
+          difficulty: opponentMode,
+          neuralNetwork: opponentNet,
+          neuralSpec: spec,
+          disableAgent: true,
+          seed: K.hash(roundSeed, "opponent")
+        }).action;
+      }
+
+      if (!C.isLegal(state, enemySlot, opposingAction)) {
+        throw new Error("Opponent planner returned an illegal action.");
+      }
+
+      const before = state;
+
+      const selected = {
+        [learnerSlot]: decision.action,
+        [enemySlot]: opposingAction
+      };
+
+      const result = C.resolve(
+        before,
+        selected.p1,
+        selected.p2,
+        combatRng,
+        false
+      );
+
+      state = result.state;
+
+      history = g.KF_AI.remember(
+        history,
+        before,
+        result.actions
+      );
+
+      rounds++;
+
+      const nextEnv = E.create(state);
+      nextEnv.history = history;
+
+      const s1 = E.vector(E.observe(nextEnv, learnerSlot), spec);
+      const m1 = E.mask(nextEnv, learnerSlot);
+      const done = Boolean(state.winner);
+
+      let category = "Neu";
+
+      if (state.winner === learnerSlot) category = "Win";
+      else if (state.winner && state.winner !== "draw") category = "Loss";
+      else if (state[enemySlot].lp < before[enemySlot].lp) category = "Dmg";
+
+      const actionKey = result.actions[learnerSlot].key;
+
+      yield {
+        type: "transition",
+        transition: {
+          s: decision.s,
+          a: decision.a,
+          m: decision.m,
+          s1,
+          m1,
+          r: calculateReward(before, state, learnerSlot, rewardMode),
+          discount: done ? 0 : E.GAMMA,
+          done,
+          demo: decision.demo,
+          weightScale: 1,
+          rewardCategory: category,
+          isFinalRoundResolution: true,
+          actionKey,
+          resolvedActionKey: actionKey,
+          charge: result.actions[learnerSlot].charge,
+          forcedRecovery: Boolean(before[learnerSlot].isFainted)
+        }
+      };
+
+      qSum += decision.q;
+      qCount++;
+
+      yield {
+        type: "round",
+        rounds,
+        avgQ: qSum / qCount,
+        qSumDelta: decision.q,
+        qCountDelta: 1
+      };
+    }
+
+    yield {
+      type: "end",
+      result: {
+        state,
+        rounds,
+        ticks: rounds,
+        avgQ: qCount ? qSum / qCount : 0,
+        qSumDelta: 0,
+        qCountDelta: 0
+      }
+    };
+  }
+
+  g.SoulSim = {
+    BUILD,
+    reactor,
+    episode,
+    calculateReward,
+    resolveExecutionCharge,
+    makeNeuralEvaluator
+  };
+})(globalThis);/* js/soul_sim.js
  * Rule-Regularized Composite Soft-Q Combat Simulator Engine.
  * Features:
  *   - Dynamic EV-Based Stochastic Execution Charge Optimization
