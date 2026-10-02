@@ -1,197 +1,213 @@
 /* js/ai.js
- * Central AI Decision Dispatcher mapping:
- * - NOVICE (easy), BALANCED, MASTER, SOUL -> ForeseeEngine (Pure Search Trees)
- * - RIDER (rider / mcts)                  -> MCTSEngine + SoulNN (1v1 Neural Matrix)
- * Build: v4-onehot136-1v1-zero
+ * Search dispatcher.
+ * Pure Foresee: NOVICE / BALANCED / MASTER / SOUL.
+ * Neural-evaluated Foresee: RIDER.
+ * Build: v5-state256-action17
  */
-
 (function (g) {
   "use strict";
 
-  const VERSION = "v4-onehot136-1v1-zero";
-  const K = g.KF;
+  const VERSION = "v5-state256-action17";
   const C = g.CombatCore;
+  const K = g.KF;
 
-  function stamp(result) {
-    return Object.assign({}, result, {
-      debug: Object.assign({}, result.debug || {}, { engineVersion: VERSION })
-    });
+  function stamp(action, debug) {
+    return {
+      action: { ...action },
+      debug: {
+        ...debug,
+        engineVersion: VERSION
+      }
+    };
+  }
+
+  function difficultyName(value) {
+    const name = String(value || "balanced").toLowerCase();
+
+    if (name === "novice") return "easy";
+    if (name === "mcts") return "rider";
+
+    if (["easy", "balanced", "master", "soul", "rider"].includes(name)) {
+      return name;
+    }
+
+    return K.difficulty(value);
   }
 
   function choose(context) {
-    const { state, slot } = context;
-    const rawDiff = String(context.difficulty || context.mode || "").toLowerCase();
-    const player = state?.[slot];
-    const oppSlot = slot === "p1" ? "p2" : "p1";
-    const opponent = state?.[oppSlot];
+    const { state, slot } = context || {};
 
-    if (!player || !opponent || !state.moves?.[slot]) {
-      throw new Error("Invalid AI planning context.");
+    if (
+      !state ||
+      !["p1", "p2"].includes(slot) ||
+      !state[slot] ||
+      !state[C.other(slot)] ||
+      !state.moves?.[slot]
+    ) {
+      throw new Error("Invalid AI context.");
     }
 
-    if (state.winner || player.isFainted) {
-      return stamp({
-        action: { key: "DO_NOTHING", charge: 0 },
-        debug: {
-          difficulty: rawDiff,
-          strategy: "Forced faint recovery / completed match",
-          completedHorizon: 0
+    let difficulty = difficultyName(context.difficulty || context.mode);
+    if (context.useMCTS === true) difficulty = "rider";
+
+    if (state.winner || state[slot].isFainted) {
+      return stamp(
+        { key: "DO_NOTHING", charge: 0 },
+        {
+          difficulty,
+          strategy: "Completed match / forced faint recovery"
         }
-      });
+      );
     }
 
-    // --- LEVEL 5: RIDER MODE (MCTSEngine / ForeseeEngine + 1v1 Neural Matrix) ---
-    const isRider = rawDiff === "rider" || rawDiff === "mcts" || context.useMCTS === true;
+    if (typeof g.ForeseeEngine?.search !== "function") {
+      throw new Error("ForeseeEngine.search is missing.");
+    }
 
-    if (isRider) {
-      // Auto-fallback: fetch active 1v1 matrix from SoulAgent if not explicitly passed
-      const checkpoint = context.policyWeights || (
-        g.SoulAgent && typeof g.SoulAgent.getSection === "function"
-          ? g.SoulAgent.getSection(player.id, opponent.id, "active")
-          : null
-      );
+    let net = context.neuralNetwork || null;
+    let spec = context.neuralSpec || null;
 
-      const net = checkpoint?.net ? g.SoulNN.Network.fromJSON(checkpoint.net) : null;
-      const spec = g.SoulEnv ? g.SoulEnv.makeSpec(context.data || { riders: [player, opponent], moves: state.moves }) : null;
+    if (difficulty === "rider" && !net) {
+      let checkpoint = context.policyWeights || null;
 
-      if (g.MCTSEngine && typeof g.MCTSEngine.search === "function") {
-        const mctsResult = g.MCTSEngine.search({
-          state: C.copyState(state),
-          slot,
+      if (!checkpoint && !context.disableAgent) {
+        checkpoint = g.SoulAgent?.getSection(
+          state[slot].id,
+          state[C.other(slot)].id,
+          "active"
+        ) || null;
+      }
+
+      if (checkpoint) {
+        const validation = g.SoulAgent.validateCheckpoint(
+          checkpoint,
+          state[slot].id,
+          state[C.other(slot)].id
+        );
+
+        if (!validation.valid) {
+          throw new Error("Invalid RIDER checkpoint: " + validation.error);
+        }
+
+        net = g.SoulNN.Network.fromJSON(checkpoint.net);
+        spec = checkpoint.spec;
+      }
+    }
+
+    const rider = difficulty === "rider";
+
+    if (rider && net) {
+      spec = spec || g.SoulEnv.makeSpec();
+      g.SoulEnv.assertSpec(spec);
+    }
+
+    const evaluator = rider && net
+      ? g.SoulSim.makeNeuralEvaluator(
           net,
           spec,
-          iterations: context.mctsIterations || 200,
-          cPUCT: context.cPUCT || 1.41,
-          seed: context.seed ?? 12345
-        });
-
-        const actionKey = mctsResult.actionKey;
-        const normAction = C.normalizeAction(state, slot, {
-          key: actionKey,
-          charge: player.charge || 0
-        });
-
-        return stamp({
-          action: normAction,
-          debug: {
-            difficulty: "rider",
-            strategy: `RIDER Mode AlphaZero [${mctsResult.visits} visits]`,
-            expectedValue: Number((mctsResult.expectedValue || 0).toFixed(3))
-          }
-        });
-      }
-
-      // Fallback to ForeseeEngine with direct Neural Evaluator if MCTSEngine is absent
-      if (g.ForeseeEngine && typeof g.ForeseeEngine.search === "function") {
-        const res = g.ForeseeEngine.search({
-          state: C.copyState(state),
           slot,
-          history: context.history || [],
-          difficulty: "soul",
-          evaluator: net && spec && g.SoulSim ? g.SoulSim.makeNeuralEvaluator?.(net, spec, slot) : null
-        });
+          context.history || []
+        )
+      : null;
 
-        const bestAction = res.rows?.[0]?.action || { key: "DO_NOTHING", charge: 0 };
-        return stamp({
-          action: C.normalizeAction(state, slot, bestAction),
-          debug: {
-            difficulty: "rider",
-            strategy: "RIDER Mode Foresee Tree (1v1 Matrix Evaluator)",
-            chosenScore: Number((res.rows?.[0]?.score || 0).toFixed(2))
-          }
-        });
-      }
+    const searchDifficulty = rider ? "soul" : difficulty;
 
-      throw new Error("Neither MCTSEngine nor ForeseeEngine module is available for RIDER mode.");
-    }
-
-    // --- LEVELS 1-4: NOVICE, BALANCED, MASTER, SOUL (ForeseeEngine Pure Search Trees) ---
-    if (!g.ForeseeEngine || typeof g.ForeseeEngine.search !== "function") {
-      throw new Error("ForeseeEngine search module is missing.");
-    }
-
-    const searchDifficulty = (rawDiff === "soul") ? "soul" : K.difficulty(context.difficulty || context.mode);
-
-    // Explicitly sanitize context: force evaluator to null so search trees never leak neural weights
-    const cleanContext = Object.assign({}, context, {
+    const searchContext = {
+      ...context,
+      state: C.copyState(state),
+      slot,
+      history: context.history || [],
       difficulty: searchDifficulty,
-      evaluator: null,
+      evaluator,
       isTraining: false
-    });
+    };
 
-    const result = g.ForeseeEngine.search(cleanContext);
+    // These are dispatcher-only fields, not search inputs.
+    delete searchContext.neuralNetwork;
+    delete searchContext.neuralSpec;
+    delete searchContext.policyWeights;
+    delete searchContext.useMCTS;
 
-    const rows = result.rows;
+    const result = g.ForeseeEngine.search(searchContext);
 
-    if (!Array.isArray(rows) || !rows.length) {
-      throw new Error("ForeseeEngine returned no candidate actions.");
+    const rows = (result?.rows || [])
+      .filter(row =>
+        Number.isFinite(row.score) &&
+        C.isLegal(state, slot, row.action)
+      )
+      .sort((a, b) => b.score - a.score);
+
+    if (!rows.length) {
+      throw new Error("ForeseeEngine returned no legal, finite candidate.");
     }
 
-    const bestScore = rows[0].score;
-    const tolerance = K?.levels?.[searchDifficulty]?.nearBest ?? 0;
+    let selected = rows[0];
 
-    const close = rows.filter(row =>
-      bestScore - row.score <= tolerance
-    );
+    if (!rider) {
+      const tolerance = Math.max(
+        0,
+        K.levels?.[searchDifficulty]?.nearBest ?? 0
+      );
 
-    const probabilities = close.map(row =>
-      Math.exp(
-        (row.score - bestScore) /
-        Math.max(1, tolerance / 3)
-      )
-    );
+      const close = rows.filter(
+        row => rows[0].score - row.score <= tolerance
+      );
 
-    const total = probabilities.reduce(
-      (sum, value) => sum + value,
-      0
-    );
+      const probabilities = close.map(row =>
+        Math.exp(
+          (row.score - rows[0].score) / Math.max(1, tolerance / 3)
+        )
+      );
 
-    const rng = K ? K.rng(K.hash(context.seed ?? 1, "selection")) : Math.random;
+      const total = probabilities.reduce((sum, value) => sum + value, 0);
+      const rng = K.rng(K.hash(context.seed ?? 1, "selection"));
+      let cursor = rng() * total;
 
-    let cursor = rng() * total;
-    let selected = close[close.length - 1];
+      selected = close[close.length - 1];
 
-    for (let index = 0; index < close.length; index++) {
-      cursor -= probabilities[index];
+      for (let i = 0; i < close.length; i++) {
+        cursor -= probabilities[i];
 
-      if (cursor <= 0) {
-        selected = close[index];
-        break;
+        if (cursor <= 0) {
+          selected = close[i];
+          break;
+        }
       }
     }
 
-    if (!C.isLegal(state, slot, selected.action)) {
-      throw new Error("Search returned an illegal action.");
-    }
-
-    return stamp({
-      action: Object.assign({}, selected.action),
-      debug: Object.assign({}, result.debug, {
-        chosenScore: Number(selected.score.toFixed(2))
-      })
-    });
+    return stamp(
+      C.normalizeAction(state, slot, selected.action),
+      {
+        ...(result.debug || {}),
+        difficulty,
+        chosenScore: Number(selected.score.toFixed(3)),
+        neural: Boolean(evaluator),
+        strategy: rider
+          ? evaluator
+            ? "RIDER: neural-evaluated Foresee search"
+            : "RIDER fallback: pure SOUL search; no compatible active model"
+          : "Pure Foresee search"
+      }
+    );
   }
 
   function remember(history, before, selected) {
-    const list = Array.isArray(history) ? history.slice() : [];
-    
-    const p1Act = Object.assign({}, selected.p1);
-    const p2Act = Object.assign({}, selected.p2);
+    const p1 = { ...selected.p1 };
+    const p2 = { ...selected.p2 };
 
-    list.push({
-      p1: p1Act,
-      p2: p2Act,
-      actions: {
-        p1: p1Act,
-        p2: p2Act
-      },
+    const next = Array.isArray(history) ? history.slice() : [];
+
+    next.push({
+      p1,
+      p2,
+      actions: { p1, p2 },
       fainted: {
         p1: Boolean(before?.p1?.isFainted),
         p2: Boolean(before?.p2?.isFainted)
       }
     });
-    
-    return list.slice(-24);
+
+    return next.slice(-24);
   }
 
   g.KF_AI = {
