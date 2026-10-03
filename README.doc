@@ -88,6 +88,7 @@ Riders: Include all showga riders + shadow moon (portrait only)
 17-21/9/26: Continue to enhance SOUL training logic. More stats revealed for analysis and ensure the training is on right track.
 22/9-27/9/26: Considered plugging training to python or enalrge training matrix size but failed, switched back to original. 
 28/9/26: Try to give a more accurate rewards in the matrix.
+30/09/26: Update matrix by more accurately record the rider status like buff and debuff; re-training matrix for potential higher intelligence.
 
 
 
