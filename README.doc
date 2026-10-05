@@ -1,55 +1,62 @@
-ver. 20260907-
+ver. 20261005-
 
 Kamen Fight - Project Documentation
-====================================
-
-Kamen Fight is a Web-based, turn-based Kamen Rider fighting game built with vanilla JavaScript (ES6+), HTML5 Video, and CSS3. 
-The game features simultaneous command selection, directional charge mechanics, sequential video-driven combat resolution, deterministic PRNG-based mechanics, multi-threaded Expectimax & Monte Carlo lookahead AI engines, headless batch simulation with replay verification, and full mirror-match support.
+Kamen Fight is a Web-based, turn-based Kamen Rider fighting game built with vanilla JavaScript (ES6+), HTML5 Video, and CSS3.
+The game features simultaneous command selection, directional charge mechanics, sequential video-driven combat resolution, deterministic PRNG-based mechanics, multi-threaded Expectimax & simultaneous-move PUCT Monte Carlo Tree Search (MCTS) lookahead AI engines, Double DQN neural network learning systems, specialized evolutionary policy agents, headless batch simulation with replay verification, and full mirror-match support.
 
 Key Features & Architecture
----------------------------
-* Directional Charge System: Players hold directional keys (W, A, S, D) to build charge percentages prior to confirming attacks with action keys (I, J, K, L). Charge levels dynamically scale attack damage, accuracy, priority, and guard effectiveness.
-* Decoupled Deterministic Combat Core: Pure state-machine combat resolution engine (js/combat_core.js) supporting deterministic state resolution, seedable Mulberry32 PRNG, outcome probability enumeration, and side-swapping spatial symmetry.
-* Advanced Multi-Threaded AI: Decision search pipeline utilizing parallel Web Workers, Depth-1 Expectimax evaluation, character-specific tactical heuristics (js/rider_brains.js), opponent habit decay models, and deep multi-turn Monte Carlo horizon rollouts (js/foresee_engine.js).
-* Resource & Stun Mechanics: Chi resource pool capped at 16 with dynamic Low Power (<5 Chi) debuffs and Full Power (>14 Chi) status bonuses. Faint buildup (100-point threshold) forces targets into a 1-turn stunned idle state.
-* Headless Batch Simulator & Replay Verifier: Fast background Monte Carlo simulation engine (js/simulator.js) for CPU vs. CPU balancing (10 to 100+ runs) with strict bit-identical state replay verification (verifyReplay).
-* Automated Testing Dashboard: On-screen browser testing suite (test_dashboard.html / js/combat_tests.js) verifying combat rules, state immutability, interrupt logic, and AI difficulty performance.
+Directional Charge System: Players hold directional keys (W, A, S, D) to build charge percentages prior to confirming attacks with action keys (I, J, K, L). Charge levels dynamically scale attack damage, accuracy, priority, and guard effectiveness.
+
+Decoupled Deterministic Combat Core: Pure state-machine combat resolution engine (js/combat_core.js) supporting deterministic state resolution, seedable Mulberry32 PRNG, outcome probability enumeration, move compilation (compileMoves), and side-swapping spatial symmetry.
+
+Advanced Multi-Engine AI & Neural Architecture: Flexible decision search pipeline utilizing parallel Web Workers (js/cpu_controller.js), Depth-1 Expectimax evaluation (js/foresee_engine.js), simultaneous-move PUCT Monte Carlo Tree Search (js/mcts_engine.js), CPU Multi-Layer Perceptron & Double DQN learning loops with Adam optimizer (js/neural_core.js), character-specific tactical posture heuristics (js/rider_brains.js), and specialized evolutionary policy models (js/agent_ichigo.js).
+
+Neural Environment & Observation Vector: 256-input feature vector generator and state wrapper (js/charge_env.js / SoulEnv) supporting 17 discrete actions, charging clock tracking, and status encoding for reinforcement learning and MCTS state lookahead.
+
+Resource & Stun Mechanics: Chi resource pool capped at 16 with dynamic Low Power (<5 Chi) debuffs and Full Power (>14 Chi) status bonuses. Faint buildup (100-point threshold) forces targets into a 1-turn stunned idle state.
+
+Headless Batch Simulator & Evolutionary Trainer: Fast background Monte Carlo simulation engine (js/simulator.js) powering offline evolutionary policy mutations, CPU vs. CPU balancing (10 to 100+ runs), and strict bit-identical state replay verification (verifyReplay).
+
+Automated Testing Dashboard: On-screen browser testing suite (test_dashboard.html / js/combat_tests.js) verifying combat rules, state immutability, interrupt logic, PRNG determinism, and AI difficulty benchmarks.
 
 Project Directory Structure
----------------------------
-├── index.html              # Playable game entry point & dynamic view mounting
-├── index_test.html     # Automated browser test dashboard & AI benchmark harness
+├── index.html            # Playable game entry point & dynamic view mounting
+├── index_test.html       # Automated browser test dashboard & AI benchmark harness
 ├── css/
-│   └── style.css           # Layouts, HUD overlays, bar tracks, video containers, popups
+│   └── style.css        # Layouts, HUD overlays, bar tracks, video containers, popups
 ├── data/
-│   ├── moves.json          # Master move database, Chi costs, damage ratios, video mappings
-│   └── riders.json         # Roster list, base stats (LP, orientation), video folders
+│   ├── moves.json       # Master move database, Chi costs, damage ratios, video mappings
+│   ├── riders.json      # Roster list, base stats (LP, orientation), video folders
+│   └── wt_ichigo.json   # Exported neural/linear weights policy file for Ichigo evolutionary agent
 ├── js/
-│   ├── ai.js               # AI decision runner & rolling 24-turn match memory store
-│   ├── ai_worker.js        # Background Web Worker thread for parallel AI search
-│   ├── combat_core.js      # Decoupled deterministic combat rules & state resolution
-│   ├── combat_engine.js    # Live combat playback adapter & visual event orchestrator
-│   ├── combat_tests.js     # Automated unit test suite & difficulty benchmark harness
-│   ├── common.js           # Utilities, Mulberry32 PRNG, FNV-1a hash, JSON loader
-│   ├── cpu_controller.js   # Asynchronous Web Worker pool dispatcher & CPU manager
-│   ├── foresee_engine.js   # Expectimax decision search & Monte Carlo horizon rollouts
-│   ├── game.js             # Main game lifecycle manager, screen router & HUD painter
-│   ├── match_manager.js    # Live input handlers (WASD/Touch), charge monitors, timers
-│   ├── media.js            # Video player, mobile video/audio unlocker, sprite flipper
-│   ├── rider_brains.js     # Character-specific tactical intelligence profiles & priors
-│   ├── simulator.js        # Headless batch simulation engine & replay verifier
-│   ├── storage.js          # LocalStorage persistence manager
-│   ├── ui.js               # Battle HUD renderer, LP/Chi/Faint bars, damage popups
-│   └── vs_select.js        # 3-step character select wizard, BGM manager, sim modal UI
+│   ├── agent_ichigo.js  # Evolutionary agent for Ichigo (AgentIchigo), candidate mutation & weight persistence
+│   ├── ai.js            # AI decision dispatcher routing across Expectimax, MCTS, and neural search engines
+│   ├── ai_worker.js     # Background Web Worker thread for parallelized AI lookahead search
+│   ├── charge_env.js    # 256-input observation vector generator & SoulEnv state transition environment wrapper
+│   ├── combat_core.js   # Decoupled deterministic combat rules engine, move compiler & state resolution
+│   ├── combat_engine.js # Live visual event presentation engine (CombatPlayback) & video cutscene orchestrator
+│   ├── combat_tests.js  # Automated unit test suite verifying PRNG determinism, damage formulas & AI benchmarks
+│   ├── common.js        # Core constants (COMBAT_RULES), Mulberry32 PRNG, FNV-1a hash & async JSON loader
+│   ├── cpu_controller.js# Asynchronous Web Worker pool dispatcher (AIService) & CPU decision manager
+│   ├── foresee_engine.js# Neural-guided Expectimax decision search engine & Monte Carlo horizon rollouts
+│   ├── game.js          # Core application lifecycle manager, screen router & view state bootstrapper
+│   ├── match_manager.js # Live match controller (MatchManager), input handlers, charge monitors & turn lifecycles
+│   ├── mcts_engine.js   # Simultaneous-move PUCT Monte Carlo Tree Search (MCTSEngine) engine
+│   ├── media.js         # Sequential video/sprite loader (KFMedia), dual-stream video player & canvas flipper
+│   ├── neural_core.js   # CPU Multi-Layer Perceptron (SoulNN), Double DQN trainer (Learner) & Adam optimizer
+│   ├── rider_brains.js  # Character-specific tactical intelligence profiles (RiderBrains) & state heuristics
+│   ├── simulator.js     # Headless batch simulation engine (Simulator) & replay verifier
+│   ├── storage.js       # LocalStorage persistence manager for user settings & AI policy weights
+│   ├── ui.js            # Battle HUD renderer, LP/Chi/Faint bars, status badges & damage popups
+│   └── vs_select.js     # 3-step character select wizard, BGM manager & simulation modal UI
 └── assets/
-    ├── sounds/             # BGM tracks (matchup.mp3, matchup1.mp3, etc.)
-    ├── images/icons/       # Rider thumbnail icons
-    └── videos/             # Rider video cutscenes (idle.mp4, faint.mp4, etc.)
+├── sounds/          # BGM tracks (matchup.mp3, matchup1.mp3, etc.)
+├── images/icons/    # Rider thumbnail icons
+└── videos/          # Rider video cutscenes (idle.mp4, faint.mp4, etc.)
 
 Setup & Deployment Instructions
--------------------------------
 Local Execution:
-To run locally, execute through a local HTTP web server (e.g., Python `python -m http.server`, Node `npx serve`, or VS Code Live Server) to support Web Worker multi-threading and `fetch()` requests for local JSON data files.
+To run locally, execute through a local HTTP web server (e.g., Python python -m http.server, Node npx serve, or VS Code Live Server) to support Web Worker multi-threading and fetch() requests for local JSON data files.
 
 GitHub Pages Deployment:
 Push the repository to GitHub and enable GitHub Pages under Settings > Pages.
@@ -58,8 +65,7 @@ Asset Naming Warning:
 Ensure all asset paths and video filenames inside assets/videos/<rider_id>/ are strictly lowercase (e.g., idle.mp4, guard.mp4) to prevent 404 case-sensitivity errors on Linux production hosts.
 
 Automated Testing & AI Benchmarking:
-Open `test_dashboard.html` in any browser to execute the 15-point combat rule assertion suite (`runCombatTests`) and run head-to-head AI difficulty benchmarks (`benchmarkDifficulties`).
-
+Open index_test.html (or test_dashboard.html) in any browser to execute the combat rule assertion suite (runCombatTests) and run head-to-head AI difficulty benchmarks (benchmarkDifficulties).
 
 
 # Kamen_Fight game development timeline
