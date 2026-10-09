@@ -83,16 +83,18 @@
 
   function outcomeLabel(event) {
     const damage = Math.max(0, Number(event.damage) || 0);
+    const chiGain = Math.max(0, Number(event.guardReward) || 0);
+    const chiSuffix = chiGain > 0 ? ` (+${chiGain} CHI)` : "";
 
     const labels = {
       miss: "MISS",
-      block: damage > 0 ? `BLOCK: -${damage}` : "BLOCK",
-      partialBlock: `PARTIAL BLOCK: -${damage}`,
+      block: (damage > 0 ? `BLOCK: -${damage}` : "BLOCK") + chiSuffix,
+      partialBlock: `PARTIAL BLOCK: -${damage}${chiSuffix}`,
       guardFail: `GUARD FAILED: -${damage}`,
       glancing: `SCRATCH: -${damage}`
     };
 
-    return labels[event.outcome] || `-${damage}`;
+    return labels[event.outcome] || `-${damage}${chiSuffix}`;
   }
 
   function reactionFor(gs, event) {
