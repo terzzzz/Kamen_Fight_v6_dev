@@ -409,7 +409,7 @@
     }
 
     // --- DIFFICULTY-SPECIFIC OVERRIDES & HUMAN-LIKE BLUNDER INJECTION ---
-    if (difficulty === "novice") {
+    if (difficulty === "easy") {
       const rng = K.rng(K.hash(seed, "novice_blunder"));
       const roll = rng();
 
