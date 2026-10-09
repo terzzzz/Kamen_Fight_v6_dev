@@ -1195,8 +1195,19 @@
             damageRatio = strongBlock ? 0.25 : 0.70;
           }
 
-          // Dynamic Chi reward: Math.floor(50% of attacker move chiCost) + 1
-          guardReward = Math.floor(0.5 * move.chiCost) + 1;
+/*
+ * Only a zero-CHI matching gamble guard earns CHI.
+ *
+ * Paid A guards—including omni guards—may still block normally,
+ * but never receive the counter-CHI reward.
+ */
+const isFreeGambleGuard =
+  defenseMove.guardKind === "matching" &&
+  defenseMove.chiCost === 0;
+
+guardReward = isFreeGambleGuard
+  ? Math.floor(0.5 * move.chiCost) + 1
+  : 0;
 
           outcome = strongBlock
             ? "block"
