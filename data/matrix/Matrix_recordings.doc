@@ -1,3 +1,121 @@
+001_001:
+# Official Server Model Benchmark & Release Report
+
+**Matchup `001_001` (Kamen Rider Ichigo vs. Kamen Rider Ichigo Mirror)**
+
+**Candidate Checkpoint Fingerprint:** `3710643395`
+
+**Engine Build:** `v5-state256-action17`
+
+**Deployment Target:** `data/models/001_001.json`
+
+---
+
+## 1. Executive Summary & Clearance Status
+
+Candidate Model **`3710643395`** has officially passed all validation tiers, exceeding the mandatory **> 50.0% win rate** requirement across Easy, Balanced, and SOUL AI difficulty settings.
+
+By integrating the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), Candidate `3710643395` resolves legacy mirror match bottlenecks, achieving a **68.0% win rate against SOUL AI** under `RIDER` live search and a **53.8% direct network baseline against Balanced AI**.
+
+```
+  =============================================================================
+   DIFFICULTY TIER       POLICY MODE      WIN RATE     SAMPLE     STATUS
+  =============================================================================
+   EASY                 network (Direct)   70.0%       80 Games   PASSED
+   BALANCED             network (Direct)   53.8%       80 Games   PASSED
+   SOUL                 rider (Live Search) 68.0%       25 Games   PASSED
+  =============================================================================
+
+```
+
+---
+
+## 2. Complete Cross-Tier Evaluation Matrix
+
+| Metric / Parameter | EASY Tier (`network`) | BALANCED Tier (`network`) | SOUL Tier (`rider` search) | Diagnostic Impact |
+| --- | --- | --- | --- | --- |
+| **Win Rate** | **70.0%** (56W / 24L) | **53.8%** (43W / 37L) | **68.0%** (17W / 8L) | **Clear Sweep:** Holds positive win margin across all tiers |
+| **Average Round Duration** | 12.6 rounds | 12.9 rounds | **17.5 rounds** | **Controlled Pacing:** Search extends match length to find punish windows |
+| **Execution Speed** | 462.2 matches/min | 603.6 matches/min | 1.8 matches/min | Fast direct matrix inference vs deep Expectimax lookahead |
+| **Mean Selected $Q$** | `0.7448` | `0.6714` | **`0.6962`** | Stable value distribution |
+| **P1 / P2 Balance** | P1: 29W / P2: 27W | P1: 22W / P2: 21W | Symmetrical execution | Zero side bias detected |
+
+---
+
+## 3. Stance & Action Usage Breakdown
+
+```
+        STANCE DISTRIBUTION ACROSS TIERS (Action Shares)
+
+   EASY     [W: 1.1%] [A: 2.9%] [S: 52.6%] [D: 40.1%] [IDLE: 3.4%]
+   BALANCED [W: 0.4%] [A: 1.8%] [S: 53.1%] [D: 39.9%] [IDLE: 4.8%]
+   SOUL     [W: 2.0%] [A: 3.4%] [S: 34.5%] [D: 56.9%] [IDLE: 3.2%]
+
+```
+
+### Stance Details (SOUL Tier — 441 Round Decisions)
+
+1. **`D` Stance — Neutral Control (56.9% / 251 Decisions):**
+* **`D+L` (Combo Punch / Poke):** 138 uses (55.0% of pokes) — Primary low-risk neutral harassment.
+* **`D+J` (Standard Jab):** 58 uses — Frame trap initiator.
+* **`D+K` (Low Sweep):** 40 uses — Spacing reset.
+* **`D+I` (Rider Whip Poke):** 15 uses — Mid-range meter generator.
+
+
+2. **`S` Stance — Special Punishes & Finisher Cash-Outs (34.5% / 152 Decisions):**
+* **`S+J` (Rider Chop / Kick):** **115 uses (75.7% of all specials)** — Core execution choice for punishing enemy special startup/recovery.
+* **`S+I` (Kirimomi Kick):** 25 uses — High-cost heavy damage cash-out.
+* **`S+L` (Rider Kick):** 9 uses.
+* **`S+K` (X-Chop variant):** 3 uses.
+
+
+3. **`A` Stance — Defensive Omni Guard (3.4% / 15 Decisions):**
+* **`A+I` (Windmill Omni Guard):** **14 uses (93.3% of all guards)**.
+* **`A+J` (High Block):** 1 use.
+
+
+4. **`W` Stance — Utility & LP Sustain (2.0% / 9 Decisions):**
+* **`W+L` (Kaizorg Vitality Recovery):** 7 uses — Tactical healing during distance resets.
+* **`W+K` (Utility stance):** 2 uses.
+
+
+
+---
+
+## 4. Key Tactical & Engine Insights
+
+### 1. `A+I` Windmill Guard Optimization (93.3% Guard Share)
+
+Under the updated Guard Chi-reward system ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), blocking an opponent's 3-Chi Windmill or 6-Chi Special returns **+2 to +4 Chi**. The retrained Q-weights correctly treat `A+I` as a net Chi generator, allowing `RIDER` live search to time `A+I` during opponent attack windups and immediately counter-attack.
+
+### 2. Adaptive Policy Scaling
+
+* **Low-Tier Suppression (Easy / Balanced):** The direct matrix dumps **> 52% of actions into `S` stance specials**, overpowering non-punishing opponents in ~12.7 rounds.
+* **High-Tier Calculation (SOUL):** Under deep search, the model shifts **56.9% of turns into `D` stance neutral pokes**, storing Chi for 115 `S+J` punish strikes and 7 `W+L` vitality casts.
+
+---
+
+## 5. Deployment Record & Repository Metadata
+
+```json
+{
+  "matchup": "001_001",
+  "build": "v5-state256-action17",
+  "checkpoint_fingerprint": 3710643395,
+  "training_games": 12847,
+  "training_decisions": 204801,
+  "validation_summary": {
+    "easy_win_rate": 0.700,
+    "balanced_win_rate": 0.538,
+    "soul_win_rate": 0.680
+  },
+  "default_policy": "rider"
+}
+
+```
+
+* **Action Required:** Export Candidate `3710643395` from RAM as `001_001.json` and upload to `data/models/001_001.json` on GitHub.
+
 001_002:
 Candidate **`2874311788`** officially replaces active model `613925182` as the active active matrix for **Matchup `001_002` (Kamen Rider Ichigo vs. Kamen Rider Nigo)**.
 
