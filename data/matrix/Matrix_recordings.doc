@@ -1,0 +1,49 @@
+Selected matchup: 001_002
+Candidate: 12834 games / 199134 decisions
+Active: 10334 games / 162416 decisions
+Persistent save failed. Models remain in RAM; export them before closing.
+
+CANDIDATE MATCHUP GAMES
+         001     002     003     004     005     006
+001    11791   12834    3540    8149    8907   11764
+002      820       -       -       -       -       -
+003    16012       -       -       -       -       -
+004     2519     671       -       -       -       -
+005     3556       -       -       -       -       -
+006        -       -       -       -       -       -
+EVALUATION
+Build: v5-state256-action17
+Matchup: ichigo -> nigo
+Learner policy: rider
+Opponent: soul
+Reward: standard
+
+Completed: 35 / 100
+W / L / D: 19 / 16 / 0
+Win rate: 54.3%
+Average rounds: 28.5
+Matches/minute: 2.0
+Recorded round decisions: 1013
+Elapsed: 1051.5s
+Mean selected Q, this job: 0.4191
+
+Checkpoint fingerprint: 2874311788
+Loaded fingerprint: 2874311788
+No gradient updates or epsilon exploration.
+
+ROUND ACTION USAGE — includes forced recovery
+W         45 4.4%
+A         51 5.0%
+S        107 10.6%
+D        785 77.5%
+IDLE      25 2.5%
+
+STANCE: J / K / I / L / NONE
+W: 1 / 8 / 0 / 36 / 0
+A: 2 / 0 / 45 / 4 / 0
+S: 71 / 2 / 27 / 7 / 0
+D: 171 / 43 / 86 / 485 / 0
+IDLE: 0 / 0 / 0 / 0 / 25
+
+
+
