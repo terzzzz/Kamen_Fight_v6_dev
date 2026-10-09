@@ -673,11 +673,11 @@
    * Applies or refreshes one status instance per status ID.
    *
    * appliedRound:
-   *   Prevents duration decrement on the application/refresh turn.
+   *    Prevents duration decrement on the application/refresh turn.
    *
    * periodicAppliedRound:
-   *   Tracks initial periodic eligibility independently of refreshes.
-   *   Refreshing cannot suppress an already-due periodic payment.
+   *    Tracks initial periodic eligibility independently of refreshes.
+   *    Refreshing cannot suppress an already-due periodic payment.
    */
   function applyBuff(player, definition, round) {
     if (!definition || player.lp <= 0) return;
@@ -1191,11 +1191,12 @@
 
           if (defenseMove.guardKind === "omni") {
             damageRatio = strongBlock ? 0 : 0.50;
-            guardReward = strongBlock ? 2 : 1;
           } else {
             damageRatio = strongBlock ? 0.25 : 0.70;
-            guardReward = strongBlock ? 4 : 2;
           }
+
+          // Dynamic Chi reward: Math.floor(50% of attacker move chiCost) + 1
+          guardReward = Math.floor(0.5 * move.chiCost) + 1;
 
           outcome = strongBlock
             ? "block"
@@ -1250,7 +1251,8 @@
             key: action.key,
             outcome: "miss",
             damage: 0,
-            guarded: false
+            guarded: false,
+            guardReward: 0
           });
 
           continue;
@@ -1350,7 +1352,8 @@
         defenseKey: defenseAction.key,
         outcome,
         damage,
-        guarded
+        guarded,
+        guardReward: guarded ? guardReward : 0
       });
     }
 
