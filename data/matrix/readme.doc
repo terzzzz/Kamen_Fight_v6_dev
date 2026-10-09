@@ -2,7 +2,7 @@ Trained Matrix:
 
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
-001	 y	 y	 y   y   ?   ?
+001	 y	 y	 y   y   ?   y
 002	 ?   n   n   n   n   n							
 003	 n   n   n   n   n   n								
 004	 n   n   n   n   n   n								
