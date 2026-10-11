@@ -1,7 +1,8 @@
-001_001:
-# Official Server Model Benchmark & Release Report
+# Official Server Model Benchmark & Release Reports (Turn-Based Decision Engine)
 
-**Matchup `001_001` (Kamen Rider Ichigo vs. Kamen Rider Ichigo Mirror)**
+---
+
+## Matchup `001_001` (Kamen Rider Ichigo vs. Kamen Rider Ichigo Mirror)
 
 **Candidate Checkpoint Fingerprint:** `3710643395`
 
@@ -11,11 +12,11 @@
 
 ---
 
-## 1. Executive Summary & Clearance Status
+### 1. Executive Summary & Clearance Status
 
 Candidate Model **`3710643395`** has officially passed all validation tiers, exceeding the mandatory **> 50.0% win rate** requirement across Easy, Balanced, and SOUL AI difficulty settings.
 
-By integrating the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), Candidate `3710643395` resolves legacy mirror match bottlenecks, achieving a **68.0% win rate against SOUL AI** under `RIDER` live search and a **53.8% direct network baseline against Balanced AI**.
+By integrating the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), Candidate `3710643395` resolves legacy mirror match resource bottlenecks, achieving a **68.0% win rate against SOUL AI** under `RIDER` live search and a **53.8% direct network baseline against Balanced AI**.
 
 ```
   =============================================================================
@@ -30,19 +31,19 @@ By integrating the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \tex
 
 ---
 
-## 2. Complete Cross-Tier Evaluation Matrix
+### 2. Complete Cross-Tier Evaluation Matrix
 
 | Metric / Parameter | EASY Tier (`network`) | BALANCED Tier (`network`) | SOUL Tier (`rider` search) | Diagnostic Impact |
 | --- | --- | --- | --- | --- |
 | **Win Rate** | **70.0%** (56W / 24L) | **53.8%** (43W / 37L) | **68.0%** (17W / 8L) | **Clear Sweep:** Holds positive win margin across all tiers |
-| **Average Round Duration** | 12.6 rounds | 12.9 rounds | **17.5 rounds** | **Controlled Pacing:** Search extends match length to find punish windows |
+| **Average Round Duration** | 12.6 rounds | 12.9 rounds | **17.5 rounds** | **Controlled Pacing:** Search extends decision depth to optimize value conversion |
 | **Execution Speed** | 462.2 matches/min | 603.6 matches/min | 1.8 matches/min | Fast direct matrix inference vs deep Expectimax lookahead |
 | **Mean Selected $Q$** | `0.7448` | `0.6714` | **`0.6962`** | Stable value distribution |
 | **P1 / P2 Balance** | P1: 29W / P2: 27W | P1: 22W / P2: 21W | Symmetrical execution | Zero side bias detected |
 
 ---
 
-## 3. Stance & Action Usage Breakdown
+### 3. Stance & Action Usage Breakdown
 
 ```
         STANCE DISTRIBUTION ACROSS TIERS (Action Shares)
@@ -53,18 +54,18 @@ By integrating the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \tex
 
 ```
 
-### Stance Details (SOUL Tier — 441 Round Decisions)
+#### Stance Details (SOUL Tier — 441 Round Decisions)
 
 1. **`D` Stance — Neutral Control (56.9% / 251 Decisions):**
-* **`D+L` (Combo Punch / Poke):** 138 uses (55.0% of pokes) — Primary low-risk neutral harassment.
-* **`D+J` (Standard Jab):** 58 uses — Frame trap initiator.
-* **`D+K` (Low Sweep):** 40 uses — Spacing reset.
-* **`D+I` (Rider Whip Poke):** 15 uses — Mid-range meter generator.
+* **`D+L` (Combo Punch / Poke):** 138 uses (55.0% of pokes) — Primary low-risk neutral positioning action.
+* **`D+J` (Standard Jab):** 58 uses — High-priority initiative setup.
+* **`D+K` (Low Sweep):** 40 uses — Spacing and state reset.
+* **`D+I` (Rider Whip Poke):** 15 uses — Mid-range Chi resource generator.
 
 
-2. **`S` Stance — Special Punishes & Finisher Cash-Outs (34.5% / 152 Decisions):**
-* **`S+J` (Rider Chop / Kick):** **115 uses (75.7% of all specials)** — Core execution choice for punishing enemy special startup/recovery.
-* **`S+I` (Kirimomi Kick):** 25 uses — High-cost heavy damage cash-out.
+2. **`S` Stance — High-Value Action Conversions (34.5% / 152 Decisions):**
+* **`S+J` (Rider Chop / Kick):** **115 uses (75.7% of all specials)** — Core execution choice for exploiting opponent high-cost stance commitments.
+* **`S+I` (Kirimomi Kick):** 25 uses — High-cost heavy damage conversion.
 * **`S+L` (Rider Kick):** 9 uses.
 * **`S+K` (X-Chop variant):** 3 uses.
 
@@ -82,20 +83,20 @@ By integrating the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \tex
 
 ---
 
-## 4. Key Tactical & Engine Insights
+### 4. Key Tactical & Engine Insights
 
-### 1. `A+I` Windmill Guard Optimization (93.3% Guard Share)
+#### 1. `A+I` Windmill Guard Optimization (93.3% Guard Share)
 
-Under the updated Guard Chi-reward system ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), blocking an opponent's 3-Chi Windmill or 6-Chi Special returns **+2 to +4 Chi**. The retrained Q-weights correctly treat `A+I` as a net Chi generator, allowing `RIDER` live search to time `A+I` during opponent attack windups and immediately counter-attack.
+Under the updated Guard Chi-reward system ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), blocking an opponent's 3-Chi Windmill or 6-Chi Special returns **+2 to +4 Chi**. The retrained Q-weights correctly treat `A+I` as a net Chi generator, allowing `RIDER` live search to deploy `A+I` during opponent attack setups for optimal resource conversion.
 
-### 2. Adaptive Policy Scaling
+#### 2. Adaptive Policy Scaling
 
-* **Low-Tier Suppression (Easy / Balanced):** The direct matrix dumps **> 52% of actions into `S` stance specials**, overpowering non-punishing opponents in ~12.7 rounds.
-* **High-Tier Calculation (SOUL):** Under deep search, the model shifts **56.9% of turns into `D` stance neutral pokes**, storing Chi for 115 `S+J` punish strikes and 7 `W+L` vitality casts.
+* **Low-Tier Suppression (Easy / Balanced):** The direct matrix allocates **> 52% of actions into `S` stance specials**, overpowering low-lookahead opponent decision logic in ~12.7 rounds.
+* **High-Tier Calculation (SOUL):** Under deep search, the model shifts **56.9% of turns into `D` stance neutral pokes**, storing Chi for 115 `S+J` value executions and 7 `W+L` vitality casts.
 
 ---
 
-## 5. Deployment Record & Repository Metadata
+### 5. Deployment Record & Repository Metadata
 
 ```json
 {
@@ -114,84 +115,91 @@ Under the updated Guard Chi-reward system ($\lfloor 0.5 \times \text{chiCost} \r
 
 ```
 
-* **Action Required:** Export Candidate `3710643395` from RAM as `001_001.json` and upload to `data/models/001_001.json` on GitHub.
+---
 
-001_002:
-Candidate **`2874311788`** officially replaces active model `613925182` as the active active matrix for **Matchup `001_002` (Kamen Rider Ichigo vs. Kamen Rider Nigo)**.
+---
+
+## Matchup `001_002` (Kamen Rider Ichigo vs. Kamen Rider Nigo)
+
+**Candidate Checkpoint Fingerprint:** `2874311788`
+
+**Engine Build:** `v5-state256-action17`
+
+**Deployment Target:** `data/models/001_002.json`
+
+Candidate **`2874311788`** officially replaces active model `613925182` as the active matrix for **Matchup `001_002**`.
 
 By retraining under the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), Candidate `2874311788` achieves a sweep across all difficulty tiers, crossing the mandatory >50% win rate threshold up through SOUL tier.
 
 ---
 
-## Executive Performance Comparison
+### Executive Performance Comparison
 
 | Metric / Parameter | Old Active Model (`613925182`) | New Candidate Model (`2874311788`) | Strategic Takeaway |
 | --- | --- | --- | --- |
-| **Easy Tier (Direct Policy)** | ~56.0% baseline | **73.0%** (73 W / 27 L) | **+17.0% Boost:** Rapid 15.6-round offensive KOs |
-| **Master Tier (Direct Policy)** | 35.0% (35 W / 65 L) | N/A (Direct matrix ceiling) | Direct policy bottlenecked by 3-turn lookahead |
-| **Master Tier (RIDER Search)** | 67.0% | **70.2%** (33 W / 14 L) | **+3.2% Boost:** Dominant neutral poke control (`D` stance = 81.8%) |
+| **Easy Tier (Direct Policy)** | ~56.0% baseline | **73.0%** (73 W / 27 L) | **+17.0% Boost:** Rapid 15.6-round high-offensive KOs |
+| **Master Tier (Direct Policy)** | 35.0% (35 W / 65 L) | N/A (Direct matrix ceiling) | Direct policy constrained by shallow lookahead depth |
+| **Master Tier (RIDER Search)** | 67.0% | **70.2%** (33 W / 14 L) | **+3.2% Boost:** Dominant neutral stance decision control (`D` stance = 81.8%) |
 | **SOUL Tier (RIDER Search)** | **41.2%** (7 W / 10 L — **FAILED**) | **54.3%** (19 W / 16 L — **PASSED**) | **+13.1% Shift:** Solves SOUL 64-rollout search lookahead |
 | **Primary Defensive Tool** | `A+I` Windmill (Unrewarded) | **`A+I` Omni Guard (+4 to +6 Chi Refund)** | Turns defense into a net Chi profit engine |
-| **Sustain / Healing Tool** | 3 uses (`W+L`) | **36 uses** (`W+L` Kaizorg Vitality) | Out-heals SOUL Nigo's chip damage across 28+ rounds |
+| **Sustain / Healing Tool** | 3 uses (`W+L`) | **36 uses** (`W+L` Kaizorg Vitality) | Out-sustains SOUL Nigo's resource trade outcomes across 28+ rounds |
 
 ---
 
-## Tier-by-Tier Evaluation Report (`2874311788`)
+### Tier-by-Tier Evaluation Report (`2874311788`)
 
-### 1. Easy Tier Baseline (`network` Direct Policy)
+#### 1. Easy Tier Baseline (`network` Direct Policy)
 
 * **Results:** **73.0% Win Rate** (73 W / 27 L) | 100 Matches | Avg Duration: 15.6 rounds
 * **Action Breakdown:** `S` Specials: **53.9%** (843) | `D` Pokes: **36.5%** (570) | `A` Guards: **5.6%** (88) | `W` Utility: **0.0%**
-* **Tactical Profile:** Unthrottled offensive rushdown. Against an opponent that does not punish openings, the network dumps meter directly into `S+J` and `S+L` specials, skipping defensive healing (`W` stance = 0%) to close out games rapidly.
+* **Tactical Profile:** High-tempo offensive stance selection. Against an opponent with low-depth move selection, the network allocates meter directly into `S+J` and `S+L` specials, skipping defensive healing (`W` stance = 0%) to resolve games rapidly.
 
-### 2. Master Tier Evaluation (`rider` Live Search Policy)
+#### 2. Master Tier Evaluation (`rider` Live Search Policy)
 
 * **Results:** **70.2% Win Rate** (33 W / 14 L) | 47 Matches | Avg Duration: 29.2 rounds
 * **Action Breakdown:** `D` Pokes: **81.8%** (1,129) | `S` Specials: **10.2%** (141) | `A` Guards: **3.3%** (46) | `W` Utility: **2.8%** (38)
-* **Tactical Profile:** Neutral dominance. Ichigo locks down neutral space using `D+L` (520 uses) and `D+J` (319 uses). Out of 46 total guards, **39 were `A+I` Windmill Omni Guards**, absorbing Nigo's special attempts to bank Chi for counter-strikes.
+* **Tactical Profile:** Neutral decision dominance. Ichigo controls state space using `D+L` (520 uses) and `D+J` (319 uses). Out of 46 total guards, **39 were `A+I` Windmill Omni Guards**, absorbing Nigo's special attempts to bank Chi for high-value response actions.
 
-### 3. SOUL Tier Evaluation (`rider` Live Search Policy)
+#### 3. SOUL Tier Evaluation (`rider` Live Search Policy)
 
 * **Results:** **54.3% Win Rate** (19 W / 16 L) | 35 Matches | Avg Duration: 28.5 rounds
 * **Action Breakdown:** `D` Pokes: **77.5%** (785) | `S` Specials: **10.6%** (107) | `A` Guards: **5.0%** (51) | `W` Utility: **4.4%** (45)
-* **Tactical Profile:** High-sustain attrition play. To overcome SOUL Nigo's 3-turn deep lookahead, RIDER executes **36 `W+L` Kaizorg Vitality casts (+250 LP each)** and **45 `A+I` Omni Guards**, out-surviving Nigo's burst damage and converting banked Chi into 71 `S+J` finishers.
+* **Tactical Profile:** High-sustain attrition play. To overcome SOUL Nigo's 3-turn deep lookahead, RIDER executes **36 `W+L` Kaizorg Vitality casts (+250 LP each)** and **45 `A+I` Omni Guards**, out-surviving Nigo's burst damage and converting banked Chi into 71 `S+J` value executions.
 
 ---
 
-## Strategic Analysis: Why Candidate `2874311788` Succeeded
+### Strategic Analysis: Why Candidate `2874311788` Succeeded
 
 ```
-[ Nigo Heavy Special ] ──> [ A+I Windmill Omni Guard ] ──> [ Net Chi Profit (+1 to +3) ]
-                                                                       │
-[ Victory (54.3% vs SOUL) ] <── [ S+J Special Cash-Out ] <── [ W+L Healing (+250 LP) ]
+[ Nigo High-Cost Special ] ──> [ A+I Windmill Omni Guard ] ──> [ Net Chi Profit (+1 to +3) ]
+                                                                             │
+[ Victory (54.3% vs SOUL) ] <── [ High-EV S+J Execution ] <─── [ W+L Healing (+250 LP) ]
 
 ```
 
-### 1. The Guard Chi Economy Shift ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$)
+#### 1. The Guard Chi Economy Shift ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$)
 
-In the old matrix (`613925182`), throwing Ichigo's 3-Chi `A+I` Windmill Guard provided zero net Chi return. Against SOUL Nigo, this resulted in Chi starvation. Under the new rule, blocking Nigo's heavy specials completely flips the resource economy:
+In the old matrix (`613925182`), deploying Ichigo's 3-Chi `A+I` Windmill Guard provided zero net Chi return. Against SOUL Nigo, this resulted in Chi starvation. Under the new rule, blocking Nigo's heavy specials completely flips the resource economy:
 
 * **Blocking Nigo `S+L` (Rider Kick — 6 Chi Cost):** Refunds **+4 Chi** (Net Gain: $+1$ Chi).
 * **Blocking Nigo `S+I` (Kirimomi Kick — 10 Chi Cost):** Refunds **+6 Chi** (Net Gain: $+3$ Chi).
 
-The retrained Q-weights recognize `A+I` as a primary generator of Chi rather than a deficit, encouraging RIDER search to block heavy incoming specials.
+The retrained Q-weights recognize `A+I` as a primary generator of Chi rather than a deficit, encouraging RIDER search to block heavy incoming actions.
 
-### 2. Adaptive Policy Scaling
+#### 2. Adaptive Policy Scaling
 
-The model demonstrates optimal policy scaling across the difficulty ladder:
-
-* **Against Low-Tier AI (Easy):** Spams high-damage `S` stance specials (53.9% share) for fast 15-round KOs.
+* **Against Low-Tier AI (Easy):** Prioritizes high-damage `S` stance specials (53.9% share) for fast 15-round victories.
 * **Against High-Tier AI (SOUL):** Shifts to 77.5% `D` stance neutral poking, using stored Chi for `W+L` healing (36 uses) and `A+I` guards (45 uses) to win 28.5-round attrition matches.
 
-### 3. Search Tree Synergies (RIDER Live Search + Updated Q-Priors)
+#### 3. Search Tree Synergies (RIDER Live Search + Updated Q-Priors)
 
-Old model `613925182` failed against SOUL Nigo (41.2%) because its leaf-node Q-values severely under-valued defensive stances. When RIDER live search evaluated candidate moves, it incorrectly discarded `A+I` setups. The updated Q-priors in `2874311788` allow RIDER's Expectimax search to accurately calculate the long-term EV of blocking and countering, neutralizing SOUL Nigo's 64 Monte Carlo rollouts.
+Old model `613925182` failed against SOUL Nigo (41.2%) because its leaf-node Q-values severely undervalued defensive stance states. When RIDER live search evaluated candidate moves, it incorrectly discarded `A+I` setups. The updated Q-priors in `2874311788` allow RIDER's Expectimax search to accurately calculate the long-term EV of blocking and responding, neutralizing SOUL Nigo's 64 Monte Carlo rollouts.
 
-001_003:
+---
 
-# Official Server Model Benchmark & Diagnostic Report
+---
 
-**Matchup `001_003` (Kamen Rider Ichigo vs. Kamen Rider V3)**
+## Matchup `001_003` (Kamen Rider Ichigo vs. Kamen Rider V3)
 
 **Candidate Checkpoint Fingerprints:** `2584495651` / `2722473080`
 
@@ -203,11 +211,11 @@ Old model `613925182` failed against SOUL Nigo (41.2%) because its leaf-node Q-v
 
 ---
 
-## 1. Executive Summary & Clearance Profile
+### 1. Executive Summary & Clearance Profile
 
 Candidate Model **`2584495651`** (with checkpoint variant `2722473080`) has completed multi-tier verification against Kamen Rider V3. The matrix achieves a clean sweep across all evaluation benchmarks, comfortably exceeding the mandatory **> 50.0% win rate** requirement from low-tier random baselines up through **SOUL Tier** search lookahead.
 
-Under the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), Ichigo’s policy successfully leverages defensive Chi refunds to mitigate V3’s aggressive special setups, converting neutral poking and attrition healing into a **60.0% win rate against SOUL AI** and an **80.0% win rate against Master AI**.
+Under the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), Ichigo’s policy successfully leverages defensive Chi refunds to mitigate V3’s high-cost special setups, converting neutral poking and attrition healing into a **60.0% win rate against SOUL AI** and an **80.0% win rate against Master AI**.
 
 ```
   ==================================================================================
@@ -224,7 +232,7 @@ Under the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost
 
 ---
 
-## 2. Complete Cross-Tier Evaluation Data Matrix
+### 2. Complete Cross-Tier Evaluation Data Matrix
 
 | Performance Metric | Uniform Random | Easy Tier | Balanced Tier | Master Tier | SOUL Tier |
 | --- | --- | --- | --- | --- | --- |
@@ -240,7 +248,7 @@ Under the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost
 
 ---
 
-## 3. Stance & Detailed Action Usage Breakdown
+### 3. Stance & Detailed Action Usage Breakdown
 
 ```
           STANCE DISTRIBUTION ACROSS TIERS (Action Shares)
@@ -253,50 +261,48 @@ Under the updated **Guard Chi-Reward System** ($\lfloor 0.5 \times \text{chiCost
 
 ```
 
-### Granular Action Selection by Tier
+#### Granular Action Selection by Tier
 
-#### A. Direct Execution Tiers (Random & Easy — High Pace Rushdown)
+##### A. Direct Execution Tiers (Random & Easy — High Pace Offensive Focus)
 
 * **`S` Stance (Specials — ~40% share):** Direct neural execution against low-lookahead opponents skips defensive setups and dumps meter straight into **`S+J` (Rider Chop — 428 uses vs Random / 293 uses vs Easy)** and **`S+K` (142 vs Random / 87 vs Easy)**.
 * **`D` Stance (Pokes — ~36% share):** Neutral control is driven primarily by **`D+I` (Rider Whip Poke — 292 uses vs Random)** and **`D+L` (Combo Punch — 180 uses vs Easy)**.
-* **`A` Stance (Guards — 15–17% share):** High volume of button blocks (`A+J` high guard and `A+I` Windmill) to absorb loose random strikes.
+* **`A` Stance (Guards — 15–17% share):** High volume of defensive selections (`A+J` high guard and `A+I` Windmill) to absorb loose random actions.
 
-#### B. Search Execution Tiers (Balanced, Master & SOUL — Attrition & Control)
+##### B. Search Execution Tiers (Balanced, Master & SOUL — Attrition & Control)
 
-* **`D` Stance (Neutral Poking — 49.3% to 67.9% share):** Against deep opponent lookahead, RIDER pivots away from direct special spamming and locks down space with **`D+L` (Combo Punch)** and **`D+J` (Standard Jab)**.
-* **`S` Stance (Special Cash-Outs — 13.5% to 24.6% share):** Specials are strictly reserved for guaranteed punishes, with **`S+J` (Rider Chop)** accounting for **79.6% of all special decisions** across Master and SOUL settings (51 out of 64 in SOUL; 23 out of 33 in Master).
+* **`D` Stance (Neutral Poking — 49.3% to 67.9% share):** Against deep opponent lookahead, RIDER pivots away from direct special selection and locks down state space with **`D+L` (Combo Punch)** and **`D+J` (Standard Jab)**.
+* **`S` Stance (Special Conversions — 13.5% to 24.6% share):** Specials are strictly reserved for high-probability value conversion steps, with **`S+J` (Rider Chop)** accounting for **79.6% of all special decisions** across Master and SOUL settings (51 out of 64 in SOUL; 23 out of 33 in Master).
 * **`A` Stance (Omni Guard — 3.7% to 7.4% share):** Out of all defensive actions executed under search, **`A+I` (Windmill Omni Guard)** accounts for **88.2% to 95.8% of guards** (17 out of 20 in SOUL; 23 out of 24 in Balanced), exploiting the Chi refund rules.
 * **`W` Stance (Utility & Healing — 3.0% to 12.5% share):** High-tier SOUL matches demand active health management, logging **18 `W+K` utility steps** and **16 `W+L` Kaizorg Vitality recovery casts (+250 LP each)** to out-sustain V3 across 26.3 rounds.
 
 ---
 
-## 4. Combat Style & Archetype Analysis: Ichigo vs. V3
-
-This dataset establishes the foundational profile for **Matchup `001_003**` in the broader 36-matrix project (`001_001` through `006_006`).
+### 4. Combat Style & Archetype Analysis: Ichigo vs. V3
 
 ```
 [ V3 High Offense / Specials ] ──> [ A+I Windmill Omni Guard ] ──> [ +4 to +6 Chi Refund ]
                                                                              │
-[ Win (60% SOUL / 80% Master) ] <── [ W+L Healing & S+J Punish ] <─── [ Neutral Meter Bank ]
+[ Win (60% SOUL / 80% Master) ] <── [ W+L Healing & S+J Execution ] <─── [ Neutral Meter Bank ]
 
 ```
 
-### 1. Archetype Dynamics (Heavy Heavyweight vs. Agile Striker)
+#### 1. Archetype Dynamics (High-Sustain Heavy vs. High-Resource Striker)
 
-Kamen Rider V3 possesses high mobility and devastating multi-hit special routines. When Ichigo attempts pure direct policy rushdown against V3's high tiers, V3's lookahead intercepts Ichigo's windups. However, when paired with **RIDER live search**, Ichigo shifts into a **Punish & Attrition Counter-Tank**:
+Kamen Rider V3 possesses high mobility and high-cost special routines. When Ichigo attempts pure direct policy stance selection against V3's high tiers, V3's lookahead out-evaluates direct policy stance choices. However, when paired with **RIDER live search**, Ichigo shifts into a **High-Sustain Attrition Decision Engine**:
 
-* **Neutral Phase:** Ichigo uses low-commitment `D+L` pokes to bait V3 into throwing heavy specials.
+* **Neutral Phase:** Ichigo uses low-commitment `D+L` pokes to bait V3 into throwing high-cost specials.
 * **Defensive Phase:** When V3 commits to high-cost specials, RIDER triggers `A+I` Windmill Omni Guard. Under the updated guard rule ($\lfloor 0.5 \times \text{chiCost} \rfloor + 1$), blocking V3's 6-Chi or 10-Chi attacks nets Ichigo **+1 to +3 profit in Chi**.
-* **Punish & Sustain Phase:** Stored Chi is split between **`W+L` Kaizorg Vitality (+250 LP recovery)** to erase V3's chip damage and **`S+J` (Rider Chop)** to punish V3's post-special recovery frames.
+* **Value Conversion & Sustain Phase:** Stored Chi is split between **`W+L` Kaizorg Vitality (+250 LP recovery)** to erase V3's chip damage and **`S+J` (Rider Chop)** to exploit V3's post-special state commitments.
 
-### 2. Dual-Policy Scaling Profile
+#### 2. Dual-Policy Scaling Profile
 
-* **Low-Tier Mode (`network` policy):** Fast, aggressive, special-heavy (16.2 rounds avg duration; 41.2% special share). Optimal for rapid farming against unoptimized opponents.
+* **Low-Tier Mode (`network` policy):** Fast, aggressive, special-heavy (16.2 rounds avg duration; 41.2% special share). Optimal for rapid processing against unoptimized opponents.
 * **High-Tier Mode (`rider` search policy):** Patient, defensive, high-sustain attrition (26.3 to 28.4 rounds avg duration; 12.5% healing share; 88.2%+ `A+I` guard share). Built specifically to disarm deep search AI.
 
 ---
 
-## 5. Repository & Archival Metadata Record
+### 5. Repository & Archival Metadata Record
 
 ```json
 {
@@ -327,16 +333,13 @@ Kamen Rider V3 possesses high mobility and devastating multi-hit special routine
   "deployment_target": "data/models/001_003.json"
 }
 
-001_004:
-
-
-**Yes, `001_004` is 100% complete!** Fingerprint **`2055740707`** has swept all four difficulty settings—Easy, Balanced, Master, and SOUL—with win rates comfortably above the 50.0% pass threshold.
+```
 
 ---
 
-# Official Server Model Benchmark & Diagnostic Report
+---
 
-**Matchup `001_004` (Kamen Rider Ichigo vs. Kamen Rider Riderman)**
+## Matchup `001_004` (Kamen Rider Ichigo vs. Kamen Rider Riderman)
 
 **Candidate Checkpoint Fingerprint:** `2055740707`
 
@@ -346,9 +349,11 @@ Kamen Rider V3 possesses high mobility and devastating multi-hit special routine
 
 **Deployment Target:** `data/models/001_004.json`
 
+Candidate Checkpoint **`2055740707`** has swept all four difficulty settings—Easy, Balanced, Master, and SOUL—with win rates comfortably above the 50.0% pass threshold.
+
 ---
 
-## 1. Executive Summary & Complete Multi-Tier Sweep
+### 1. Executive Summary & Complete Multi-Tier Sweep
 
 Across all four testing tiers, Ichigo’s candidate policy demonstrates complete dominance over Riderman:
 
@@ -366,7 +371,7 @@ Across all four testing tiers, Ichigo’s candidate policy demonstrates complete
 
 ---
 
-## 2. Complete Cross-Tier Data Matrix
+### 2. Complete Cross-Tier Data Matrix
 
 | Performance Metric | Easy Tier | Balanced Tier | Master Tier | SOUL Tier |
 | --- | --- | --- | --- | --- |
@@ -382,7 +387,7 @@ Across all four testing tiers, Ichigo’s candidate policy demonstrates complete
 
 ---
 
-## 3. Direct Neural Execution Dynamics (Easy & Balanced Tiers)
+### 3. Direct Neural Execution Dynamics (Easy & Balanced Tiers)
 
 ```
         STANCE DISTRIBUTION — LOW TIERS (Direct Network Policy)
@@ -392,7 +397,7 @@ Across all four testing tiers, Ichigo’s candidate policy demonstrates complete
 
 ```
 
-1. **Unthrottled Rushdown Pacing (12.7 Rounds Avg):**
+1. **Unthrottled High-Pace Execution (12.7 Rounds Avg):**
 Against low-lookahead opponents, direct neural execution drops match length by nearly 8 full rounds compared to tree-search runs (12.7 vs 20.5 rounds).
 2. **Heavy Special Conversion (`S` Stance ~50%):**
 The network dumps half of its turn budget into high-damage specials:
@@ -404,11 +409,11 @@ The network dumps half of its turn budget into high-damage specials:
 3. **P1/P2 Symmetry:**
 Balanced AI breakdown confirms zero side bias (23W / 10L on P1; 20W / 13L on P2).
 4. **Zero Defensive Waste (`W` Stance = 0.0%):**
-Because low-tier AI fails to exert dangerous frame pressure, the policy completely eliminates defensive healing (`W+L`) to maximize raw offensive throughput.
+Because low-tier AI fails to exploit state vulnerabilities, the policy completely eliminates defensive healing (`W+L`) to maximize raw offensive throughput.
 
 ---
 
-## 4. Archival Server Metadata Record
+### 4. Archival Server Metadata Record
 
 ```json
 {
@@ -428,8 +433,8 @@ Because low-tier AI fails to exert dangerous frame pressure, the policy complete
     "soul_tier_win_rate": 1.000
   },
   "tactical_fingerprint": {
-    "low_tier_style": "Direct Rushdown (51% Specials)",
-    "high_tier_style": "Frame Trap Poking (60.7% D Stance)",
+    "low_tier_style": "High-Frequency Special Selection (51% Specials)",
+    "high_tier_style": "High-Initiative Neutral Poking (60.7% D Stance)",
     "primary_poke": "D+L",
     "primary_special": "S+J",
     "primary_guard": "A+I"
@@ -437,16 +442,13 @@ Because low-tier AI fails to exert dangerous frame pressure, the policy complete
   "deployment_target": "data/models/001_004.json"
 }
 
-
-001_006:
-
-**Yes, `001_006` is 100% validated and complete!** Candidate Checkpoint **`240124900`** swept all four difficulty tiers—Easy, Balanced, Master, and SOUL—with win rates consistently exceeding the mandatory **> 50.0%** clearance threshold.
+```
 
 ---
 
-# Official Server Model Benchmark & Diagnostic Report
+---
 
-**Matchup `001_006` (Kamen Rider Ichigo vs. Kamen Rider Amazon)**
+## Matchup `001_006` (Kamen Rider Ichigo vs. Kamen Rider Amazon)
 
 **Candidate Checkpoint Fingerprint:** `240124900`
 
@@ -456,13 +458,15 @@ Because low-tier AI fails to exert dangerous frame pressure, the policy complete
 
 **Deployment Target:** `data/models/001_006.json`
 
+Candidate Checkpoint **`240124900`** swept all four difficulty tiers—Easy, Balanced, Master, and SOUL—with win rates consistently exceeding the mandatory **> 50.0%** clearance threshold.
+
 ---
 
-## 1. Executive Summary & Clearance Profile
+### 1. Executive Summary & Clearance Profile
 
-Candidate Model **`240124900`** achieves a full pass across all difficulty tiers. Amazon is an explosive, high-mobility brawler with wild special setups, leading to the fastest match durations in the entire `001` series (~8.8 to 12.1 rounds).
+Candidate Model **`240124900`** achieves a full pass across all difficulty tiers. Amazon is a high-mobility character profile with explosive action configurations, leading to the fastest match durations in the entire `001` series (~8.8 to 12.1 rounds).
 
-Despite Amazon's hyper-aggressive pressure, Ichigo's retrained Q-priors utilize `A+I` Windmill Omni Guards for heavy Chi refunds and `D+L` frame-traps to secure positive win margins up through **SOUL Tier search lookahead**.
+Despite Amazon's high-tempo offensive selections, Ichigo's retrained Q-priors utilize `A+I` Windmill Omni Guards for heavy Chi refunds and `D+L` neutral setups to secure positive win margins up through **SOUL Tier search lookahead**.
 
 ```
   ==================================================================================
@@ -478,7 +482,7 @@ Despite Amazon's hyper-aggressive pressure, Ichigo's retrained Q-priors utilize 
 
 ---
 
-## 2. Complete Cross-Tier Data Matrix
+### 2. Complete Cross-Tier Data Matrix
 
 | Performance Metric | Easy Tier | Balanced Tier | Master Tier | SOUL Tier |
 | --- | --- | --- | --- | --- |
@@ -495,7 +499,7 @@ Despite Amazon's hyper-aggressive pressure, Ichigo's retrained Q-priors utilize 
 
 ---
 
-## 3. Stance & Action Selection Breakdown
+### 3. Stance & Action Selection Breakdown
 
 ```
         STANCE DISTRIBUTION — MATCHUP 001_006 (Across All Tiers)
@@ -507,41 +511,39 @@ Despite Amazon's hyper-aggressive pressure, Ichigo's retrained Q-priors utilize 
 
 ```
 
-### Key Tactical Insights by Mode
+#### Key Tactical Insights by Mode
 
-#### A. Direct Execution Mode (Easy & Balanced — High Volatility Brawling)
+##### A. Direct Execution Mode (Easy & Balanced — High Volatility Action Trade)
 
 * **Explosive 8.8–9.8 Round Matches:** Because Amazon pushes forward aggressively without blocking, matches resolve in under 10 rounds.
-* **Special Spam Conversion:** Over 50% of direct network decisions are spent executing specials (`S+J` Rider Chop, `S+K` X-Chop, and `S+L` Rider Kick).
+* **Special Action Conversion:** Over 50% of direct network decisions are spent executing specials (`S+J` Rider Chop, `S+K` X-Chop, and `S+L` Rider Kick).
 * **Zero Utility Overhead:** Defensive healing (`W` stance = 0.0%) is completely bypassed in favor of raw offensive damage trading.
 
-#### B. Tree Search Mode (Master & SOUL — Feral Neutral Countering)
+##### B. Tree Search Mode (Master & SOUL — High-Pace Neutral State Selection)
 
-* **`D+L` Neutral Stuffing (70.9% of pokes in SOUL):** Amazon's wild leaping attacks leave gaps that Ichigo's low-risk `D+L` (Combo Punch) consistently intercepts.
+* **`D+L` Neutral Interception (70.9% of pokes in SOUL):** Amazon's leaping actions leave state openings that Ichigo's low-risk `D+L` (Combo Punch) consistently intercepts.
 * **`A+I` Omni Guard Refund Exploitation (90.0%–91.7% of guards):** When Amazon commits to heavy specials (e.g., Violent Slash routines), RIDER triggers `A+I` Windmill Omni Guard, extracting positive Chi refunds under the $\lfloor 0.5 \times \text{chiCost} \rfloor + 1$ rule.
-* **`S+J` Punish Conversion (66.3% of specials in SOUL):** Once Amazon's wild rush is guarded or stuffed, RIDER immediately cashes out stored Chi into `S+J` (Rider Chop) for massive burst damage.
+* **`S+J` Value Conversion (66.3% of specials in SOUL):** Once Amazon's aggressive push is blocked or intercepted, RIDER immediately cashes out stored Chi into `S+J` (Rider Chop) for major LP impact.
 
 ---
 
-## 4. Combat Style & Archetype Analysis: Ichigo vs. Amazon (`001_006`)
-
-This matchup defines a unique dynamic within the 36-matrix project:
+### 4. Combat Style & Archetype Analysis: Ichigo vs. Amazon (`001_006`)
 
 ```
-[ Amazon Wild Leaping Attack ] ──> [ D+L Interrupt OR A+I Windmill Omni Guard ]
+[ Amazon Leaping Action ] ──> [ D+L Intercept OR A+I Windmill Omni Guard ]
                                                       │
-[ Win (54.5% SOUL / 58.8% Master) ] <── [ S+J Heavy Punish (66.3% share) ]
+[ Win (54.5% SOUL / 58.8% Master) ] <── [ S+J Heavy Special Execution (66.3% share) ]
 
 ```
 
-### Archetype Profile: High-Tempo Counter-Brawling
+#### Archetype Profile: High-Tempo Interception
 
-* **Fastest Matchup Pace:** Compared to the extended 26–28 round attrition battles against Nigo (`001_002`) and V3 (`001_003`), Amazon's feral toolkit compresses rounds to **~11.8 rounds in SOUL tier**.
-* **Anti-Rushdown Neutral:** Ichigo doesn't need to stall or out-heal Amazon (`W` stance is only 3.1% in SOUL); instead, success relies on **stuffing Amazon's forward movement** with `D+L` (107 uses in SOUL) and capitalizing on Amazon's high-risk whiffs.
+* **Fastest Matchup Pace:** Compared to the extended 26–28 round attrition battles against Nigo (`001_002`) and V3 (`001_003`), Amazon's toolkit compresses rounds to **~11.8 rounds in SOUL tier**.
+* **Anti-Aggression Neutral:** Ichigo doesn't need to stall or out-heal Amazon (`W` stance is only 3.1% in SOUL); instead, success relies on **intercepting Amazon's forward state transitions** with `D+L` (107 uses in SOUL) and capitalizing on unrewarded opponent turns.
 
 ---
 
-## 5. Repository & Archival Metadata Record
+### 5. Repository & Archival Metadata Record
 
 ```json
 {
@@ -571,17 +573,29 @@ This matchup defines a unique dynamic within the 36-matrix project:
 
 ```
 
-006_001:
+---
 
-Comprehensive Master Server Model Benchmark & Release Report
-Matchup 006_001 (Kamen Rider Amazon vs. Kamen Rider Ichigo)
-Candidate Checkpoint Fingerprint: 2929061423
-Engine Build: v5-state256-action17
-Dataset Scale: Candidate (1,703 games / 16,166 decisions)
-Deployment Target: data/models/006_001.json
-1. Executive Summary & Complete Multi-Tier Clearance
-Candidate Model 2929061423 has officially achieved a complete 4-tier sweep for Matchup 006_001, establishing the foundational production matrix for Row 6 (006 Learner Grid).
-With the addition of the Master Tier evaluation pass (72.7% win rate), Amazon demonstrates high stability across all difficulty settings. By leveraging high-tempo low sweeps (D+K), mid-range pokes (D+L), and rapid S+K Violent Slash punishes, Candidate 2929061423 comfortably surpasses the mandatory > 50.0% win rate requirement in both direct neural execution and RIDER live search mode.
+---
+
+## Matchup `006_001` (Kamen Rider Amazon vs. Kamen Rider Ichigo)
+
+**Candidate Checkpoint Fingerprint:** `2929061423`
+
+**Engine Build:** `v5-state256-action17`
+
+**Dataset Scale:** Candidate (1,703 games / 16,166 decisions)
+
+**Deployment Target:** `data/models/006_001.json`
+
+---
+
+### 1. Executive Summary & Complete Multi-Tier Clearance
+
+Candidate Model **`2929061423`** has officially achieved a complete 4-tier sweep for **Matchup `006_001**`, establishing the foundational production matrix for **Row 6 (`006` Learner Grid)**.
+
+With the addition of the **Master Tier evaluation pass (72.7% win rate)**, Amazon demonstrates high stability across all difficulty settings. By leveraging high-tempo low sweeps (`D+K`), mid-range pokes (`D+L`), and rapid `S+K` Violent Slash executions, Candidate `2929061423` comfortably surpasses the mandatory **> 50.0% win rate** requirement in both direct neural execution and `RIDER` live search mode.
+
+```
   ==================================================================================
    DIFFICULTY TIER     POLICY MODE     WIN RATE    SAMPLE    AVG ROUNDS    STATUS
   ==================================================================================
@@ -591,20 +605,30 @@ With the addition of the Master Tier evaluation pass (72.7% win rate), Amazon de
    SOUL TIER          rider (Search)     63.6%     11 Games    12.0        PASSED
   ==================================================================================
 
-2. Complete Cross-Tier Evaluation Matrix
+```
+
+---
+
+### 2. Complete Cross-Tier Evaluation Matrix
+
 | Performance Metric | Easy Tier | Balanced Tier | Master Tier | SOUL Tier |
-|---|---|---|---|---|
-| Learner Controller | Direct Neural (network) | Live Search (rider) | Live Search (rider) | Live Search (rider) |
-| Opponent Controller | Easy AI | Balanced AI | Master Search AI | SOUL Search AI |
-| Completed Matches | 100 / 100 | 10 / 100 | 11 / 100 | 11 / 100 |
-| Record (W / L / D) | 68 / 31 / 1 | 9 / 1 / 0 | 8 / 3 / 0 | 7 / 4 / 0 |
-| Win Rate | 68.0% | 90.0% | 72.7% | 63.6% |
-| Average Round Length | 9.7 rounds | 10.9 rounds | 11.5 rounds | 12.0 rounds |
-| Execution Pace | 482.1 matches/min | 6.0 matches/min | 4.9 matches/min | 6.7 matches/min |
-| Mean Selected Q | 1.1419 | 0.8865 | 0.7626 | 0.6670 |
-| Side Breakdown | P1: 36W-13L-1D / P2: 32W-18L | P1: 4W-1L / P2: 5W-0L | P1: 5W-1L / P2: 3W-2L | P1: 3W-3L / P2: 4W-1L |
-| Primary Action Stance | Neutral (D: 54.6%) | Neutral (D: 53.8%) | Neutral (D: 48.1%) | Neutral (D: 50.0%) |
-3. Stance & Detailed Action Usage Breakdown
+| --- | --- | --- | --- | --- |
+| **Learner Controller** | Direct Neural (`network`) | Live Search (`rider`) | Live Search (`rider`) | Live Search (`rider`) |
+| **Opponent Controller** | Easy AI | Balanced AI | Master Search AI | SOUL Search AI |
+| **Completed Matches** | 100 / 100 | 10 / 100 | 11 / 100 | 11 / 100 |
+| **Record (W / L / D)** | **68 / 31 / 1** | **9 / 1 / 0** | **8 / 3 / 0** | **7 / 4 / 0** |
+| **Win Rate** | **68.0%** | **90.0%** | **72.7%** | **63.6%** |
+| **Average Round Length** | **9.7 rounds** | 10.9 rounds | 11.5 rounds | 12.0 rounds |
+| **Execution Pace** | 482.1 matches/min | 6.0 matches/min | 4.9 matches/min | 6.7 matches/min |
+| **Mean Selected $Q$** | `1.1419` | `0.8865` | `0.7626` | `0.6670` |
+| **Side Breakdown** | P1: 36W-13L-1D / P2: 32W-18L | P1: 4W-1L / P2: 5W-0L | P1: 5W-1L / P2: 3W-2L | P1: 3W-3L / P2: 4W-1L |
+| **Primary Action Stance** | Neutral (`D`: 54.6%) | Neutral (`D`: 53.8%) | Neutral (`D`: 48.1%) | Neutral (`D`: 50.0%) |
+
+---
+
+### 3. Stance & Detailed Action Usage Breakdown
+
+```
         STANCE DISTRIBUTION — MATCHUP 006_001 (All 4 Tiers)
 
    EASY     [W: 0.0%]  [A: 0.0%]  [S: 42.7%]  [D: 54.6%]  [IDLE: 2.7%]
@@ -612,27 +636,51 @@ With the addition of the Master Tier evaluation pass (72.7% win rate), Amazon de
    MASTER   [W: 8.5%]  [A: 0.8%]  [S: 39.5%]  [D: 48.1%]  [IDLE: 3.1%]
    SOUL     [W: 7.2%]  [A: 2.2%]  [S: 34.1%]  [D: 50.0%]  [IDLE: 6.5%]
 
-Granular Execution Insights
- * Neutral Poke Control (D Stance — 48.1% to 54.6% Share):
-   * D+L (Combo Punch / Mid Poke): Dominates high-tier search lookahead (38 uses / 61.3% of pokes in Master; 38 uses in SOUL). Intercepts Ichigo's heavy forward priority before armor states trigger.
-   * D+K (Low Sweep): Heavily utilized in direct neural mode (234 uses in Easy) to force knockdown state resets.
-   * D+I (Range Poke): Consistent mid-range Chi generator across all tiers (17 uses in Master, 15 in Balanced, 184 in Easy).
- * Special Cash-Out Engine (S Stance — 34.1% to 42.7% Share):
-   * S+K (Violent Slash / Jaguar Shock): Core finisher choice across all tree-search tiers (30 uses / 58.8% of specials in Master; 30 in Balanced; 36 in SOUL).
-   * S+J (Rider Kick / Secondary Special): Secondary cash-out choice (10 uses in Master, 109 in Easy).
- * High-Tier Mobility Management (W Stance — 7.2% to 8.5% Share):
-   * Under Master and SOUL lookahead, ForeseeEngine incorporates W+I feral leap positioning (9 out of 11 utility decisions in Master) to shift out of Ichigo's linear attack vectors rather than standing in blockstun.
- * Defensive Economy (A Stance — 0.0% to 3.4% Share):
-   * Amazon's policy relies almost entirely on range spacing and interrupt pokes, keeping guard allocation under 3.5% across all settings.
-4. Combat Style & Archetype Analysis: Amazon vs. Ichigo (006_001)
-[ Ichigo Armor / Forward Advance ] ──> [ D+L / D+I Spacing Poke ] ──> [ W+I Range Shift ]
-                                                                             │
+```
+
+#### Granular Execution Insights
+
+1. **Neutral Poke Control (`D` Stance — 48.1% to 54.6% Share):**
+* **`D+L` (Combo Punch / Mid Poke):** Dominates high-tier search lookahead (**38 uses / 61.3% of pokes in Master**; **38 uses in SOUL**). Intercepts Ichigo's heavy forward initiative before defensive priority triggers.
+* **`D+K` (Low Sweep):** Heavily utilized in direct neural mode (**234 uses in Easy**) to force state resets.
+* **`D+I` (Range Poke):** Consistent mid-range Chi generator across all tiers (17 uses in Master, 15 in Balanced, 184 in Easy).
+
+
+2. **Special Action Conversion Engine (`S` Stance — 34.1% to 42.7% Share):**
+* **`S+K` (Violent Slash / Jaguar Shock):** Core finisher choice across all tree-search tiers (**30 uses / 58.8% of specials in Master**; **30 in Balanced**; **36 in SOUL**).
+* **`S+J` (Rider Kick / Secondary Special):** Secondary value conversion choice (10 uses in Master, 109 in Easy).
+
+
+3. **High-Tier Mobility Management (`W` Stance — 7.2% to 8.5% Share):**
+* Under Master and SOUL lookahead, `ForeseeEngine` incorporates **`W+I` range leap positioning** (9 out of 11 utility decisions in Master) to shift out of Ichigo's linear action vectors rather than taking block damage.
+
+
+4. **Defensive Economy (`A` Stance — 0.0% to 3.4% Share):**
+* Amazon's policy relies almost entirely on range spacing and interrupt pokes, keeping guard allocation under 3.5% across all settings.
+
+
+
+---
+
+### 4. Combat Style & Archetype Analysis: Amazon vs. Ichigo (`006_001`)
+
+```
+[ Ichigo High-Resource / Forward Advance ] ──> [ D+L / D+I Spacing Poke ] ──> [ W+I Range Shift ]
+                                                                                     │
 [ Win (72.7% Master / 63.6% SOUL) ] <── [ Fast 11.5 Round KO ] <─── [ S+K Violent Slash ]
 
-Archetype Profile: Feral Speed Brawler vs. Heavy Tank
- * Hyper-Fast Match Pacing: Amazon exhibits the fastest round execution time in the entire 36-matchup grid, averaging 9.7 to 12.0 rounds per match. This bypasses the prolonged 26–28 round attrition battles seen in heavyweight matchups (e.g., 001_001 or 001_003).
- * Spatial Evasion over Turtle Guarding: Rather than holding A+I Omni Guard, Amazon's matrix leverages high movement speed (W+I) and long-reaching low sweeps (D+K / D+L) to strip Ichigo's Chi and punish whiffs instantly.
-5. Repository & Archival Metadata Record
+```
+
+#### Archetype Profile: High-Tempo Pace Operator vs. High-Sustain Heavy State Profile
+
+* **Hyper-Fast Match Pacing:** Amazon exhibits the fastest round execution time in the entire 36-matchup grid, averaging **9.7 to 12.0 rounds per match**. This bypasses the prolonged 26–28 round attrition battles seen in heavyweight matchups (e.g., `001_001` or `001_003`).
+* **Spatial Evasion over Turtle Guarding:** Rather than holding `A+I` Omni Guard, Amazon's matrix leverages high stance mobility (`W+I`) and long-reaching low sweeps (`D+K` / `D+L`) to strip Ichigo's Chi and exploit unrewarded opponent turns instantly.
+
+---
+
+### 5. Repository & Archival Metadata Record
+
+```json
 {
   "matchup": "006_001",
   "learner": "Kamen Rider Amazon [006]",
@@ -650,7 +698,7 @@ Archetype Profile: Feral Speed Brawler vs. Heavy Tank
     "soul_tier_win_rate": 0.636
   },
   "tactical_fingerprint": {
-    "archetype": "Feral Speed Brawler",
+    "archetype": "High-Tempo Pace Operator",
     "avg_match_length": "9.7 - 12.0 rounds",
     "primary_poke": "D+L / D+K",
     "primary_special": "S+K",
@@ -659,11 +707,13 @@ Archetype Profile: Feral Speed Brawler vs. Heavy Tank
   "deployment_target": "data/models/006_001.json"
 }
 
-006_002:
+```
 
-# Official Server Model Benchmark & Diagnostic Report
+---
 
-**Matchup `006_002` (Kamen Rider Amazon vs. Kamen Rider Nigo)**
+---
+
+## Matchup `006_002` (Kamen Rider Amazon vs. Kamen Rider Nigo)
 
 **Candidate Checkpoint Fingerprint:** `1565801151`
 
@@ -675,11 +725,11 @@ Archetype Profile: Feral Speed Brawler vs. Heavy Tank
 
 ---
 
-## 1. Executive Summary & Clearance Profile
+### 1. Executive Summary & Clearance Profile
 
 Candidate Model **`1565801151`** has officially achieved a complete 4-tier validation sweep for **Matchup `006_002**`, securing the second production matrix in **Row 6 (`006` Learner Grid)**.
 
-Amazon maintains decisive win margins against Nigo across all AI settings, peaking at **90.3% in Balanced tier** and holding **61.1%–63.6% under deep tree search (Master & SOUL)**. The policy capitalizes on Amazon's high mobility and rapid frame execution to punish Nigo's heavy power routines, keeping match durations remarkably short (~10.3 to 13.3 rounds).
+Amazon maintains decisive win margins against Nigo across all AI settings, peaking at **90.3% in Balanced tier** and holding **61.1%–63.6% under deep tree search (Master & SOUL)**. The policy capitalizes on Amazon's high mobility and fast turn execution to exploit Nigo's high-cost stance commitments, keeping match durations remarkably short (~10.3 to 13.3 rounds).
 
 ```
   ==================================================================================
@@ -695,7 +745,7 @@ Amazon maintains decisive win margins against Nigo across all AI settings, peaki
 
 ---
 
-## 2. Complete Cross-Tier Data Matrix
+### 2. Complete Cross-Tier Data Matrix
 
 | Performance Metric | Easy Tier | Balanced Tier | Master Tier | SOUL Tier |
 | --- | --- | --- | --- | --- |
@@ -712,7 +762,7 @@ Amazon maintains decisive win margins against Nigo across all AI settings, peaki
 
 ---
 
-## 3. Stance & Action Selection Breakdown
+### 3. Stance & Action Selection Breakdown
 
 ```
         STANCE DISTRIBUTION — MATCHUP 006_002 (Cross-Tier Profile)
@@ -724,43 +774,43 @@ Amazon maintains decisive win margins against Nigo across all AI settings, peaki
 
 ```
 
-### Granular Execution Insights
+#### Granular Execution Insights
 
 1. **`D+L` Mid-Poke Lockout (54.6%–58.7% Neutral Share):**
-* **`D+L` (Combo Punch / Mid Poke):** The single most dominant move across all tree-search tiers (**278 uses in Balanced**; **144 in SOUL**; **96 in Master**). It continuously interrupts Nigo's heavy power punch windups.
-* **`D+I` (Range Poke):** Second primary spacing tool (**120 uses in Balanced**; **59 in SOUL**; **141 in Easy**), generating Chi while keeping Nigo outside grapple range.
-* **`D+K` (Low Sweep):** Heavily favored in direct neural mode (**205 uses in Easy**) for immediate knockdown resets.
+* **`D+L` (Combo Punch / Mid Poke):** The single most dominant move across all tree-search tiers (**278 uses in Balanced**; **144 in SOUL**; **96 in Master**). It continuously intercepts Nigo's high-cost attack state setups.
+* **`D+I` (Range Poke):** Second primary spacing tool (**120 uses in Balanced**; **59 in SOUL**; **141 in Easy**), generating Chi while keeping Nigo outside action range.
+* **`D+K` (Low Sweep):** Heavily favored in direct neural mode (**205 uses in Easy**) for immediate state resets.
 
 
-2. **`S+K` Violent Slash Cash-Out Engine (33.4%–47.3% Special Share):**
-* **`S+K` (Violent Slash / Jaguar Shock):** Overwhelming choice for special punishes across all 4 tiers (**283 uses in Easy**; **172 in Balanced**; **90 in SOUL**; **59 in Master**), accounting for **60.4% to 61.4% of all special decisions** under search.
+2. **`S+K` Violent Slash Conversion Engine (33.4%–47.3% Special Share):**
+* **`S+K` (Violent Slash / Jaguar Shock):** Overwhelming choice for special execution across all 4 tiers (**283 uses in Easy**; **172 in Balanced**; **90 in SOUL**; **59 in Master**), accounting for **60.4% to 61.4% of all special decisions** under search.
 * **`S+J` (Rider Kick / Secondary Special):** Primary secondary option (**236 uses in Easy**; **31 in Balanced**; **26 in SOUL**).
 
 
 3. **Lean Defensive Economy (`A` & `W` Stances < 4%):**
-* Like the `006_001` Ichigo matchup, Amazon avoids turtling against Nigo (`A` guard usage remains under 3.6%). Rather than taking block chip damage from Nigo's heavy hits, `ForeseeEngine` relies on spatial evasion and raw poke interrupts (`D+L`).
+* Like the `006_001` Ichigo matchup, Amazon avoids turtle guarding against Nigo (`A` guard usage remains under 3.6%). Rather than taking chip damage from Nigo's heavy hits, `ForeseeEngine` relies on spatial evasion and raw poke interrupts (`D+L`).
 
 
 
 ---
 
-## 4. Combat Style & Archetype Analysis: Amazon vs. Nigo (`006_002`)
+### 4. Combat Style & Archetype Analysis: Amazon vs. Nigo (`006_002`)
 
 ```
-[ Nigo Heavy Power Windup ] ──> [ D+L / D+I Mid-Range Intercept ] ──> [ S+K Violent Slash ]
+[ Nigo High-Cost Stance Setup ] ──> [ D+L / D+I Mid-Range Intercept ] ──> [ S+K Violent Slash ]
                                                                              │
 [ Win (61.1% SOUL / 90.3% Balanced) ] <── [ Fast 10.3–12.1 Round KO ] <──────┘
 
 ```
 
-### Archetype Profile: High-Mobility Intercept Brawler vs. Heavy Powerhouse
+#### Archetype Profile: High-Tempo Intercept Operator vs. High-Resource Heavy State Profile
 
-* **Countering Nigo's Power Frames:** Nigo possesses heavy strike priority and high single-hit damage, but longer startup frames. Amazon’s matrix takes advantage of this by locking down neutral with fast **`D+L` pokes** and converting every whiffed Nigo power move directly into **`S+K` Violent Slash**.
+* **Countering Nigo's High-Cost Action Delays:** Nigo possesses heavy strike priority and high single-hit damage, but higher action latency. Amazon’s matrix takes advantage of this by locking down neutral with fast **`D+L` pokes** and converting every unrewarded Nigo action choice directly into **`S+K` Violent Slash**.
 * **Consistent Rapid Pacing:** Match durations remain tightly controlled between **10.3 and 13.3 rounds**, preventing Nigo from building momentum or dragging Amazon into late-game attrition.
 
 ---
 
-## 5. Repository & Archival Metadata Record
+### 5. Repository & Archival Metadata Record
 
 ```json
 {
@@ -780,7 +830,7 @@ Amazon maintains decisive win margins against Nigo across all AI settings, peaki
     "soul_tier_win_rate": 0.611
   },
   "tactical_fingerprint": {
-    "archetype": "High-Mobility Intercept Brawler",
+    "archetype": "High-Tempo Intercept Operator",
     "avg_match_length": "10.3 - 13.3 rounds",
     "primary_poke": "D+L",
     "primary_special": "S+K",
@@ -790,6 +840,3 @@ Amazon maintains decisive win margins against Nigo across all AI settings, peaki
 }
 
 ```
-
-
-
