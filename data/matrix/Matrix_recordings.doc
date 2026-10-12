@@ -1,3 +1,5 @@
+// 001_ICHIGO //
+
 # Official Server Model Benchmark & Release Reports (Turn-Based Decision Engine)
 
 ---
@@ -571,8 +573,79 @@ Despite Amazon's high-tempo offensive selections, Ichigo's retrained Q-priors ut
   "deployment_target": "data/models/001_006.json"
 }
 
+
+// 002_NIGO //
+
+
+
+```
+# Active Matrix Adoption Record: Matchup `002_001` (Nigo vs. Ichigo)
+
+**Candidate Checkpoint Fingerprint:** `829369187`
+
+**Cumulative Training Volume:** 11,364 Games / 87,598 Decisions
+
+**Engine Build:** `v5-state256-action17`
+
+**Status:** **PASSED BENCHMARK — PROMOTED TO ACTIVE RIDER MATRIX**
+
+---
+
+## 1. Consolidated Evaluation Benchmark Matrix
+
+| Opponent Controller | Learner Policy | Matches | Win Rate | W / L | Avg Rounds | `W` Stance % | Dominant Utility | Primary Attack |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Master AI** | RIDER Search | 26 / 26 | **65.4%** | 17 / 9 | 25.4 | **12.9%** (85) | `W+K` Power Focus (75) | `D+I` Mixed Combo (324) |
+| **Balanced AI** | RIDER Search | 26 / 26 | **61.5%** | 16 / 10 | 25.1 | **16.3%** (106) | `W+K` Power Focus (98) | `D+I` Mixed Combo (354) |
+| **Soul AI** | RIDER Search | 15 / 26 | **53.3%** | 8 / 7 | 26.2 | **15.1%** (60) | `W+K` Power Focus (53) | `D+I` Mixed Combo (196) |
+| **Easy AI** | Direct Network | 26 / 26 | **69.2%** | 18 / 8 | 14.6 | **0.0%** (0) | *None* | `S+J` Rider Punch (136) |
+
+---
+
+## 2. Decision & Stance Distribution Breakdown
+
+### A. RIDER Live Search Policy (Tactical Utility Engine)
+
+Under RIDER tree search lookahead against high-tier controllers (**Master**, **Balanced**, **Soul**), the active matrix demonstrates a controlled, patient pacing model (**25+ rounds/match**):
+
+* **`D` Neutral Spacing (70.1% – 71.3%):** `D+I` Mixed Combo (1 Chi, 85% base hit, 130 base damage) serves as the primary neutral stick to control range and accumulate Chi.
+* **`W` Utility Activation (12.9% – 16.3%):** RIDER search systematically selects **`W+K` Power Focus** (1 Chi, +30% Physical ATK) for 88%–92% of all utility decisions.
+* **Synergy:** Buffs `D+I` damage output from **130 to 169 per hit** for 2 turns, optimizing Chi efficiency per LP dealt.
+
+
+* **`S` Special Cash-Outs (6.0% – 7.4%):** Specials are reserved strictly for high-probability finishing blows (`S+J` Rider Punch / `S+I` Typhoon Power Break).
+* **`A` Defensive Blocking (3.8% – 6.1%):** Low guard overhead, preventing passive turtling and corner pin-downs.
+
+```
+       RIDER SEARCH STANCE PROFILE (VS. MASTER / BALANCED / SOUL)
+
+  [D: 70.5%]               [W: 14.8%]       [S: 6.7%]   [A: 4.7%]  [IDLE: 3.2%]
+  (D+I Poke Dominance)     (W+K Power Focus)  (Cash-outs) (Guard)    (Recovery)
+
 ```
 
+### B. Direct Network Policy (Fast Aggression Engine)
+
+Under direct neural policy evaluation against **Easy AI**, execution converts to immediate cash-out aggression (**14.6 rounds/match**):
+
+* **`S` Special Cash-Outs (51.5%):** Led by **136 `S+J` Rider Punches** (3 Chi, 360 base damage), overwhelming opponent health pools before long-term utility setups are required.
+* **`D` Physical Pokes (39.1%):** Secondary filler attacks led by `D+I` and `D+K`.
+* **`W` Utility Stance (0.0%):** Zero utility turns, confirming that non-search neural execution prioritizes fast LP damage over multi-turn buffing against low-tier opponents.
+
+---
+
+## 3. Key Milestone Validations
+
+1. **Master AI Benchmark Outperformed (65.4% Win Rate):** The RIDER search policy comfortably clears the 60%+ win-rate threshold against Master search lookahead, maintaining symmetrical performance across starting slots (**8W / 5L on P1** vs. **9W / 4L on P2**).
+2. **`W+K` Power Focus Integration:** Phase 1 Discovery successfully evolved the matrix beyond Master AI's blind spots, embedding `W+K` into core $Q$-value priors and establishing a 12%+ utility usage rate under RIDER search.
+3. **Absence of Defensive Turtle Pollution:** Guard share (`A` stance) remains strictly clamped below 6.1% across all runs, validating that Win-Only trajectory filtering protected the candidate baseline from passive guard traps.
+
+---
+
+## 4. Operational Actions
+
+* **Active Matrix Baseline Updated:** Checkpoint `829369187` is now registered as the active RIDER policy matrix for matchup `002_001` (`nigo` vs `ichigo`).
+* **RAM Export Required:** Because persistent auto-save encountered a local write issue, export the candidate weights via the trainer interface (`.bin` / `.json` export) to permanently safeguard the 11,364-game training history.
 ---
 
 ---
