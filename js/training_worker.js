@@ -86,6 +86,18 @@ function validateJob(job) {
     throw new Error("Invalid guidance schedule.");
   }
 
+  if (
+    !Number.isInteger(job.initialEpsilon) ||
+    job.initialEpsilon < 1 ||
+    job.initialEpsilon > 100
+  ) {
+    throw new Error("Initial Epsilon % must be an integer from 1 to 100.");
+  }
+
+  if (typeof job.winOnly !== "boolean") {
+    throw new Error("winOnly flag must be a boolean.");
+  }
+
   if (!["network", "rider"].includes(job.learnerPolicy)) {
     throw new Error("Invalid learner policy.");
   }
@@ -178,6 +190,9 @@ async function run(job) {
   let imitation = 0;
   let epsilon = 0;
 
+  const initialEpsilonBase = job.initialEpsilon / 100;
+  const winOnly = Boolean(job.winOnly);
+
   const recent = [];
   const breakdown = {};
 
@@ -216,7 +231,9 @@ async function run(job) {
       evaluation: null,
       trainingTask: {
         opponentController: job.mode,
-        warmStart: Boolean(job.warmStart)
+        warmStart: Boolean(job.warmStart),
+        initialEpsilon: job.initialEpsilon,
+        winOnly
       }
     };
   }
@@ -250,6 +267,8 @@ async function run(job) {
       guideProbability,
       imitationCoefficient: imitation,
       epsilon,
+      initialEpsilon: job.initialEpsilon,
+      winOnly,
       rewardMode: job.rewardMode,
       seed,
       learner: job.learner,
@@ -289,6 +308,7 @@ async function run(job) {
       if (job.warmStart) {
         guideProbability = 1;
         imitation = 1;
+        epsilon = Math.max(0.02, initialEpsilonBase * (1 - (progress / 100) * 0.8));
       } else {
         if (progress < job.guideHoldPct) {
           guideProbability = 1;
@@ -305,14 +325,23 @@ async function run(job) {
           ? recent.reduce((sum, value) => sum + value, 0) / recent.length
           : 0.2;
 
+        // Dynamic Epsilon scaled relative to user-specified initial value
+        const targetFloor = Math.max(0.01, initialEpsilonBase * 0.1);
+        const adaptiveRatio = Math.max(0.2, 1 + (0.5 - rollingWinRate) / 0.3);
+        
         epsilon = Math.max(
-          0.02,
-          Math.min(0.06, 0.02 + ((0.5 - rollingWinRate) / 0.3) * 0.04)
+          targetFloor,
+          Math.min(
+            initialEpsilonBase,
+            initialEpsilonBase * (1 - (progress / 100) * 0.7) * adaptiveRatio
+          )
         );
 
         imitation = Math.max(0.01, 0.05 * guideProbability);
       }
     }
+
+    const matchTransitions = [];
 
     const generator = SoulSim.episode({
       data,
@@ -340,7 +369,18 @@ async function run(job) {
       if (event.type === "transition") {
         transitions++;
 
-        if (training) learner.accept(event.transition, imitation);
+        if (training) {
+          if (winOnly) {
+            // Buffer transitions temporarily until match outcome is known
+            matchTransitions.push({
+              transition: event.transition,
+              imitation
+            });
+          } else {
+            // Direct acceptance for standard training
+            learner.accept(event.transition, imitation);
+          }
+        }
 
         const key = event.transition.resolvedActionKey;
         const parts = key.split("+");
@@ -391,12 +431,21 @@ async function run(job) {
     if (result.state.winner === learnerSlot) {
       wins++;
       outcome = "wins";
+
+      // Win-Only Trajectory Filtering: Commit buffered transitions ON WIN ONLY
+      if (training && winOnly && matchTransitions.length > 0) {
+        for (const item of matchTransitions) {
+          learner.accept(item.transition, item.imitation);
+        }
+      }
     } else if (result.state.winner === "draw") {
       draws++;
       outcome = "draws";
+      // Losses / Draws: matchTransitions array is left unaccepted and discarded
     } else if (result.state.winner) {
       losses++;
       outcome = "losses";
+      // Losses / Draws: matchTransitions array is left unaccepted and discarded
     } else {
       throw new Error("Episode ended without a winner or draw.");
     }
