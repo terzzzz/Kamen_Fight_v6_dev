@@ -445,10 +445,11 @@ Because low-tier AI fails to exploit state vulnerabilities, the policy completel
 }
 
 ```
-
+001_005:
+Consolidated Evaluation Benchmark: Candidate 1502262360 (10,057 Games)Opponent ControllerLearner PolicyMatchesWin RateW / LAvg RoundsW Stance %Dominant UtilityPrimary Attack EngineMaster AIRIDER Search22 / 2663.6%14 / 824.32.0% (11)W+L Typhoon Bless (9)D+L Combo Punch (260)Soul AIRIDER Search26 / 2661.5%16 / 1024.71.1% (7)W+L Typhoon Bless (7)D+L Combo Punch (332)Balanced AIDirect Network26 / 2657.7%15 / 1114.00.0% (0)NoneD+L Punch (106) / S+J Chop (85)Easy AIDirect Network88 / 8877.3%68 / 2015.10.0% (0)NoneD+L Punch (422) / S+J Chop (312)Tactical Policy DichotomyRIDER Search Policy (High-Tier Search Execution):Pacing: Patient 24.5 rounds/match spatial game.Anti-Faint Counter (W+L): Selectively activates W+L Typhoon Bless (Faint Recovery 15) to systematically purge faint meter build-up inflicted by Kamen Rider X's Ridol rod moves.Neutral Dominance: Relies on D+L Combo Punch (80.5% share) to pin X against the wall.Direct Network Policy (Unassisted Neural Speed):Pacing: Fast 14.0 – 15.1 rounds/match blitz.Zero-Utility Pivot (0.0% W): Without lookahead tree expansion, the raw network recognizes that against Balanced and Easy AI, spending turns on W utility is unnecessary.Pure LP Offense: Converts straight to heavy physical pokes (D+L Combo Punch) and immediate special cash-outs (S+J Rider Power Chop / S+K Rider Kick), achieving a 77.3% win rate against Easy AI at a speed of 577+ matches per minute.Promotion Criteria ChecklistRIDER Search Lookahead: Cleared 63.6% vs Master and 61.5% vs Soul ($\ge 60\%$ target).Direct Policy Standalone: Cleared 57.7% vs Balanced and 77.3% vs Easy ($\ge 50\%$ target).Defensive Cleanliness: Guard usage (A stance) strictly clamped between 1.1% and 5.0% across all 4 benchmark suites (no defensive turtle corruption).Dataset Volume: Matrix updated with 10,057 candidate games / 121,083 decisions.Final Action RequiredBecause local persistent saving hit a write failure, export candidate weights for fingerprint 1502262360 via the trainer interface (.bin / .json export) to permanently lock in the active RIDER matrix for matchup 001_005.
 ---
 
----
+001_006:
 
 ## Matchup `001_006` (Kamen Rider Ichigo vs. Kamen Rider Amazon)
 
