@@ -22,7 +22,7 @@
     host.classList.add("soul-tools");
 
     host.innerHTML = `
-      <h2>KAMEN FIGHT — SOUL TRAINER</h2>
+      <h2>KAMEN FIGHT — RIDER LEVEL TRAINER</h2>
 
       <p>
         Build: <strong>${BUILD}</strong><br>
