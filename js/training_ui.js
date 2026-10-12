@@ -89,6 +89,16 @@
             min="0" max="100" value="80">
         </label>
 
+        <label>Initial Epsilon %
+          <input data-field="initial-epsilon" type="number"
+            min="1" max="100" step="1" value="20">
+        </label>
+
+        <label class="soul-checkbox-label">
+          <input data-field="win-only" type="checkbox" checked>
+          <span>Only winning matches update candidate</span>
+        </label>
+
         <label>Seed
           <input data-field="seed" type="number"
             min="0" max="4294967295" value="12345">
@@ -146,6 +156,21 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+      }
+      .soul-fields label.soul-checkbox-label {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        margin-top: auto;
+        padding-bottom: 8px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .soul-fields label.soul-checkbox-label input {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+        accent-color: #00d9b2;
       }
       .soul-tools input, .soul-tools select, .soul-tools button {
         padding: 8px;
@@ -282,8 +307,9 @@
       if (training) {
         lines.push(
           "",
+          `Win-only updates: ${report.winOnly ? "ENABLED (Losses/Draws discarded)" : "DISABLED (All matches update)"}`,
           `Guided rounds: ${(100 * report.guideProbability).toFixed(1)}%`,
-          `Epsilon: ${(100 * report.epsilon).toFixed(1)}%`,
+          `Epsilon: ${(100 * report.epsilon).toFixed(1)}% (Initial: ${report.initialEpsilon}%)`,
           `Imitation coefficient: ${report.imitationCoefficient.toFixed(4)}`,
           `Replay entries: ${report.replaySize}`,
           `Gradient updates: ${report.updates}`,
@@ -402,6 +428,9 @@
         throw new Error("Guide hold cannot exceed guide-zero percentage.");
       }
 
+      const initialEpsilon = integer("initial-epsilon", 1, 100);
+      const winOnly = Boolean(field("win-only").checked);
+
       const mode = field("mode").value;
 
       const teacher = warmStart && ["easy", "balanced", "master", "soul"].includes(mode)
@@ -430,6 +459,8 @@
         rewardMode: field("reward-mode").value,
         guideHoldPct,
         guideZeroPct,
+        initialEpsilon,
+        winOnly,
         teacher,
         warmStart,
         learnerPolicy: training
