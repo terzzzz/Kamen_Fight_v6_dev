@@ -32,7 +32,10 @@
       <p>
         Training uses the direct neural controller with exploration and
         optional search demonstrations. Evaluation can use the live
-        RIDER search controller.
+        RIDER search controller. 
+        NOTE: This is a decision game where players make a move within 
+        8-second realtime timeframe. The charge bar of action shows how
+        eagered you put on the move. Shorter charge bar execute first.
       </p>
 
       <div class="soul-fields">
