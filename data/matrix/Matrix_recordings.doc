@@ -577,6 +577,7 @@ Despite Amazon's high-tempo offensive selections, Ichigo's retrained Q-priors ut
 
 // 002_NIGO //
 
+002_001:
 
 
 ```
@@ -648,6 +649,115 @@ Under direct neural policy evaluation against **Easy AI**, execution converts to
 * **Active Matrix Baseline Updated:** Checkpoint `829369187` is now registered as the active RIDER policy matrix for matchup `002_001` (`nigo` vs `ichigo`).
 * **RAM Export Required:** Because persistent auto-save encountered a local write issue, export the candidate weights via the trainer interface (`.bin` / `.json` export) to permanently safeguard the 11,364-game training history.
 ---
+
+
+002_002:
+
+# Active Matrix Adoption & Benchmark Record: Matchup `002_002` (Nigo vs. Nigo)
+
+**Candidate Checkpoint Fingerprint:** `3068272179`
+
+**Cumulative Training Volume:** 15,172 Candidate Games / 140,962 Decisions
+
+**Engine Build:** `v5-state256-action17`
+
+**Status:** **PASSED BENCHMARK — PROMOTED TO FIRST ACTIVE RIDER MATRIX FOR `002_002**`
+
+---
+
+## 1. Complete Consolidated Evaluation Benchmark
+
+| Opponent Controller | Learner Policy | Reward Mode | Matches | Win Rate | W / L | Avg Rounds | `W` Stance % | Dominant Utility Engine | Primary Attack Engine |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Master AI** | RIDER Search | `terminal_only` | 10 / 60 | **60.0%** | 6 / 4 | 28.4 | **5.4%** (17) | `W+K` Power Focus (14) | `D+I` Mixed Combo (187) |
+| **Soul AI** | RIDER Search | `terminal_only` | 19 / 60 | **52.6%** | 10 / 9 | 28.2 | **7.1%** (38) | `W+K` Focus (24) / `W+J` Red Shutter (13) | `D+I` Mixed Combo (333) |
+| **Balanced AI** | Direct Network | `terminal_only` | 60 / 60 | **55.0%** | 33 / 27 | 20.5 | **0.0%** (0) | *None* | `D+I` Combo (563) / `S+J` Punch (525) |
+| **Easy AI** | Direct Network | `terminal_only` | 60 / 60 | **90.0%** | 54 / 6 | 19.7 | **0.0%** (0) | *None* | `D+I` Combo (567) / `S+J` Punch (438) |
+
+---
+
+## 2. Tactical Analysis: Mirror Matchup Mechanics (`002_002`)
+
+In a pure mirror matchup where both fighters possess identical frame data, hitboxes, and Chi generation pools, the candidate matrix resolves the **real-time 8-second action charge bar** through two distinct execution profiles:
+
+### A. RIDER Live Search Policy (Tactical Buff & Initiative Overrides)
+
+Under tree search lookahead against high-tier search opponents (**Master** and **Soul**), Nigo plays a patient **~28.3 round** spatial game:
+
+1. **`W+K` Power Focus Damage Buff (63.2% – 82.4% of Utility):**
+RIDER search consistently prioritizes **`W+K` Power Focus** (1 Chi, +30% Physical ATK). Buffing `D+I` Mixed Combo output from **130 to 169 damage per hit** breaks neutral trades in Nigo's favor.
+2. **`W+J` Typhoon Red Shutter Speed Override (Vs. Soul AI):**
+Against Soul AI's aggressive search lookahead, RIDER search unlocked **`W+J` Typhoon Red Shutter** (3 Chi, +25% Speed / +15% Def, 13 uses). The +25% speed buff shortens Nigo's action charge bar, ensuring his moves charge faster and execute **first** in frame-tight exchanges.
+3. **`D+I` Neutral Dominance (70%+ of Total Decisions):**
+`D+I` Mixed Combo (1 Chi, 85% hit rate) serves as the primary neutral stick (187 uses vs Master / 333 uses vs Soul).
+4. **Clean Guard Control:**
+Guards (`A` stance) remained clamped between **2.2% and 4.3%**, preventing passive turtling.
+
+```
+       RIDER SEARCH STANCE PROFILE — NIGO VS. NIGO (VS. SOUL AI)
+
+  [D: 78.7%]                     [W: 7.1%]        [S: 6.7%]   [A: 4.3%]  [IDLE: 3.3%]
+  (D+I Mixed Combo Dominance)    (W+K / W+J Buffs) (Cash-outs) (Guard)    (Recovery)
+
+```
+
+### B. Direct Network Policy (Fast Dual-Core Blitz)
+
+Under direct neural policy evaluation against **Balanced** and **Easy AI**, execution switches to immediate charge-bar attack velocity (**19.7 – 20.5 rounds/match**):
+
+* **Pure Offensive Dual-Core (95.7% – 98.5% Total Offense):**
+The raw network uses a zero-utility (**0.0% `W` / 0.0% `A**`) strategy, alternating strictly between **`D+I` Mixed Combo** for neutral interrupts and **`S+J` Rider Punch** (3 Chi, 360 base damage) for special cash-outs.
+* **Easy AI Demolition:**
+Achieved a **90.0% win rate** (54W / 6L) at an execution rate of 144 matches per minute.
+
+---
+
+## 3. Operational Promotion Summary
+
+* **Active Status Assigned:** Candidate matrix `3068272179` (15,172 games / 140,962 decisions) is officially registered as the **Active RIDER Matrix** for matchup `002_002`.
+* **Action Required:** Click **ACTIVATE SELECTED CANDIDATE** and **EXPORT SELECTED CANDIDATE** in the UI to permanently store checkpoint `3068272179` to local disk.
+
+002_003:
+
+002_004:
+
+002_005:
+
+002_006:
+
+
+// 003_V3 //
+
+003_001:
+
+003_002:
+
+003_003:
+
+003_004:
+
+003_005:
+
+003_006:
+
+// 004_Riderman //
+
+004_001:
+004_002:
+004_003:
+004_004:
+004_006:
+004_006:
+
+// 005_X //
+005_001:
+005_002:
+005_003:
+005_004:
+005_006:
+005_006:
+
+
 
 ---
 
