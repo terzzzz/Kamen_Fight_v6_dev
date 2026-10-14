@@ -24,6 +24,8 @@
 
   const SLOTS = ["p1", "p2"];
 
+  const CHARGE_STEP_MS = 50;
+
   // Returns the opposing fighter slot.
   const other = slot => slot === "p1" ? "p2" : "p1";
 
@@ -468,126 +470,211 @@
     );
   }
 
-  /**
-   * Maximum reachable charge within the configured decision window.
-   */
-  function maxCharge(player, direction) {
-    const available =
-      g.GAME_CONFIG.ROUND_TIME_LIMIT * 1000 -
-      g.GAME_CONFIG.CPU_REACTION_MS;
+/*
+ * Shared decision-clock rules.
+ *
+ * Inputs are applied at t = 0, 50, 100, ... while t < the deadline.
+ * Charge begins at 1% when a direction is selected.
+ */
+function decisionLimitMs() {
+  const seconds = Number(
+    g.GAME_CONFIG?.ROUND_TIME_LIMIT ?? 8
+  );
 
-    return K.clamp(
-      Math.floor(
-        100 * available / chargeMs(player, direction)
-      ),
-      0,
-      100
-    );
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error("Invalid round decision time.");
   }
+
+  return Math.max(CHARGE_STEP_MS, seconds * 1000);
+}
+
+function cpuReadyAtMs() {
+  const reaction = Number(
+    g.GAME_CONFIG?.CPU_REACTION_MS ?? 250
+  );
+
+  if (!Number.isFinite(reaction) || reaction < 0) {
+    throw new Error("Invalid CPU reaction time.");
+  }
+
+  return Math.ceil(reaction / CHARGE_STEP_MS) *
+    CHARGE_STEP_MS;
+}
+
+function lastInputMs() {
+  return (
+    Math.ceil(decisionLimitMs() / CHARGE_STEP_MS) - 1
+  ) * CHARGE_STEP_MS;
+}
+
+function chargePercent(player, direction, elapsedMs) {
+  if (
+    !["W", "A", "S", "D"].includes(direction) ||
+    !Number.isFinite(elapsedMs)
+  ) {
+    throw new Error("Invalid charge-clock input.");
+  }
+
+  const duration = chargeMs(player, direction);
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error("Invalid full-charge duration.");
+  }
+
+  return K.clamp(
+    Math.floor(
+      100 * Math.max(0, elapsedMs) / duration
+    ),
+    1,
+    100
+  );
+}
+
+/*
+ * Default: maximum charge a CPU can actually confirm using the
+ * shared tick clock, after its initial reaction delay.
+ *
+ * availableMs can also describe a hypothetical charging interval.
+ * A negative interval means there is no opportunity to start.
+ * Zero milliseconds of charging still permits the initial 1%.
+ */
+function maxCharge(player, direction, availableMs) {
+  const available = availableMs ??
+    (lastInputMs() - cpuReadyAtMs());
+
+  if (!Number.isFinite(available)) {
+    throw new Error("Invalid available charging time.");
+  }
+
+  if (available < 0) return 0;
+
+  return chargePercent(player, direction, available);
+}
 
   /**
    * Checks action legality against current combat state.
    *
    * Timing feasibility is handled by the charging environment/planner.
    */
-  function isLegal(state, slot, action) {
-    if (!action || typeof action.key !== "string") {
-      return false;
-    }
-
-    if (state[slot].isFainted) {
-      return action.key === "DO_NOTHING";
-    }
-
-    const move = state.moves[slot][action.key];
-
-    return Boolean(
-      move &&
-      move.chiCost <= state[slot].chi &&
-      Number.isFinite(action.charge) &&
-      action.charge >= 0 &&
-      action.charge <= 100
-    );
+function isLegal(state, slot, action) {
+  if (
+    !action ||
+    typeof action.key !== "string" ||
+    !Number.isFinite(action.charge)
+  ) {
+    return false;
   }
+
+  const player = state?.[slot];
+  const move = state?.moves?.[slot]?.[action.key];
+
+  if (!player || !move) return false;
+
+  // One explicit idle action, never sixteen zero-charge moves.
+  if (action.key === "DO_NOTHING") {
+    return action.charge === 0;
+  }
+
+  if (state.winner || player.isFainted) {
+    return false;
+  }
+
+  return (
+    move.chiCost <= player.chi &&
+    action.charge >= 1 &&
+    action.charge <= 100
+  );
+}
 
   /**
    * Converts an invalid action into the safe idle fallback.
    */
-  function normalizeAction(state, slot, action) {
-    if (!isLegal(state, slot, action)) {
-      return {
-        key: "DO_NOTHING",
-        charge: 0
-      };
-    }
-
+function normalizeAction(state, slot, action) {
+  if (!isLegal(state, slot, action)) {
     return {
-      key: action.key,
-
-      charge: action.key === "DO_NOTHING"
-        ? 0
-        : K.clamp(
-            Math.floor(action.charge),
-            0,
-            100
-          )
+      key: "DO_NOTHING",
+      charge: 0
     };
   }
+
+  return {
+    key: action.key,
+    charge: action.key === "DO_NOTHING"
+      ? 0
+      : K.clamp(
+          Math.floor(action.charge),
+          1,
+          100
+        )
+  };
+}
 
   /**
    * Enumerates available actions at the supplied offensive charge levels.
    */
-  function actions(state, slot, chargeOptions) {
-    if (state.winner || state[slot].isFainted) {
-      return [
-        {
-          key: "DO_NOTHING",
-          charge: 0
-        }
-      ];
-    }
-
-    const output = [];
-
-    for (const key of Object.keys(state.moves[slot]).sort()) {
-      const move = state.moves[slot][key];
-
-      if (move.chiCost > state[slot].chi) continue;
-
-      if (key === "DO_NOTHING") {
-        output.push({
-          key,
-          charge: 0
-        });
-
-        continue;
-      }
-
-      const limit = maxCharge(
-        state[slot],
-        move.direction
-      );
-
-      const choices = move.offensive
-        ? chargeOptions
-        : [100];
-
-      const unique = [
-        ...new Set(
-          choices.map(value => Math.min(limit, value))
-        )
-      ];
-
-      for (const charge of unique) {
-        output.push({
-          key,
-          charge
-        });
-      }
-    }
-
-    return output;
+function actions(
+  state,
+  slot,
+  chargeOptions = [1, 35, 60, 90, 100]
+) {
+  if (state.winner || state[slot].isFainted) {
+    return [{
+      key: "DO_NOTHING",
+      charge: 0
+    }];
   }
+
+  if (!Array.isArray(chargeOptions)) {
+    throw new Error("Charge options must be an array.");
+  }
+
+  const positiveOptions = chargeOptions.filter(
+    value =>
+      Number.isFinite(value) &&
+      value >= 1 &&
+      value <= 100
+  );
+
+  const output = [];
+
+  for (const key of Object.keys(state.moves[slot]).sort()) {
+    const move = state.moves[slot][key];
+
+    if (key === "DO_NOTHING") {
+      output.push({ key, charge: 0 });
+      continue;
+    }
+
+    if (move.chiCost > state[slot].chi) continue;
+
+    const limit = maxCharge(
+      state[slot],
+      move.direction
+    );
+
+    if (limit < 1) continue;
+
+    const choices = move.offensive
+      ? positiveOptions
+      : [100];
+
+    const unique = new Set(
+      choices.map(value =>
+        Math.floor(Math.min(limit, value))
+      )
+    );
+
+    for (const charge of unique) {
+      const action = { key, charge };
+
+      if (isLegal(state, slot, action)) {
+        output.push(action);
+      }
+    }
+  }
+
+  return output;
+}
 
   /**
    * Range priority:
@@ -1607,6 +1694,11 @@ guardReward = isFreeGambleGuard
     comparePriority,
     resolve,
     distribution,
+    CHARGE_STEP_MS,
+decisionLimitMs,
+cpuReadyAtMs,
+lastInputMs,
+chargePercent,
     other
   };
 })(globalThis);
