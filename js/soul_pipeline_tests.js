@@ -1,11 +1,18 @@
 /* js/soul_pipeline_tests.js
- * Small integration checks for the v5 neural pipeline.
+ * Integration checks for the v5 neural pipeline.
+ * Build: v5-state256-action17-charge1-reset1-tests3
  *
- * Mask contract tested here:
- * SoulEnv.mask() describes reachable-charge planning legality.
+ * Contracts:
+ * - 256 observation inputs and 17 actions.
+ * - Action index 16 is DO_NOTHING.
+ * - Planning masks use reachable-charge legality.
+ * - Missing controller inputs mean WAIT.
+ * - Repeating a direction preserves its charge clock.
+ * - Changing direction resets the charge clock.
  *
- * Required core signature:
+ * Required core signatures:
  * CombatCore.maxCharge(fighter, direction)
+ * CombatCore.chargePercent(fighter, direction, elapsedMs)
  */
 (function (g) {
   "use strict";
@@ -35,7 +42,7 @@
       }
     }
 
-    // Fail clearly if an old or missing script is loaded.
+    // Fail clearly if a required script is missing or outdated.
     assert(C, "CombatCore is not loaded.");
     assert(E, "SoulEnv is not loaded.");
     assert(N, "SoulNN is not loaded.");
@@ -54,11 +61,13 @@
       "createMatch",
       "copyState",
       "isLegal",
-      "maxCharge"
+      "maxCharge",
+      "chargePercent"
     ]) {
       assert(
         typeof C[method] === "function",
-        "CombatCore." + method + " is missing. Check the loaded core version."
+        "CombatCore." + method +
+          " is missing. Check the loaded core version."
       );
     }
 
@@ -110,11 +119,22 @@
     const first = data.riders[0];
     const second = data.riders[1] || first;
 
-    const fresh = () => C.createMatch(first, second, data.moves);
+    const fresh = () => C.createMatch(
+      first,
+      second,
+      data.moves
+    );
 
     test("256 inputs and 17 actions", () => {
-      assert(spec.input === 256, "Wrong input size.");
-      assert(spec.output === 17, "Wrong output size.");
+      assert(
+        spec.input === 256,
+        "Wrong input size."
+      );
+
+      assert(
+        spec.output === 17,
+        "Wrong output size."
+      );
 
       assert(
         E.ACTION_MAP.length === 17,
@@ -134,6 +154,7 @@
 
     test("Observation reads actual fighter LP and CHI", () => {
       const state = fresh();
+
       state.p1.lp = state.p1.maxLp / 2;
       state.p1.chi = 3;
 
@@ -173,20 +194,27 @@
           const state = fresh();
           const fighter = state[slot];
 
-          assert(fighter, "Missing fighter: " + slot);
+          assert(
+            fighter,
+            "Missing fighter: " + slot
+          );
 
           assert(
-            Number.isFinite(fighter.maxChi) && fighter.maxChi >= 0,
+            Number.isFinite(fighter.maxChi) &&
+              fighter.maxChi >= 0,
             "Invalid maxChi for " + slot
           );
 
-          fighter.chi = chiCase === "zero" ? 0 : fighter.maxChi;
+          fighter.chi = chiCase === "zero"
+            ? 0
+            : fighter.maxChi;
 
           const env = E.create(state);
           const mask = E.mask(env, slot);
 
           assert(
-            mask != null && mask.length === E.ACTION_MAP.length,
+            mask != null &&
+              mask.length === E.ACTION_MAP.length,
             "Wrong mask length for " + slot +
               ": expected " + E.ACTION_MAP.length +
               ", got " + mask?.length
@@ -201,7 +229,7 @@
               "Missing move definition: " + slot + " " + key
             );
 
-            // A planning mask checks reachable charge, not charge 0.
+            // Planning legality uses reachable charge, not zero.
             const charge = idle
               ? 0
               : C.maxCharge(fighter, move.direction);
@@ -250,7 +278,8 @@
       const mask = E.mask(E.create(state), "p1");
 
       assert(
-        mask != null && mask.length === E.ACTION_MAP.length,
+        mask != null &&
+          mask.length === E.ACTION_MAP.length,
         "Wrong fainted-fighter mask length."
       );
 
@@ -280,20 +309,121 @@
       );
     });
 
-    test("Time-zero stance switches preserve the charge clock", () => {
+    test("Repeating the same direction preserves a time-zero charge clock", () => {
       const env = E.create(fresh());
 
-      E.step(env, { p1: "W" });
-      E.step(env, { p1: "D" });
+      const firstRejected = E.step(env, { p1: "W" });
+
+      assert(
+        firstRejected.length === 0,
+        "Initial W input was rejected."
+      );
 
       assert(
         env.cells.p1.startedAt === 0,
-        "Charge start time was reset."
+        "Initial direction did not start charging at time zero."
+      );
+
+      assert(
+        env.t > 0,
+        "The first step did not advance the environment clock."
+      );
+
+      const secondRejected = E.step(env, { p1: "W" });
+      const cell = env.cells.p1;
+
+      assert(
+        secondRejected.length === 0,
+        "Repeated W input was rejected."
+      );
+
+      assert(
+        cell.direction === "W",
+        "Repeated W input changed the direction."
+      );
+
+      assert(
+        cell.startedAt === 0 && cell.start === 0,
+        "Repeating the same direction reset the time-zero charge clock."
+      );
+
+      const expectedCharge = C.chargePercent(
+        env.state.p1,
+        "W",
+        env.t
+      );
+
+      assert(
+        Number.isFinite(cell.charge) &&
+          Math.abs(cell.charge - expectedCharge) < 1e-6,
+        "Same-direction charge did not use the original start time."
+      );
+    });
+
+    test("Switching direction resets the charge clock", () => {
+      const env = E.create(fresh());
+
+      const firstRejected = E.step(env, { p1: "W" });
+
+      assert(
+        firstRejected.length === 0,
+        "Initial W input was rejected."
+      );
+
+      const originalStartedAt = env.cells.p1.startedAt;
+
+      // Inputs are processed before E.step advances time.
+      const switchedAt = env.t;
+
+      assert(
+        switchedAt > originalStartedAt,
+        "The clock did not advance before the direction switch."
+      );
+
+      const secondRejected = E.step(env, { p1: "D" });
+      const cell = env.cells.p1;
+
+      assert(
+        secondRejected.length === 0,
+        "Direction-switch input was rejected."
+      );
+
+      assert(
+        cell.direction === "D",
+        "Direction did not switch to D."
+      );
+
+      assert(
+        cell.startedAt === switchedAt &&
+          cell.start === switchedAt,
+        "Switching direction did not reset both charge timestamps."
+      );
+
+      /*
+       * E.step advances time after the switch and refreshes charge.
+       * The returned charge therefore need not still be exactly 1%.
+       */
+      const expectedCharge = C.chargePercent(
+        env.state.p1,
+        "D",
+        env.t - switchedAt
+      );
+
+      assert(
+        Number.isFinite(cell.charge) &&
+          Math.abs(cell.charge - expectedCharge) < 1e-6,
+        "Direction-switch charge did not use the new start time."
+      );
+
+      assert(
+        !cell.locked,
+        "Switching direction unexpectedly locked an action."
       );
     });
 
     test("Faint and status features change the observation", () => {
       const state = fresh();
+
       const baseline = E.vector(
         E.observe(E.create(state), "p1"),
         spec
@@ -321,7 +451,9 @@
       );
 
       assert(
-        changed.some((value, index) => value !== baseline[index]),
+        changed.some(
+          (value, index) => value !== baseline[index]
+        ),
         "State changes did not affect the vector."
       );
 
@@ -362,14 +494,20 @@
     });
 
     test("Network checkpoint round-trip preserves predictions", () => {
-      const net = new N.Network(spec.input, 16, spec.output);
+      const net = new N.Network(
+        spec.input,
+        16,
+        spec.output
+      );
+
       const input = E.vector(
         E.observe(E.create(fresh()), "p1"),
         spec
       );
 
       const before = net.predict(input);
-      const after = N.Network.fromJSON(net.toJSON()).predict(input);
+      const restored = N.Network.fromJSON(net.toJSON());
+      const after = restored.predict(input);
 
       assert(
         before.length === spec.output &&
@@ -384,7 +522,9 @@
       );
 
       assert(
-        before.every((value, index) => value === after[index]),
+        before.every(
+          (value, index) => value === after[index]
+        ),
         "Checkpoint round-trip changed weights/predictions."
       );
     });
@@ -392,9 +532,20 @@
     test("Basic training update stays finite", () => {
       const state = fresh();
       const env = E.create(state);
-      const s = E.vector(E.observe(env, "p1"), spec);
+
+      const s = E.vector(
+        E.observe(env, "p1"),
+        spec
+      );
+
       const m = E.mask(env, "p1");
-      const net = new N.Network(spec.input, 16, spec.output);
+
+      const net = new N.Network(
+        spec.input,
+        16,
+        spec.output
+      );
+
       const a = N.argmax(net.predict(s), m);
 
       assert(
@@ -405,9 +556,19 @@
         "argmax did not select a legal action."
       );
 
-      const loss = net.train([
-        { s, m, a, y: 0.5, demo: true }
-      ], 0.0001, 0.05);
+      const loss = net.train(
+        [
+          {
+            s,
+            m,
+            a,
+            y: 0.5,
+            demo: true
+          }
+        ],
+        0.0001,
+        0.05
+      );
 
       assert(
         Number.isFinite(loss),
@@ -422,7 +583,7 @@
 
     lines.push("", `${passed} pipeline tests passed.`);
 
-    // Preserve the return shape expected by the existing training UI.
+    // Preserve the return shape used by the training interface.
     return { passed, lines };
   }
 
