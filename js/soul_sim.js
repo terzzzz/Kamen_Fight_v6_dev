@@ -414,17 +414,22 @@
           );
         }
 
-        /*
-         * Critical consistency rule:
-         *
-         * The v5 network predicts action keys only. Charge is not encoded in
-         * its 17-output action space. Every learner policy path must therefore
-         * execute the same Core-owned charge for a state/action index.
-         *
-         * This prevents a teacher/RIDER row from training "W+J" at one charge
-         * while direct network play executes "W+J" at another charge.
-         */
-        action = actionForIndex(env, slot, a);
+     /*
+ * DDQN training uses canonical charge because an action index
+ * represents a key, not a key+charge pair.
+ *
+ * RIDER evaluation performs no training, so preserve its actual
+ * search-selected charge to match live KF_AI.choose() behavior.
+ */
+const preserveRiderSearchCharge =
+  mode === "rider" &&
+  options.isTraining === false &&
+  !options.guide;
+
+action = preserveRiderSearchCharge
+  ? proposedAction
+  : actionForIndex(env, slot, a);
+        
 
         const selectedQ = q ? q[a] : 0;
 
