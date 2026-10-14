@@ -719,6 +719,70 @@ Achieved a **90.0% win rate** (54W / 6L) at an execution rate of 144 matches per
 
 002_003:
 
+# Active Matrix Adoption & Benchmark Record: Matchup `002_003` (Nigo vs. V3)
+
+**Candidate Checkpoint Fingerprint:** `3331514604`
+
+**Cumulative Training Volume:** 8,503 Candidate Games / 124,816 Decisions
+
+**Engine Build:** `v5-state256-action17`
+
+**Status:** **PASSED BENCHMARK — PROMOTED TO FIRST ACTIVE RIDER MATRIX FOR `002_003**`
+
+---
+
+## 1. Consolidated Evaluation Benchmark Matrix
+
+| Opponent Controller | Learner Policy | Reward Mode | Matches | Win Rate | W / L | Avg Rounds | `W` Stance % | Dominant Utility Engine | Primary Attack Engine |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Balanced AI** | RIDER Search | `standard` | 62 / 88 | **80.6%** | 50 / 12 | 28.0 | **7.7%** (134) | `W+K` Power Focus (73) / `W+J` Red Shutter (50) | `D+I` Mixed Combo (1,008) / `S+I` Typhoon Break (67) |
+| **Easy AI** | Direct Network | `standard` | 88 / 88 | **61.4%** | 54 / 34 | 19.0 | **0.0%** (0) | *None* | `D` Neutral Pokes / `S` Special Cash-Outs |
+| **Soul AI** | RIDER Search | `standard` | 12 / 16 | **58.3%** | 7 / 5 | 32.8 | **8.7%** (36) | `W+K` Power Focus (19) / `W+J` Red Shutter (16) | `D+I` Mixed Combo (240) / `S+I` Typhoon Break (12) |
+| **Master AI** | RIDER Search | `standard` | 7 / 88 | **57.1%** | 4 / 3 | 33.0 | **6.3%** (15) | `W+J` Red Shutter (7) / `W+K` Power Focus (6) | `D+I` Mixed Combo (140) / `S+J` Rider Punch (13) |
+
+---
+
+## 2. Tactical Breakdown: Nigo vs. V3 (`002_003`)
+
+In this matchup, Nigo faces V3's reach attacks (`W+L` Double Typhoon Blow) and speed buffs (`W+J` Accelerator). Candidate `3331514604` handles this by establishing a **Dual Utility Engine** under RIDER search lookahead:
+
+### A. Dual Utility Synergy (`W+K` Power Focus + `W+J` Red Shutter)
+
+* **`W+K` Power Focus (1 Chi Cost, +30% Physical ATK):** Executed 73 times vs Balanced and 19 times vs Soul. Amplifies `D+I` Mixed Combo damage from **130 to 169 per hit**, allowing Nigo to out-trade V3's physical chop combos.
+* **`W+J` Typhoon Red Shutter (3 Chi Cost, +25% Speed / +15% DEF):** Executed 50 times vs Balanced, 16 times vs Soul, and 7 times vs Master. The +25% speed buff is critical in the 8-second realtime charge window: it shortens Nigo's charge bar, allowing his pokes to execute **before** V3's reach moves land.
+
+```
+       RIDER SEARCH STANCE PROFILE — NIGO VS. V3 (VS. BALANCED AI)
+
+  [D: 78.0%]                     [W: 7.7%]        [S: 7.4%]   [A: 4.5%]  [IDLE: 2.4%]
+  (D+I Mixed Combo Dominance)    (W+K / W+J Buffs) (Cash-outs) (Guard)    (Recovery)
+
+```
+
+### B. High-EV Neutral Control (`D+I` Mixed Combo)
+
+* **`D+I` Mixed Combo (1 Chi, 130 base damage, 85% hit rate)** dominates Nigo's neutral spacing across all search evaluations:
+* **1,008 uses** vs Balanced AI (74.4% of all `D` pokes)
+* **240 uses** vs Soul AI (73.4% of all `D` pokes)
+* **140 uses** vs Master AI (78.7% of all `D` pokes)
+
+
+* **`S+I` Typhoon Power Break (10 Chi, 1,060 base damage):** Frequently chosen by RIDER search as a round-closing 10-Chi finisher (67 uses vs Balanced / 12 uses vs Soul).
+
+### C. Side Sensitivity Analysis (Vs. Soul AI)
+
+* **P1 Slot:** 6W / 0L (100% win rate)
+* **P2 Slot:** 1W / 5L (16.7% win rate)
+* **Insight:** Against Soul AI's search lookahead, starting on P1 provides a initial frame/distance advantage for `W+J` Red Shutter setups before V3 can establish range control.
+
+---
+
+## 3. Operational Adoption Summary
+
+* **First Active Baseline Assigned:** Candidate matrix `3331514604` (8,503 games / 124,816 decisions) is now validated as the **Active RIDER Policy Matrix** for matchup `002_003`.
+* **Clean Guard Overhead:** Defensive blocking (`A` stance) remains clamped between **2.4% and 6.3%**, confirming zero turtle pollution.
+* **RAM Export Required:** Click **ACTIVATE SELECTED CANDIDATE** and **EXPORT SELECTED CANDIDATE** in the UI to save checkpoint file `3331514604` locally.
+
 002_004:
 
 002_005:
