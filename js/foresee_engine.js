@@ -647,7 +647,13 @@ if (roll < 0.50) {
   rng() < 0.15
 ) {
         const bestRow = finalists[0];
-        const shortenedCharge = Math.round((bestRow.action.charge ?? 0) * 0.5);
+       const shortenedCharge =
+  bestRow.action.key === "DO_NOTHING"
+    ? 0
+    : Math.max(
+        1,
+        Math.round(bestRow.action.charge * 0.5)
+      );
 
         finalists[0] = {
           ...bestRow,
