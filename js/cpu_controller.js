@@ -1,22 +1,53 @@
-// js/cpu_controller.js
-// Main-thread learned policies plus worker-backed standard search.
-
+/* js/cpu_controller.js
+ * Worker-backed CPU planning bridge.
+ *
+ * Patch: release-worker-bridge-1
+ *
+ * The engine build is obtained from the loaded dispatcher.
+ * Worker responses must report that same build.
+ *
+ * No combat rules or action scores are changed here.
+ */
 (function (g) {
   "use strict";
 
-  const VERSION = "unified-agent-path-1";
+  const C = g.CombatCore;
+  const K = g.KF;
+
+  const BUILD = g.KF_AI?.VERSION;
+
+  if (!BUILD) {
+    throw new Error(
+      "Load ai.js before cpu_controller.js."
+    );
+  }
+
   const workers = [null, null];
   const disabledWorkers = [false, false];
   const pending = new Map();
 
   let nextId = 1;
   let nextWorker = 0;
+  let mainThreadWarningShown = false;
+
+  function hasOwn(object, key) {
+    return Object.prototype.hasOwnProperty.call(
+      object,
+      key
+    );
+  }
+
+  function cloneJSON(value) {
+    return value == null
+      ? value
+      : JSON.parse(JSON.stringify(value));
+  }
 
   function failWorker(index, error) {
     const worker = workers[index];
 
-    disabledWorkers[index] = true;
     workers[index] = null;
+    disabledWorkers[index] = true;
 
     if (!worker) return;
 
@@ -40,60 +71,108 @@
       return null;
     }
 
-    if (workers[index]) return workers[index];
+    if (workers[index]) {
+      return workers[index];
+    }
 
     try {
-      const url = new URL("js/ai_worker.js", document.baseURI);
-      url.searchParams.set("v", VERSION);
+      const url = new URL(
+        "js/ai_worker.js",
+        document.baseURI
+      );
+
+      url.searchParams.set("v", BUILD);
 
       const worker = new Worker(url);
-
       workers[index] = worker;
 
       worker.onmessage = event => {
-        const { id, result, error } = event.data;
-        const job = pending.get(id);
+        const message = event.data || {};
+        const job = pending.get(message.id);
 
-        if (!job || job.worker !== worker) return;
+        if (!job || job.worker !== worker) {
+          return;
+        }
+
+        if (message.build !== BUILD) {
+          failWorker(
+            index,
+            new Error(
+              "AI worker build mismatch. Reload the " +
+              "complete matching script set."
+            )
+          );
+
+          return;
+        }
+
+        if (
+          !message.error &&
+          message.result?.debug?.engineVersion !== BUILD
+        ) {
+          failWorker(
+            index,
+            new Error(
+              "AI worker loaded an incompatible dispatcher."
+            )
+          );
+
+          return;
+        }
 
         clearTimeout(job.timeout);
-        pending.delete(id);
+        pending.delete(message.id);
 
-        if (error) job.reject(new Error(error));
-        else job.resolve(result);
+        if (message.error) {
+          job.reject(new Error(message.error));
+        } else {
+          job.resolve(message.result);
+        }
       };
 
       worker.onerror = event => {
         failWorker(
           index,
-          new Error(event.message || "AI worker failed.")
+          new Error(
+            event.message || "AI worker failed."
+          )
         );
       };
 
       worker.onmessageerror = () => {
         failWorker(
           index,
-          new Error("Could not decode an AI worker response.")
+          new Error(
+            "Could not decode an AI worker response."
+          )
         );
       };
 
       return worker;
     } catch (error) {
       disabledWorkers[index] = true;
-      console.warn("[AIService] Worker unavailable:", error);
+
+      console.warn(
+        "[AIService] Worker unavailable:",
+        error
+      );
+
       return null;
     }
   }
 
   function verifyDecision(context, result) {
-    const C = g.CombatCore;
-
-    if (!result || !C.isLegal(
-      context.state,
-      context.slot,
-      result.action
-    )) {
-      throw new Error("CPU planner returned an illegal action.");
+    if (
+      !result?.action ||
+      !C.isLegal(
+        context.state,
+        context.slot,
+        result.action
+      )
+    ) {
+      throw new Error(
+        "CPU planner returned an illegal action."
+      );
     }
 
     const action = C.normalizeAction(
@@ -103,13 +182,15 @@
     );
 
     if (action.key !== "DO_NOTHING") {
-      const move = context.state.moves[context.slot][action.key];
-      const limit = C.maxCharge(
+      const move =
+        context.state.moves[context.slot][action.key];
+
+      const chargeLimit = C.maxCharge(
         context.state[context.slot],
         move.direction
       );
 
-      if (action.charge > limit) {
+      if (action.charge > chargeLimit) {
         throw new Error(
           "CPU planner returned an unreachable charge level."
         );
@@ -122,8 +203,91 @@
     };
   }
 
+  async function prepareContext(context) {
+    const prepared = {
+      ...context,
+      difficulty: K.difficulty(
+        context.difficulty || context.mode
+      )
+    };
+
+    if (context.useMCTS === true) {
+      prepared.difficulty = "rider";
+    }
+
+    /*
+     * Explicit null means no model.
+     * Do not replace it with a newer repository/ACTIVE model.
+     */
+    if (hasOwn(context, "policyWeights")) {
+      prepared.policyWeights =
+        cloneJSON(context.policyWeights);
+
+      prepared.disableAgent = true;
+      return prepared;
+    }
+
+    /*
+     * A supplied Network instance is only usable on the main
+     * thread. Its prototype methods do not survive postMessage.
+     */
+    if (context.neuralNetwork) {
+      prepared.disableAgent = true;
+      return prepared;
+    }
+
+    if (
+      prepared.difficulty !== "rider" ||
+      context.disableAgent === true
+    ) {
+      prepared.policyWeights = null;
+      prepared.disableAgent = true;
+      return prepared;
+    }
+
+    /*
+     * Live MatchManager normally provides its own match-frozen
+     * checkpoint. This path also supports other direct callers.
+     */
+    let checkpoint = null;
+
+    if (g.SoulAgent) {
+      if (
+        g.SoulAgent.VERSION !== BUILD ||
+        typeof g.SoulAgent.ready !== "function" ||
+        typeof g.SoulAgent.getSection !== "function"
+      ) {
+        throw new Error(
+          "SoulAgent and AI dispatcher builds do not match."
+        );
+      }
+
+      await g.SoulAgent.ready();
+
+      checkpoint = g.SoulAgent.getSection(
+        context.state[context.slot].id,
+        context.state[C.other(context.slot)].id,
+        "active"
+      );
+    }
+
+    prepared.policyWeights = cloneJSON(checkpoint);
+    prepared.disableAgent = true;
+
+    return prepared;
+  }
+
   async function mainThread(context) {
-    await g.KF.wait(0);
+    if (!mainThreadWarningShown) {
+      mainThreadWarningShown = true;
+
+      console.warn(
+        "[AIService] Using main-thread search. " +
+        "Standard deep searches may temporarily block input."
+      );
+    }
+
+    await K.wait(0);
 
     return verifyDecision(
       context,
@@ -132,97 +296,95 @@
   }
 
   async function plan(context) {
-    if (!context?.state?.[context.slot]) {
-      throw new Error("Invalid AIService planning context.");
-    }
-
-    if (g.KF_AI?.VERSION !== VERSION) {
+    if (
+      !context?.state ||
+      !["p1", "p2"].includes(context.slot) ||
+      !context.state[context.slot] ||
+      !context.state[C.other(context.slot)]
+    ) {
       throw new Error(
-        "Mixed AI file versions. Replace ai.js and " +
-        "cpu_controller.js together, then reload."
+        "Invalid AIService planning context."
       );
     }
 
-    const player = context.state[context.slot];
-    const oppSlot = context.slot === "p1" ? "p2" : "p1";
-    const opponent = context.state[oppSlot];
-    const soul = g.KF.difficulty(context.difficulty) === "soul";
-
-    // Ensure Master Matrix Bundle is ready
-    if (g.SoulAgent && typeof g.SoulAgent.ready === "function") {
-      await g.SoulAgent.ready();
+    if (g.KF_AI?.VERSION !== BUILD) {
+      throw new Error(
+        "The AI dispatcher changed after AIService loaded. " +
+        "Reload the page."
+      );
     }
 
-    const hasNeuralModel = (g.SoulAgent && opponent)
-      ? Boolean(g.SoulAgent.getSection(player.id, opponent.id, "active"))
-      : false;
-
-    const useAgent =
-      context.disableAgent !== true &&
-      (soul && hasNeuralModel || context.policyWeights != null);
+    const prepared = await prepareContext(context);
 
     if (
-      useAgent &&
-      !player.isFainted &&
-      !context.state.winner
+      prepared.state.winner ||
+      prepared.state[prepared.slot].isFainted
     ) {
-      return mainThread(context);
+      return verifyDecision(
+        prepared,
+        g.KF_AI.choose(prepared)
+      );
+    }
+
+    if (prepared.neuralNetwork) {
+      return mainThread(prepared);
     }
 
     const index = nextWorker++ % workers.length;
     const worker = getWorker(index);
 
-    if (!worker) return mainThread(context);
+    if (!worker) {
+      return mainThread(prepared);
+    }
 
     const id = nextId++;
 
-    try {
-      const result = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          failWorker(
-            index,
-            new Error("AI worker timed out.")
-          );
-        }, 120000);
+    const result = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        failWorker(
+          index,
+          new Error(
+            "AI worker timed out. The decision was not " +
+            "silently replaced with a different policy."
+          )
+        );
+      }, 120000);
 
-        pending.set(id, {
-          worker,
-          timeout,
-          resolve,
-          reject
-        });
-
-        try {
-          worker.postMessage({ id, context });
-        } catch (error) {
-          clearTimeout(timeout);
-          pending.delete(id);
-          reject(error);
-        }
+      pending.set(id, {
+        worker,
+        timeout,
+        resolve,
+        reject
       });
 
-      if (result?.debug?.engineVersion !== VERSION) {
-        const error = new Error(
-          "Worker loaded an older ai.js; using current main-thread AI."
-        );
-
-        failWorker(index, error);
-        throw error;
+      try {
+        worker.postMessage({
+          id,
+          context: prepared
+        });
+      } catch (error) {
+        clearTimeout(timeout);
+        pending.delete(id);
+        reject(error);
       }
+    });
 
-      return verifyDecision(context, result);
-    } catch (error) {
-      console.warn(
-        "[AIService] Worker path failed; using main thread:",
-        error
+    return verifyDecision(prepared, result);
+  }
+
+  function dispose() {
+    for (let index = 0; index < workers.length; index++) {
+      failWorker(
+        index,
+        new Error("AIService was stopped.")
       );
-
-      return mainThread(context);
     }
   }
 
   g.AIService = {
-    VERSION,
-    plan
+    VERSION: BUILD,
+    PATCH: "release-worker-bridge-1",
+    plan,
+    dispose
   };
 })(window);
