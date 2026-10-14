@@ -598,7 +598,11 @@ continuationDelta +=
       const turnIndex = history.length + 1;
       const rng = K.rng(K.hash(seed, "master_charge_shortening", turnIndex));
 
-      if (finalists.length > 0 && rng() < 0.15) {
+      if (
+  typeof evaluator !== "function" &&
+  finalists.length > 0 &&
+  rng() < 0.15
+) {
         const bestRow = finalists[0];
         const shortenedCharge = Math.round((bestRow.action.charge ?? 0) * 0.5);
 
