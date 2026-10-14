@@ -558,17 +558,49 @@
   return result;
 }
 
-  function actionFromIndex(env, slot, index, charge = 0) {
-    if (!Number.isInteger(index) || !ACTION_MAP[index]) {
-      throw new Error("Invalid action index.");
-    }
-
-    return {
-      key: ACTION_MAP[index],
-      charge: index === IDLE_INDEX ? 0 : charge
-    };
+ function actionFromIndex(env, slot, index, charge) {
+  if (
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index >= ACTION_MAP.length
+  ) {
+    throw new Error("Invalid action index.");
   }
 
+  const key = ACTION_MAP[index];
+  const move = env.state.moves?.[slot]?.[key];
+
+  if (!move) {
+    throw new Error("Action is absent from this fighter's moves.");
+  }
+
+  const reachable = index === IDLE_INDEX
+    ? 0
+    : C.maxCharge(
+        env.state[slot],
+        move.direction
+      );
+
+  const action = {
+    key,
+    charge: charge === undefined ? reachable : charge
+  };
+
+  if (
+    !C.isLegal(env.state, slot, action) ||
+    (
+      index !== IDLE_INDEX &&
+      action.charge > reachable
+    )
+  ) {
+    throw new Error(
+      "Invalid or unreachable planned action. " +
+      "Non-idle moves require 1–100% charge."
+    );
+  }
+
+  return C.normalizeAction(env.state, slot, action);
+}
   function actions(env) {
     return {
       p1: { ...(env.cells.p1.action || idle()) },
@@ -576,17 +608,74 @@
     };
   }
 
-  function planned(action) {
-    const plan = { ...(action || idle()) };
+ function planned(action) {
+  const requested = { ...(action || idle()) };
 
-    return (env, slot) => {
-      if (env.done || env.cells[slot].locked) {
-        return "WAIT";
-      }
+  return (env, slot) => {
+    const cell = env.cells[slot];
 
-      return C.normalizeAction(env.state, slot, plan);
-    };
-  }
+    if (!cell) {
+      throw new Error("Invalid planned-controller slot.");
+    }
+
+    if (env.done || cell.locked || env.t >= limit()) {
+      return "WAIT";
+    }
+
+    // Check before normalization: no silent zero-charge fallback.
+    if (!C.isLegal(env.state, slot, requested)) {
+      throw new Error(
+        "Planned controller received an illegal action."
+      );
+    }
+
+    const plan = C.normalizeAction(
+      env.state,
+      slot,
+      requested
+    );
+
+    if (env.t < C.cpuReadyAtMs()) {
+      return "WAIT";
+    }
+
+    if (plan.key === "DO_NOTHING") {
+      return { ...plan };
+    }
+
+    const direction =
+      env.state.moves[slot][plan.key].direction;
+
+    if (
+      plan.charge >
+      C.maxCharge(env.state[slot], direction)
+    ) {
+      throw new Error(
+        "Planned controller received an unreachable charge."
+      );
+    }
+
+    if (cell.direction !== direction) {
+      /*
+       * Selecting a direction creates 1% immediately.
+       * A 1% plan may therefore confirm on that same input tick.
+       */
+      return plan.charge === 1
+        ? [direction, { ...plan }]
+        : direction;
+    }
+
+    if (cell.charge < plan.charge) {
+      return "WAIT";
+    }
+
+    /*
+     * Preserve the selected threshold when the 50 ms clock steps
+     * slightly past it. Never grant more than accumulated charge.
+     */
+    return { ...plan };
+  };
+}
 
   function scripted(rng = Math.random) {
     return (observation, legalMask) => {
