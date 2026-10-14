@@ -8,6 +8,67 @@
   const C = g.CombatCore;
   const B = g.RiderBrains;
 
+  /*
+ * Extend a hypothetical branch's completed-turn history.
+ *
+ * This is RAM-only search data:
+ * - Do not mutate the actual match history.
+ * - Do not persist hypothetical turns as real experience.
+ */
+function appendForecastHistory(history, before, action1, action2) {
+  const p1 = {
+    ...C.normalizeAction(before, "p1", action1)
+  };
+
+  const p2 = {
+    ...C.normalizeAction(before, "p2", action2)
+  };
+
+  return [
+    ...(Array.isArray(history) ? history : []),
+    {
+      p1,
+      p2,
+      actions: { p1, p2 },
+      fainted: {
+        p1: Boolean(before.p1.isFainted),
+        p2: Boolean(before.p2.isFainted)
+      }
+    }
+  ].slice(-24);
+}
+
+let evaluatorWarningShown = false;
+
+/*
+ * Preserve the existing heuristic fallback, but pass branch history
+ * through to neural evaluation and reject all non-finite results.
+ */
+function evaluatePosition(state, slot, history, evaluator) {
+  if (typeof evaluator === "function") {
+    try {
+      const value = evaluator(state, slot, history);
+
+      if (Number.isFinite(value)) {
+        return value;
+      }
+
+      throw new Error("Evaluator returned a non-finite score.");
+    } catch (error) {
+      if (!evaluatorWarningShown) {
+        evaluatorWarningShown = true;
+
+        console.warn(
+          "[ForeseeEngine] Evaluator failed; using heuristic fallback.",
+          error
+        );
+      }
+    }
+  }
+
+  return B.evaluate(state, slot);
+}
+
   /** Generates unique key string for move+charge pair. */
   function actionId(action) {
     return `${action.key}@${action.charge ?? 0}`;
@@ -191,26 +252,40 @@
    * Computes expected utility value of a single move exchange using an optional neural evaluator.
    * Features automatic fallback to RiderBrains heuristic if neural output returns NaN or throws error.
    */
-  function pairValue(state, slot, ownAction, opponentAction, evaluator = null) {
-    const [a1, a2] = orderedActions(slot, ownAction, opponentAction);
-    const rawEvalFn = typeof evaluator === "function"
-      ? evaluator
-      : (s, sl) => B.evaluate(s, sl);
+function pairValue(
+  state,
+  slot,
+  ownAction,
+  opponentAction,
+  evaluator = null,
+  history = []
+) {
+  const [a1, a2] = orderedActions(
+    slot,
+    ownAction,
+    opponentAction
+  );
 
-    const evalFn = (s, sl) => {
-      try {
-        const val = rawEvalFn(s, sl);
-        if (typeof val === "number" && !isNaN(val)) return val;
-      } catch (e) {}
-      return B.evaluate(s, sl);
-    };
+  const nextHistory = appendForecastHistory(
+    history,
+    state,
+    a1,
+    a2
+  );
 
-    return C.distribution(state, a1, a2).reduce(
-      (sum, result) =>
-        sum + result.probability * evalFn(result.state, slot),
-      0
-    );
-  }
+  return C.distribution(state, a1, a2).reduce(
+    (sum, result) =>
+      sum +
+      result.probability *
+      evaluatePosition(
+        result.state,
+        slot,
+        nextHistory,
+        evaluator
+      ),
+    0
+  );
+}
 
   /**
    * Main AI Search Entry Point (Neural-Guided Expectimax & Monte Carlo Horizon).
@@ -230,17 +305,13 @@
       isTraining = false
     } = context;
 
-    const rawEvalFn = typeof evaluator === "function"
-      ? evaluator
-      : (s, sl) => B.evaluate(s, sl);
-
-    const evalFn = (s, sl) => {
-      try {
-        const val = rawEvalFn(s, sl);
-        if (typeof val === "number" && !isNaN(val)) return val;
-      } catch (e) {}
-      return B.evaluate(s, sl);
-    };
+   const evalFn = (s, sl, branchHistory = history) =>
+  evaluatePosition(
+    s,
+    sl,
+    branchHistory,
+    evaluator
+  );
 
     const difficulty = K.difficulty(context.difficulty);
 
@@ -298,13 +369,14 @@
       let worst = Infinity;
 
       for (const opponent of opponentPolicy) {
-        const value = pairValue(
-          state,
-          slot,
-          action,
-          opponent.action,
-          evalFn
-        );
+       const value = pairValue(
+  state,
+  slot,
+  action,
+  opponent.action,
+  evalFn,
+  history
+);
 
         expected += opponent.probability * value;
         worst = Math.min(worst, value);
@@ -355,50 +427,85 @@
             opponentAction
           );
 
-          let future = C.resolve(
-            state,
-            a1,
-            a2,
-            rng,
-            false
-          ).state;
+ const firstResult = C.resolve(
+  state,
+  a1,
+  a2,
+  rng,
+  false
+);
 
-          const firstValue = evalFn(future, slot);
+let future = firstResult.state;
 
-          for (let depth = 1;
-            depth < settings.horizon && !future.winner;
-            depth++
-          ) {
-            const ownPolicy = policy(
-              future,
-              slot,
-              [],
-              difficulty,
-              true
-            );
+let futureHistory = appendForecastHistory(
+  history,
+  state,
+  firstResult.actions.p1,
+  firstResult.actions.p2
+);
 
-            const enemyPolicy = policy(
-              future,
-              opponentSlot,
-              history,
-              "master"
-            );
+const firstValue = evalFn(
+  future,
+  slot,
+  futureHistory
+);
 
-            const ownNext = sample(ownPolicy, rng);
-            const enemyNext = sample(enemyPolicy, rng);
+for (
+  let depth = 1;
+  depth < settings.horizon && !future.winner;
+  depth++
+) {
+  /*
+   * Both policy models see the completed hypothetical turns.
+   * Previously the own policy received [] and the opponent
+   * continued receiving the unchanged root history.
+   */
+  const ownPolicy = policy(
+    future,
+    slot,
+    futureHistory,
+    difficulty,
+    true
+  );
 
-            [a1, a2] = orderedActions(slot, ownNext, enemyNext);
+  const enemyPolicy = policy(
+    future,
+    opponentSlot,
+    futureHistory,
+    "master"
+  );
 
-            future = C.resolve(
-              future,
-              a1,
-              a2,
-              rng,
-              false
-            ).state;
-          }
+  const ownNext = sample(ownPolicy, rng);
+  const enemyNext = sample(enemyPolicy, rng);
 
-          continuationDelta += evalFn(future, slot) - firstValue;
+  [a1, a2] = orderedActions(
+    slot,
+    ownNext,
+    enemyNext
+  );
+
+  const beforeFuture = future;
+
+  const nextResult = C.resolve(
+    beforeFuture,
+    a1,
+    a2,
+    rng,
+    false
+  );
+
+  futureHistory = appendForecastHistory(
+    futureHistory,
+    beforeFuture,
+    nextResult.actions.p1,
+    nextResult.actions.p2
+  );
+
+  future = nextResult.state;
+}
+
+continuationDelta +=
+  evalFn(future, slot, futureHistory) - firstValue;
         }
 
         row.score += continuationDelta / settings.rollouts;
