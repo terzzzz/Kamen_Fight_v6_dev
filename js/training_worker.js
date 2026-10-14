@@ -27,7 +27,10 @@ let resume = null;
 channel.port1.onmessage = () => {
   const callback = resume;
   resume = null;
-  if (callback) callback();
+
+  if (callback) {
+    callback();
+  }
 };
 
 function pause() {
@@ -38,7 +41,11 @@ function pause() {
 }
 
 function send(type, payload = {}) {
-  self.postMessage({ type, build: BUILD, ...payload });
+  self.postMessage({
+    type,
+    build: BUILD,
+    ...payload
+  });
 }
 
 function validateJob(job) {
@@ -50,6 +57,14 @@ function validateJob(job) {
   }
 
   if (
+    !job.data ||
+    !Array.isArray(job.data.riders) ||
+    !job.data.moves
+  ) {
+    throw new Error("Training job is missing valid combat data.");
+  }
+
+  if (
     !Number.isInteger(job.matches) ||
     job.matches < 2 ||
     job.matches > 100000
@@ -58,7 +73,9 @@ function validateJob(job) {
   }
 
   if (job.kind === "evaluate" && job.matches % 2 !== 0) {
-    throw new Error("Evaluation count must be even for slot pairing.");
+    throw new Error(
+      "Evaluation count must be even for slot pairing."
+    );
   }
 
   if (!["standard", "terminal_only"].includes(job.rewardMode)) {
@@ -66,13 +83,28 @@ function validateJob(job) {
   }
 
   if (!job.learner || !job.opponent || job.opponent === "*") {
-    throw new Error("Select one exact learner/opponent matchup.");
+    throw new Error(
+      "Select one exact learner/opponent matchup."
+    );
   }
 
-  const aliases = { novice: "easy", mcts: "rider" };
+  const aliases = {
+    novice: "easy",
+    mcts: "rider"
+  };
+
   job.mode = aliases[job.mode] || job.mode;
 
-  if (!["mixed", "easy", "balanced", "master", "soul", "rider"].includes(job.mode)) {
+  if (
+    ![
+      "mixed",
+      "easy",
+      "balanced",
+      "master",
+      "soul",
+      "rider"
+    ].includes(job.mode)
+  ) {
     throw new Error("Invalid opponent controller.");
   }
 
@@ -91,7 +123,9 @@ function validateJob(job) {
     job.initialEpsilon < 1 ||
     job.initialEpsilon > 100
   ) {
-    throw new Error("Initial Epsilon % must be an integer from 1 to 100.");
+    throw new Error(
+      "Initial Epsilon % must be an integer from 1 to 100."
+    );
   }
 
   if (typeof job.winOnly !== "boolean") {
@@ -110,14 +144,21 @@ async function run(job) {
   const data = job.data;
   const spec = SoulEnv.makeSpec();
 
-  const learnerRider = data.riders.find(r => r.id === job.learner);
-  const opponentRider = data.riders.find(r => r.id === job.opponent);
+  const learnerRider = data.riders.find(
+    rider => rider.id === job.learner
+  );
+
+  const opponentRider = data.riders.find(
+    rider => rider.id === job.opponent
+  );
 
   if (!learnerRider || !opponentRider) {
-    throw new Error("Selected rider is absent from the dataset.");
+    throw new Error(
+      "Selected rider is absent from the dataset."
+    );
   }
 
-  let old = job.checkpoint || null;
+  const old = job.checkpoint || null;
 
   if (old) {
     const validation = SoulAgent.validateCheckpoint(
@@ -127,7 +168,9 @@ async function run(job) {
     );
 
     if (!validation.valid) {
-      throw new Error("Checkpoint rejected: " + validation.error);
+      throw new Error(
+        "Checkpoint rejected: " + validation.error
+      );
     }
   }
 
@@ -137,7 +180,11 @@ async function run(job) {
 
   const net = old
     ? SoulNN.Network.fromJSON(old.net)
-    : new SoulNN.Network(spec.input, ...spec.hidden, spec.output);
+    : new SoulNN.Network(
+        spec.input,
+        ...spec.hidden,
+        spec.output
+      );
 
   let opponentNet = null;
 
@@ -149,10 +196,14 @@ async function run(job) {
     );
 
     if (!validation.valid) {
-      throw new Error("Opponent checkpoint rejected: " + validation.error);
+      throw new Error(
+        "Opponent checkpoint rejected: " + validation.error
+      );
     }
 
-    opponentNet = SoulNN.Network.fromJSON(job.opponentCheckpoint.net);
+    opponentNet = SoulNN.Network.fromJSON(
+      job.opponentCheckpoint.net
+    );
   }
 
   const seed = Number(job.seed) >>> 0;
@@ -165,13 +216,24 @@ async function run(job) {
         KF.hash(seed, "replay"),
         baseSteps,
         job.warmStart
-          ? { interval: 4, warmup: 32 }
-          : { interval: 32, warmup: 256 }
+          ? {
+              interval: 4,
+              warmup: 32
+            }
+          : {
+              interval: 32,
+              warmup: 256
+            }
       )
     : null;
 
-  const weightsID = old ? SoulAgent.fingerprint(old) : null;
-  const loadedWeightsID = String(KF.hash(JSON.stringify(net.toJSON())));
+  const weightsID = old
+    ? SoulAgent.fingerprint(old)
+    : null;
+
+  const loadedWeightsID = String(
+    KF.hash(JSON.stringify(net.toJSON()))
+  );
 
   const started = performance.now();
   let lastProgress = started;
@@ -193,16 +255,45 @@ async function run(job) {
   const initialEpsilonBase = job.initialEpsilon / 100;
   const winOnly = Boolean(job.winOnly);
 
+  /*
+   * Search-distillation is intentionally light. Full teacher guidance still
+   * dominates only during guided warm-start/scheduled Master rows.
+   */
+  const riderDistillation =
+    training &&
+    job.learnerPolicy === "rider";
+
+  const riderImitationCoefficient = 0.02;
+
   const recent = [];
   const breakdown = {};
 
-  const wasdCounts = { W: 0, A: 0, S: 0, D: 0, IDLE: 0 };
-  const jkilCounts = { J: 0, K: 0, I: 0, L: 0, NONE: 0 };
+  const wasdCounts = {
+    W: 0,
+    A: 0,
+    S: 0,
+    D: 0,
+    IDLE: 0
+  };
+
+  const jkilCounts = {
+    J: 0,
+    K: 0,
+    I: 0,
+    L: 0,
+    NONE: 0
+  };
 
   const moveMatrix = Object.fromEntries(
     Object.keys(wasdCounts).map(stance => [
       stance,
-      { J: 0, K: 0, I: 0, L: 0, NONE: 0 }
+      {
+        J: 0,
+        K: 0,
+        I: 0,
+        L: 0,
+        NONE: 0
+      }
     ])
   );
 
@@ -220,7 +311,10 @@ async function run(job) {
       trainerBuild: BUILD,
       spec,
       net: net.toJSON(),
-      canonicalKey: SoulAgent.getCanonicalKey(job.learner, job.opponent),
+      canonicalKey: SoulAgent.getCanonicalKey(
+        job.learner,
+        job.opponent
+      ),
       learnerId: job.learner,
       opponentId: job.opponent,
       games: baseGames + games,
@@ -233,13 +327,21 @@ async function run(job) {
         opponentController: job.mode,
         warmStart: Boolean(job.warmStart),
         initialEpsilon: job.initialEpsilon,
-        winOnly
+        winOnly,
+        learnerPolicy: job.learnerPolicy,
+        riderDistillation,
+        riderImitationCoefficient: riderDistillation
+          ? riderImitationCoefficient
+          : 0
       }
     };
   }
 
   function report() {
-    const seconds = Math.max(0.001, (performance.now() - started) / 1000);
+    const seconds = Math.max(
+      0.001,
+      (performance.now() - started) / 1000
+    );
 
     return {
       build: BUILD,
@@ -255,32 +357,52 @@ async function run(job) {
       matchesPerMinute: 60 * games / seconds,
       decisionsPerSecond: transitions / seconds,
       transitions,
+
       loss: learner?.loss || 0,
       replaySize: learner?.replay.items.length || 0,
       updates: learner?.updates || 0,
       updateStats: learner?.updateStats || null,
+
       avgQ: qCount ? qSum / qCount : 0,
       totalTrainingGames: baseGames + (training ? games : 0),
+
       weightsID,
       loadedWeightsID,
-      teacher: training ? job.teacher || "master" : null,
+
+      teacher: training
+        ? job.teacher || "master"
+        : null,
+
       guideProbability,
       imitationCoefficient: imitation,
       epsilon,
       initialEpsilon: job.initialEpsilon,
+
       winOnly,
       rewardMode: job.rewardMode,
       seed,
+
       learner: job.learner,
       opponent: job.opponent,
       learnerPolicy: job.learnerPolicy,
+
+      riderDistillation,
+      riderImitationCoefficient: riderDistillation
+        ? riderImitationCoefficient
+        : 0,
+
       mode: job.mode,
       effectiveOpponent,
       warmStart: Boolean(job.warmStart),
       hiddenSizes: net.sizes.slice(1, -1),
       cancelled,
+
       breakdown,
-      wasdRatio: { counts: { ...wasdCounts } },
+
+      wasdRatio: {
+        counts: { ...wasdCounts }
+      },
+
       moveBreakdown: {
         jkilCounts: { ...jkilCounts },
         moveMatrix: JSON.parse(JSON.stringify(moveMatrix))
@@ -288,9 +410,17 @@ async function run(job) {
     };
   }
 
-  for (let i = 0; i < job.matches && !cancelled; i++) {
+  for (
+    let i = 0;
+    i < job.matches && !cancelled;
+    i++
+  ) {
     const pair = Math.floor(i / 2);
-    const learnerSlot = i % 2 === 0 ? "p1" : "p2";
+
+    const learnerSlot =
+      i % 2 === 0
+        ? "p1"
+        : "p2";
 
     const matchSeed = KF.hash(
       seed,
@@ -308,7 +438,12 @@ async function run(job) {
       if (job.warmStart) {
         guideProbability = 1;
         imitation = 1;
-        epsilon = Math.max(0.02, initialEpsilonBase * (1 - (progress / 100) * 0.8));
+
+        epsilon = Math.max(
+          0.02,
+          initialEpsilonBase *
+            (1 - (progress / 100) * 0.8)
+        );
       } else {
         if (progress < job.guideHoldPct) {
           guideProbability = 1;
@@ -316,28 +451,51 @@ async function run(job) {
           progress < job.guideZeroPct &&
           job.guideZeroPct > job.guideHoldPct
         ) {
-          guideProbability = 1 -
+          guideProbability =
+            1 -
             (progress - job.guideHoldPct) /
-            (job.guideZeroPct - job.guideHoldPct);
+              (job.guideZeroPct - job.guideHoldPct);
         }
 
         const rollingWinRate = recent.length
-          ? recent.reduce((sum, value) => sum + value, 0) / recent.length
+          ? recent.reduce(
+              (sum, value) => sum + value,
+              0
+            ) / recent.length
           : 0.2;
 
-        // Dynamic Epsilon scaled relative to user-specified initial value
-        const targetFloor = Math.max(0.01, initialEpsilonBase * 0.1);
-        const adaptiveRatio = Math.max(0.2, 1 + (0.5 - rollingWinRate) / 0.3);
-        
+        const targetFloor = Math.max(
+          0.01,
+          initialEpsilonBase * 0.1
+        );
+
+        const adaptiveRatio = Math.max(
+          0.2,
+          1 + (0.5 - rollingWinRate) / 0.3
+        );
+
         epsilon = Math.max(
           targetFloor,
           Math.min(
             initialEpsilonBase,
-            initialEpsilonBase * (1 - (progress / 100) * 0.7) * adaptiveRatio
+            initialEpsilonBase *
+              (1 - (progress / 100) * 0.7) *
+              adaptiveRatio
           )
         );
 
-        imitation = Math.max(0.01, 0.05 * guideProbability);
+        const masterImitation = guideProbability > 0
+          ? Math.max(0.01, 0.05 * guideProbability)
+          : 0;
+
+        const searchImitation = riderDistillation
+          ? riderImitationCoefficient
+          : 0;
+
+        imitation = Math.max(
+          masterImitation,
+          searchImitation
+        );
       }
     }
 
@@ -347,38 +505,46 @@ async function run(job) {
       data,
       spec,
       net,
+
       learnerSlot,
       learnerId: job.learner,
       opponent: opponentRider,
+
       opponentMode: job.mode,
       opponentNet,
+
       seed: matchSeed,
       epsilon,
       guideProbability,
       teacher: job.teacher || "master",
       rewardMode: job.rewardMode,
+
       learnerMode: job.learnerPolicy,
+      distillRider: riderDistillation,
       isEvaluation: !training
     });
 
     let result = null;
 
     for (const event of generator) {
-      if (cancelled) break;
+      if (cancelled) {
+        break;
+      }
 
       if (event.type === "transition") {
         transitions++;
 
         if (training) {
           if (winOnly) {
-            // Buffer transitions temporarily until match outcome is known
             matchTransitions.push({
               transition: event.transition,
               imitation
             });
           } else {
-            // Direct acceptance for standard training
-            learner.accept(event.transition, imitation);
+            learner.accept(
+              event.transition,
+              imitation
+            );
           }
         }
 
@@ -411,7 +577,10 @@ async function run(job) {
       const now = performance.now();
 
       if (now - lastProgress >= 500) {
-        send("progress", { report: report() });
+        send("progress", {
+          report: report()
+        });
+
         lastProgress = now;
       }
 
@@ -421,7 +590,9 @@ async function run(job) {
       }
     }
 
-    if (!result || cancelled) break;
+    if (!result || cancelled) {
+      break;
+    }
 
     games++;
     rounds += result.rounds;
@@ -432,49 +603,68 @@ async function run(job) {
       wins++;
       outcome = "wins";
 
-      // Win-Only Trajectory Filtering: Commit buffered transitions ON WIN ONLY
-      if (training && winOnly && matchTransitions.length > 0) {
+      if (
+        training &&
+        winOnly &&
+        matchTransitions.length > 0
+      ) {
         for (const item of matchTransitions) {
-          learner.accept(item.transition, item.imitation);
+          learner.accept(
+            item.transition,
+            item.imitation
+          );
         }
       }
     } else if (result.state.winner === "draw") {
       draws++;
       outcome = "draws";
-      // Losses / Draws: matchTransitions array is left unaccepted and discarded
     } else if (result.state.winner) {
       losses++;
       outcome = "losses";
-      // Losses / Draws: matchTransitions array is left unaccepted and discarded
     } else {
-      throw new Error("Episode ended without a winner or draw.");
+      throw new Error(
+        "Episode ended without a winner or draw."
+      );
     }
 
     recent.push(outcome === "wins" ? 1 : 0);
-    if (recent.length > 30) recent.shift();
 
-    const label = `${job.opponent} / ${effectiveOpponent} / ${learnerSlot}`;
+    if (recent.length > 30) {
+      recent.shift();
+    }
+
+    const label =
+      `${job.opponent} / ${effectiveOpponent} / ${learnerSlot}`;
+
     const row = breakdown[label] ||= {
-      games: 0, wins: 0, losses: 0, draws: 0
+      games: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0
     };
 
     row.games++;
     row[outcome]++;
 
     if (training && games % 25 === 0) {
-      send("checkpoint", { checkpoint: checkpoint() });
+      send("checkpoint", {
+        checkpoint: checkpoint()
+      });
     }
 
-    // Allow STOP messages between matches even when matches are very short.
     await pause();
     lastYield = performance.now();
   }
 
   if (training) {
-    send("checkpoint", { checkpoint: checkpoint() });
+    send("checkpoint", {
+      checkpoint: checkpoint()
+    });
   }
 
-  send("done", { report: report() });
+  send("done", {
+    report: report()
+  });
 }
 
 self.onmessage = async event => {
@@ -483,7 +673,9 @@ self.onmessage = async event => {
     return;
   }
 
-  if (event.data?.type !== "start" || busy) return;
+  if (event.data?.type !== "start" || busy) {
+    return;
+  }
 
   busy = true;
   cancelled = false;
@@ -492,7 +684,10 @@ self.onmessage = async event => {
     await run(event.data.job);
   } catch (error) {
     send("error", {
-      error: error?.stack || error?.message || String(error)
+      error:
+        error?.stack ||
+        error?.message ||
+        String(error)
     });
   } finally {
     busy = false;
