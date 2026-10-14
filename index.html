@@ -1,18 +1,23 @@
-
-
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover">
+
   <title>Kamen Fight</title>
 
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet"
+        href="css/style.css?v=v5-state256-action17-charge1-reset1">
 
   <style>
-    [hidden] { display: none !important; }
+    [hidden] {
+      display: none !important;
+    }
 
-    .battle-banner { white-space: pre-line; }
+    .battle-banner {
+      white-space: pre-line;
+    }
 
     .pad-btn {
       touch-action: none;
@@ -36,38 +41,64 @@
       transition: width 0.2s;
     }
 
-    #start-prompt { cursor: pointer; }
+    #start-prompt {
+      cursor: pointer;
+    }
+
+    a.action-btn,
+    a.nav-btn {
+      display: inline-block;
+      text-decoration: none;
+      text-align: center;
+    }
+
+    .sim-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sim-availability {
+      flex-basis: 100%;
+      color: #bbb;
+      font: 12px/1.4 system-ui, sans-serif;
+    }
   </style>
 </head>
 
 <body>
-  <!-- Device Orientation Guard Overlay -->
   <div id="portrait-orientation-overlay">
     <div class="rotate-icon">📱</div>
     <h2>PLEASE ROTATE DEVICE</h2>
     <p>Use portrait orientation.</p>
   </div>
 
-  <!-- Screen 1: Game Loading Screen -->
   <main id="loading-screen" class="screen-container">
     <div class="loading-content">
       <h1 class="game-launch-title">KAMEN FIGHT</h1>
-      <div id="loading-status" class="loading-status">LOADING…</div>
+
+      <div id="loading-status" class="loading-status">
+        LOADING…
+      </div>
 
       <div id="loading-bar-wrapper" class="loading-bar-wrapper">
         <div id="loading-bar-fill" class="loading-bar-fill"></div>
       </div>
 
-      <button id="start-prompt" class="start-prompt" hidden>
+      <button id="start-prompt"
+              type="button"
+              class="start-prompt"
+              hidden>
         TAP OR PRESS A KEY TO START
       </button>
     </div>
   </main>
 
-  <!-- Screen 2: Character VS Selection Screen -->
   <section id="vs-select-screen" class="screen-container" hidden>
     <div class="bgm-volume-control">
       <label for="bgm-slider">BGM</label>
+
       <input id="bgm-slider"
              type="range"
              min="0"
@@ -78,9 +109,10 @@
     </div>
 
     <div class="vs-select-stage">
-      <h1 id="select-step-title" class="vs-header-title">SELECT PLAYER 1</h1>
+      <h1 id="select-step-title" class="vs-header-title">
+        SELECT PLAYER 1
+      </h1>
 
-      <!-- Dynamic Rider Selection Card Layout Container -->
       <div id="selection-layout" class="selection-layout"></div>
 
       <div id="vs-error-banner" class="error-banner" hidden>
@@ -89,46 +121,60 @@
     </div>
 
     <div class="selection-actions">
-      <button id="back-btn" class="nav-btn" onclick="handleBackStep()" disabled>
+      <button id="back-btn"
+              type="button"
+              class="nav-btn"
+              onclick="handleBackStep()"
+              disabled>
         BACK
       </button>
 
-      <button id="confirm-btn" class="action-btn" onclick="handleConfirmStep()">
+      <button id="confirm-btn"
+              type="button"
+              class="action-btn"
+              onclick="handleConfirmStep()">
         CONFIRM P1
       </button>
 
-      <button id="start-game-btn" class="action-btn start-glow" onclick="validateAndStartMatch()" hidden>
+      <button id="start-game-btn"
+              type="button"
+              class="action-btn start-glow"
+              onclick="validateAndStartMatch()"
+              hidden>
         START GAME
       </button>
 
-     <div class="sim-controls"
-     style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+      <div class="sim-controls">
+        <a id="ichigo-train-btn"
+           class="action-btn"
+           href="Train.html">
+          RIDER TRAINER
+        </a>
 
-  <button id="ichigo-train-btn"
-          type="button"
-          class="action-btn">
-    TRAIN ICHIGO
-  </button>
+        <label for="sim-count-select">Test matches:</label>
 
-  <label for="sim-count-select">Test matches:</label>
+        <select id="sim-count-select">
+          <option value="10" selected>10 Matches</option>
+          <option value="20">20 Matches</option>
+          <option value="50">50 Matches</option>
+          <option value="100">100 Matches</option>
+        </select>
 
-  <select id="sim-count-select">
-    <option value="10" selected>10 Matches</option>
-    <option value="20">20 Matches</option>
-    <option value="50">50 Matches</option>
-    <option value="100">100 Matches</option>
-  </select>
+        <button id="policy-sim-btn"
+                type="button"
+                class="action-btn sim-btn"
+                disabled>
+          SIMULATE MATCHES
+        </button>
 
-  <button id="policy-sim-btn"
-          type="button"
-          class="action-btn sim-btn">
-    SIMULATE MATCHES
-  </button>
-</div>
+        <small id="sim-availability" class="sim-availability">
+          Checkpoint evaluation is available in RIDER TRAINER.
+          Separate batch simulation requires a simulator module.
+        </small>
+      </div>
     </div>
   </section>
 
-  <!-- Screen 3: Match Transition Splash Screen -->
   <section id="match-transition-screen" class="splash-screen" hidden>
     <div class="splash-content">
       <h1 id="splash-round-text">GET READY!</h1>
@@ -136,67 +182,94 @@
     </div>
   </section>
 
-  <!-- Screen 4: Live Battle Viewport & Dual Control Screen -->
   <section id="battle-screen" class="screen-container" hidden>
-    <!-- Top HUD Bar: Names, LP, Chi, Faint, Round Timer -->
     <div id="battle-hud" class="hud-bar"></div>
 
-    <!-- Center Battle Announcement Banners -->
     <div id="battle-message" class="battle-banner" hidden></div>
     <div id="center-action-label" class="action-sub-banner" hidden></div>
 
-    <!-- Center Viewport: Video/Sprite Display & Action Cutscene Container -->
     <div id="battle-viewport" class="battle-viewport"></div>
-
-    <!-- Bottom Controls: Dual Virtual D-Pads for P1 and P2 -->
     <div id="human-control-panel" class="dual-controls-panel"></div>
   </section>
 
-  <!-- Monte Carlo Simulation Results Modal Dialog -->
   <div id="sim-modal" class="sim-modal" hidden>
     <div class="sim-modal-content">
-      <h2 style="color:#00ffcc;text-align:center">SIMULATION RESULTS</h2>
+      <h2 style="color:#00ffcc;text-align:center">
+        SIMULATION RESULTS
+      </h2>
+
       <div id="sim-results-body"></div>
 
-      <div style="display:flex; justify-content:center; gap:10px; margin-top:15px;">
-        <button id="btn-export-ichigo" class="nav-btn" style="background:#0088cc; color:#fff; border:1px solid #00aaff;">
-          📥 EXPORT ICHIGO WEIGHTS
+      <div style="display:flex;justify-content:center;gap:10px;margin-top:15px">
+        <a class="nav-btn" href="Train.html">
+          CHECKPOINT TOOLS
+        </a>
+
+        <button id="btn-close-sim-modal"
+                type="button"
+                class="nav-btn">
+          CLOSE
         </button>
-        <button id="btn-close-sim-modal" class="nav-btn">CLOSE</button>
       </div>
     </div>
   </div>
 
   <noscript>This game requires JavaScript.</noscript>
 
-  <!-- Inline Dynamic DOM Template Builder -->
   <script>
     (function () {
+      "use strict";
+
       const slots = ["p1", "p2"];
 
-      /** Generates VS Screen Rider selection card template. */
       function card(slot, index) {
         return `
-          <div id="${slot}-card" class="rider-card ${index === 0 ? "active-slot" : "locked-slot"}">
+          <div id="${slot}-card"
+               class="rider-card ${index === 0 ? "active-slot" : "locked-slot"}">
             <h2>PLAYER ${index + 1}</h2>
 
             <div class="portrait-box">
-              <img id="${slot}-img" src="assets/images/icons/ichigo.png" alt="Player ${index + 1} rider">
+              <img id="${slot}-img"
+                   src="assets/images/icons/ichigo.png"
+                   alt="Player ${index + 1} rider">
             </div>
 
             <h3 id="${slot}-name-display">Kamen Rider Ichigo</h3>
 
             <div class="card-controls">
-              <button id="${slot}-left-btn" onclick="cycleRider('${slot}', -1)">&lt;</button>
-              <span id="${slot}-type-display" class="type-badge" onclick="toggleControlType('${slot}')">
+              <button id="${slot}-left-btn"
+                      type="button"
+                      aria-label="Previous rider"
+                      onclick="cycleRider('${slot}', -1)">
+                &lt;
+              </button>
+
+              <span id="${slot}-type-display"
+                    class="type-badge"
+                    role="button"
+                    tabindex="0"
+                    onclick="toggleControlType('${slot}')"
+                    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                 ${index === 0 ? "HUMAN" : "CPU"}
               </span>
-              <button id="${slot}-right-btn" onclick="cycleRider('${slot}', 1)">&gt;</button>
+
+              <button id="${slot}-right-btn"
+                      type="button"
+                      aria-label="Next rider"
+                      onclick="cycleRider('${slot}', 1)">
+                &gt;
+              </button>
             </div>
 
             <div class="difficulty-control-group">
               <span class="diff-label">DIFFICULTY:</span>
-              <span id="${slot}-diff-display" class="diff-badge" onclick="toggleDifficulty('${slot}')">
+
+              <span id="${slot}-diff-display"
+                    class="diff-badge"
+                    role="button"
+                    tabindex="0"
+                    onclick="toggleDifficulty('${slot}')"
+                    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                 ${index === 0 ? "N/A" : "BALANCED"}
               </span>
             </div>
@@ -204,7 +277,6 @@
         `;
       }
 
-      /** Generates top battle HUD template. */
       function hud(slot) {
         return `
           <div class="player-hud ${slot}-hud">
@@ -224,6 +296,7 @@
 
             <div class="faint-bar-wrapper">
               <span class="faint-label">FAINT</span>
+
               <div class="faint-track">
                 <div id="${slot}-faint-fill" class="faint-fill"></div>
               </div>
@@ -235,31 +308,53 @@
         `;
       }
 
-      /** Generates center battle video/sprite viewport template. */
       function viewport(slot) {
         return `
           <div class="player-box" id="${slot}-box">
-            <div id="${slot}-stun-overlay" class="stun-overlay" hidden>FAINTED!</div>
+            <div id="${slot}-stun-overlay"
+                 class="stun-overlay"
+                 hidden>
+              FAINTED!
+            </div>
 
-            <video id="${slot}-video" autoplay muted playsinline loop></video>
-            <img id="${slot}-sprite" alt="Rider portrait" hidden>
+            <video id="${slot}-video"
+                   autoplay
+                   muted
+                   playsinline
+                   loop></video>
+
+            <img id="${slot}-sprite"
+                 alt="Rider portrait"
+                 hidden>
 
             <div class="player-charge-container">
               <div class="player-charge-track">
-                <div id="${slot}-charge-fill" class="player-charge-fill" style="width:0%"></div>
-                <span id="${slot}-charge-text" class="player-charge-text">READY</span>
+                <div id="${slot}-charge-fill"
+                     class="player-charge-fill"
+                     style="width:0%"></div>
+
+                <span id="${slot}-charge-text"
+                      class="player-charge-text">
+                  READY
+                </span>
               </div>
             </div>
           </div>
         `;
       }
 
-      /** Generates virtual controller D-pad input layout template. */
       function controls(slot, index) {
         const keys = ["W", "A", "S", "D", "I", "J", "K", "L"];
+
         const p2Labels = {
-          W: "▲", A: "◄", S: "▼", D: "►",
-          I: "5", J: "1", K: "2", L: "3"
+          W: "▲",
+          A: "◄",
+          S: "▼",
+          D: "►",
+          I: "5",
+          J: "1",
+          K: "2",
+          L: "3"
         };
 
         const buttons = keys.map(key => {
@@ -268,6 +363,8 @@
 
           return `
             <button id="${id}"
+                    type="button"
+                    aria-label="${slot.toUpperCase()} ${key}"
                     class="pad-btn ${slot}-${direction ? "btn" : "act"} ${direction ? "dir-btn" : "act-btn"}">
               ${index === 0 ? key : p2Labels[key]}
             </button>
@@ -275,17 +372,27 @@
         }).join("");
 
         return `
-          <div id="${slot}-controls" class="compact-pad-container ${slot}-side">
+          <div id="${slot}-controls"
+               class="compact-pad-container ${slot}-side">
             <div class="pad-label">
-              ${index === 0 ? "PLAYER 1 [W-A-S-D + I-J-K-L]" : "PLAYER 2 [ARROWS + 1-2-3-5]"}
+              ${index === 0
+                ? "PLAYER 1 [W-A-S-D + I-J-K-L]"
+                : "PLAYER 2 [ARROWS + 1-2-3-5]"}
             </div>
 
             <div class="charge-bar-wrapper">
-              <div id="${index === 0 ? "charge-status-display" : "p2-charge-status-display"}" class="charge-status">
-                HOLD DIRECTION TO CHARGE
+              <div id="${index === 0
+                ? "charge-status-display"
+                : "p2-charge-status-display"}"
+                   class="charge-status">
+                TAP DIRECTION TO CHARGE
               </div>
 
-              <div id="${slot}-action-flag" class="action-flag" hidden>LOCKED!</div>
+              <div id="${slot}-action-flag"
+                   class="action-flag"
+                   hidden>
+                LOCKED!
+              </div>
             </div>
 
             <div class="pad-grid-4x2">${buttons}</div>
@@ -293,23 +400,31 @@
         `;
       }
 
-      // Inject generated template layouts into structural DOM containers
       document.getElementById("selection-layout").innerHTML =
-        card("p1", 0) + '<div class="vs-divider">VS</div>' + card("p2", 1);
+        card("p1", 0) +
+        '<div class="vs-divider">VS</div>' +
+        card("p2", 1);
 
       document.getElementById("battle-hud").innerHTML =
         hud("p1") +
-        `<div class="center-hud">
-           <div id="turn-display" class="round-title">ROUND 1</div>
-           <div id="turn-timer" class="timer-display">TIME: 8.0s</div>
-         </div>` +
+        `
+          <div class="center-hud">
+            <div id="turn-display" class="round-title">ROUND 1</div>
+            <div id="turn-timer" class="timer-display">TIME: 8.0s</div>
+          </div>
+        ` +
         hud("p2");
 
       document.getElementById("battle-viewport").innerHTML =
         viewport("p1") +
-        `<div class="center-action-box" id="center-box" hidden>
-           <video id="center-video" autoplay muted playsinline></video>
-         </div>` +
+        `
+          <div class="center-action-box" id="center-box" hidden>
+            <video id="center-video"
+                   autoplay
+                   muted
+                   playsinline></video>
+          </div>
+        ` +
         viewport("p2");
 
       document.getElementById("human-control-panel").innerHTML =
@@ -317,37 +432,92 @@
     })();
   </script>
 
-<!-- Shared game rules -->
-  <script src="js/common.js?v=soul3"></script>
-  <script src="js/combat_core.js?v=soul3"></script>
+  <!-- Shared rules and search -->
+  <script src="js/common.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/combat_core.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/rider_brains.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/foresee_engine.js?v=v5-state256-action17-charge1-reset1"></script>
 
-  <!-- Existing search AI for non-neural CPU fighters -->
-  <script src="js/rider_brains.js?v=soul3"></script>
-  <script src="js/foresee_engine.js?v=soul3"></script>
-  <script src="js/ai.js?v=soul3"></script>
-  <script src="js/cpu_controller.js?v=soul3"></script>
+  <!-- Charging and neural pipeline -->
+  <script src="js/charge_env.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/neural_core.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/soul_sim.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/soul_agent.js?v=v5-state256-action17-charge1-reset1"></script>
 
-  <!-- Neural SOUL and shared charging environment -->
-  <script src="js/charge_env.js?v=soul3"></script>
-  <script src="js/neural_core.js?v=soul3"></script>
-  <script src="js/soul_sim.js?v=soul3"></script>
-  <script src="js/soul_agent.js?v=soul3"></script>
+  <!-- Dispatcher and live CPU service -->
+  <script src="js/ai.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/cpu_controller.js?v=v5-state256-action17-charge1-reset1"></script>
 
-  <!-- Existing presentation -->
-  <script src="js/media.js?v=soul3"></script>
-  <script src="js/ui.js?v=soul3"></script>
-  <script src="js/combat_engine.js?v=soul3"></script>
+  <!-- Presentation -->
+  <script src="js/media.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/ui.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/combat_engine.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/match_manager.js?v=v5-state256-action17-charge1-reset1"></script>
 
-  <!-- New reactive match manager -->
-  <script src="js/match_manager.js?v=soul3"></script>
+  <!-- Selection and bootstrap -->
+  <script src="js/vs_select.js?v=v5-state256-action17-charge1-reset1"></script>
+  <script src="js/game.js?v=v5-state256-action17-charge1-reset1"></script>
 
-  <!-- Existing navigation/bootstrap -->
-  <script src="js/vs_select.js?v=soul3"></script>
-  <script src="js/game.js?v=soul3"></script>
+  <!-- Tests are available but do not run automatically -->
+  <script src="js/soul_pipeline_tests.js?v=v5-state256-action17-charge1-reset1"></script>
 
-  <!-- Tests and new training interface -->
-  <script src="js/combat_tests.js?v=soul3"></script>
-  <script src="js/soul_tests.js?v=soul3"></script>
-  <script src="js/training_ui.js?v=soul3"></script>
+  <script>
+    (function (g) {
+      "use strict";
+
+      /*
+       * Compatibility fallback only.
+       * Does not replace a toggleControlType supplied by vs_select.js.
+       */
+      if (typeof g.toggleControlType !== "function") {
+        g.toggleControlType = function (slot) {
+          if (!["p1", "p2"].includes(slot)) return;
+
+          const state = g.vsSelectionState;
+          if (!state) return;
+
+          const requiredStep = slot === "p1" ? 1 : 2;
+
+          if ((Number(state.step) || 1) !== requiredStep) {
+            return;
+          }
+
+          state[slot + "IsCPU"] = !state[slot + "IsCPU"];
+          g.updateSelectionUI?.();
+        };
+      }
+
+      function connectOptionalSimulation() {
+        const button = document.getElementById("policy-sim-btn");
+        const note = document.getElementById("sim-availability");
+
+        const available =
+          typeof g.runBatchSimulation === "function" &&
+          typeof g.handleSimulateMatches === "function";
+
+        button.disabled = !available;
+
+        if (available) {
+          note.textContent =
+            "Batch simulator loaded. Checkpoint training and evaluation " +
+            "are available in RIDER TRAINER.";
+
+          button.addEventListener("click", event => {
+            g.handleSimulateMatches(event);
+          });
+        }
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener(
+          "DOMContentLoaded",
+          connectOptionalSimulation,
+          { once: true }
+        );
+      } else {
+        connectOptionalSimulation();
+      }
+    })(window);
+  </script>
 </body>
 </html>
