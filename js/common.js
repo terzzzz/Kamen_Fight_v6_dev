@@ -97,7 +97,7 @@
     },
 
     master: {
-      charges: [0, 35, 60, 90, 100],
+      charges: [1, 35, 60, 90, 100],
       horizon: 3,
       finalists: 6,
       rollouts: 48,
@@ -106,7 +106,7 @@
     },
 
     soul: {
-      charges: [0, 35, 60, 90, 100],
+      charges: [1, 35, 60, 90, 100],
       horizon: 3,
       finalists: 8,
       rollouts: 64,
@@ -157,19 +157,42 @@
     ] || 3000;
   };
 
-  g.calculateChargeProgress = function (
-    direction,
-    elapsedMs
+ g.calculateChargeProgress = function (
+  direction,
+  elapsedMs
+) {
+  const key = String(direction || "").toUpperCase();
+
+  // No held direction: an empty display, not a playable
+  // zero-charge move.
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      g.CHARGE_TIMES,
+      key
+    )
   ) {
-    return KF.clamp(
-      Math.floor(
-        100 * elapsedMs /
-        g.getChargeTimeMs(direction)
-      ),
-      0,
-      100
+    return 0;
+  }
+
+  const elapsed = Number(elapsedMs);
+
+  if (!Number.isFinite(elapsed)) {
+    throw new TypeError(
+      "Charge elapsed time must be a finite number."
     );
-  };
+  }
+
+  // A newly selected direction starts at 1%.
+  // Existing full-charge durations remain unchanged.
+  return KF.clamp(
+    Math.floor(
+      100 * Math.max(0, elapsed) /
+      g.getChargeTimeMs(key)
+    ),
+    1,
+    100
+  );
+};
 
   let dataPromise = null;
 
