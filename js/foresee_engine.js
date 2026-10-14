@@ -153,9 +153,17 @@ function evaluatePosition(state, slot, history, evaluator) {
 
       counts[action.key] = (counts[action.key] || 0) + weight;
 
-      if (action.key !== "DO_NOTHING") {
-        charges.push({ charge: action.charge ?? 0, weight });
-      }
+    if (
+  action.key !== "DO_NOTHING" &&
+  Number.isFinite(action.charge) &&
+  action.charge >= 1 &&
+  action.charge <= 100
+) {
+  charges.push({
+    charge: action.charge,
+    weight
+  });
+}
     }
 
     return { counts, charges };
@@ -173,7 +181,7 @@ function evaluatePosition(state, slot, history, evaluator) {
     // Adaptively append observed opponent charge levels into search tree options
     for (const item of observed.charges.slice(-3)) {
       chargeChoices.push(item.charge);
-      chargeChoices.push(Math.max(0, item.charge - 1));
+      chargeChoices.push(Math.max(1, item.charge - 1));
     }
 
     const available = C.actions(
@@ -325,15 +333,18 @@ function pairValue(
     const opponentSlot = C.other(slot);
     const chargeChoices = [...settings.charges];
 
-    if (difficulty === "master" || difficulty === "soul") {
-      for (const turn of history.slice(-3)) {
-        const observed = turn[opponentSlot];
-
-        if (observed && !turn.fainted?.[opponentSlot]) {
-          chargeChoices.push(Math.max(0, (observed.charge ?? 0) - 1));
-        }
-      }
-    }
+   if (
+  observed &&
+  observed.key !== "DO_NOTHING" &&
+  !turn.fainted?.[opponentSlot] &&
+  Number.isFinite(observed.charge) &&
+  observed.charge >= 1 &&
+  observed.charge <= 100
+) {
+  chargeChoices.push(
+    Math.max(1, observed.charge - 1)
+  );
+}
 
     let ownActions = C.actions(
       state,
