@@ -67,10 +67,16 @@
   ]);
 
   const IDLE_INDEX = 16;
-  const idle = () => ({ key: "DO_NOTHING", charge: 0 });
+
+  const idle = () => ({
+    key: "DO_NOTHING",
+    charge: 0
+  });
 
   function number(value, fallback = 0) {
-    return Number.isFinite(Number(value)) ? Number(value) : fallback;
+    return Number.isFinite(Number(value))
+      ? Number(value)
+      : fallback;
   }
 
   function limit() {
@@ -167,6 +173,7 @@
     if (!C.isLegal(env.state, slot, action)) return false;
 
     const cell = env.cells[slot];
+
     cell.action = C.normalizeAction(env.state, slot, action);
     cell.charge = cell.action.charge;
     cell.locked = true;
@@ -180,6 +187,7 @@
 
   function apply(env, slot, input) {
     const cell = env.cells[slot];
+
     if (!cell) return false;
 
     // A missing input must never mean action zero.
@@ -187,7 +195,9 @@
       return true;
     }
 
-    if (cell.locked || env.t >= limit()) return false;
+    if (cell.locked || env.t >= limit()) {
+      return false;
+    }
 
     if (typeof input === "object") {
       return lock(env, slot, {
@@ -249,6 +259,7 @@
     if (env.done) return [];
 
     refresh(env);
+
     const rejected = [];
 
     for (const slot of SLOTS) {
@@ -275,6 +286,7 @@
     }
 
     env.done = SLOTS.every(slot => env.cells[slot].locked);
+
     return rejected;
   }
 
@@ -289,7 +301,6 @@
   function observe(env, slot) {
     const enemySlot = C.other(slot);
 
-    // Fighter statistics come ONLY from combat state.
     const self = env.state[slot];
     const enemy = env.state[enemySlot];
 
@@ -344,7 +355,10 @@
 
   function fighterFeatures(player, round) {
     const mods = C.modifiers(player);
-    const buffs = (player.activeBuffs || []).filter(b => b.roundsLeft > 0);
+    const buffs = (player.activeBuffs || []).filter(
+      buff => buff.roundsLeft > 0
+    );
+
     const maxLp = Math.max(1, number(player.maxLp, 2500));
 
     let regen = 0;
@@ -472,18 +486,27 @@
     return Float32Array.from(values);
   }
 
-  function mask(env, slot) {
+  /*
+   * Terminal combat states may legitimately have no legal actions.
+   * This matters for replay next-state masks because terminal transitions
+   * have discount zero and must never be bootstrapped anyway.
+   */
+  function mask(env, slot, allowEmpty = false) {
     const result = new Uint8Array(ACTION_MAP.length);
 
     for (let index = 0; index < ACTION_MAP.length; index++) {
-      result[index] = Number(C.isLegal(env.state, slot, {
-        key: ACTION_MAP[index],
-        charge: 0
-      }));
+      result[index] = Number(
+        C.isLegal(env.state, slot, {
+          key: ACTION_MAP[index],
+          charge: 0
+        })
+      );
     }
 
-    if (!result.some(Boolean)) {
-      throw new Error("Combat state has no legal action, including idle.");
+    if (!result.some(Boolean) && !allowEmpty) {
+      throw new Error(
+        "Combat state has no legal action, including idle."
+      );
     }
 
     return result;
@@ -510,9 +533,11 @@
   function planned(action) {
     const plan = { ...(action || idle()) };
 
-    // Return the complete action object so its charge is preserved.
     return (env, slot) => {
-      if (env.done || env.cells[slot].locked) return "WAIT";
+      if (env.done || env.cells[slot].locked) {
+        return "WAIT";
+      }
+
       return C.normalizeAction(env.state, slot, plan);
     };
   }
@@ -522,10 +547,15 @@
       const legal = [];
 
       for (let i = 0; i < legalMask.length; i++) {
-        if (legalMask[i] && i !== IDLE_INDEX) legal.push(i);
+        if (legalMask[i] && i !== IDLE_INDEX) {
+          legal.push(i);
+        }
       }
 
-      if (!legal.length) return IDLE_INDEX;
+      if (!legal.length) {
+        return IDLE_INDEX;
+      }
+
       return legal[Math.floor(rng() * legal.length)];
     };
   }
