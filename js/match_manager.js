@@ -501,9 +501,15 @@
 
             const actor = gs.soulActors[slot];
 
-            if (actor) {
-              inputs[slot].push(actor(env, slot));
-            }
+           if (actor) {
+  const proposal = actor(env, slot);
+
+  if (Array.isArray(proposal)) {
+    inputs[slot].push(...proposal);
+  } else {
+    inputs[slot].push(proposal);
+  }
+}
           }
 
           const remaining = [];
