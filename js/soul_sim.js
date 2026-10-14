@@ -162,25 +162,41 @@
     };
   }
 
-  function resolveExecutionCharge(key, state, slot) {
-    assertSlot(slot);
+ function resolveExecutionCharge(key, state, slot) {
+  assertSlot(slot);
 
-    if (!key || key === "DO_NOTHING") {
-      return 0;
-    }
-
-    const move = state.moves?.[slot]?.[key];
-
-    if (!move) {
-      throw new Error("Cannot charge an unknown move: " + key);
-    }
-
-    /*
-     * The neural schema contains only 17 action keys, not charge buckets.
-     * Therefore execution charge must be canonical for a given state/key.
-     */
-    return C.maxCharge(state[slot], move.direction);
+  if (key === "DO_NOTHING") {
+    return 0;
   }
+
+  const move = state.moves?.[slot]?.[key];
+
+  if (!move) {
+    throw new Error("Cannot charge an unknown move: " + key);
+  }
+
+  /*
+   * The 17-output network chooses a move key.
+   * Direct-network training retains one canonical execution
+   * charge for each state/key.
+   */
+  const charge = C.maxCharge(
+    state[slot],
+    move.direction
+  );
+
+  if (
+    !Number.isFinite(charge) ||
+    charge < 1 ||
+    charge > 100
+  ) {
+    throw new Error(
+      "No positive execution charge is reachable for " + key
+    );
+  }
+
+  return charge;
+}
 
   function normalizeLegalAction(state, slot, action, source) {
     if (!action || typeof action.key !== "string") {
@@ -729,18 +745,73 @@ action = preserveRiderSearchCharge
 
       const before = C.copyState(state);
 
-      const selected = {
-        [learnerSlot]: decision.action,
-        [enemySlot]: opposingAction
-      };
+  const selected = {
+  [learnerSlot]: decision.action,
+  [enemySlot]: opposingAction
+};
 
-      const result = C.resolve(
-        state,
-        selected.p1,
-        selected.p2,
-        combatRng,
-        false
-      );
+/*
+ * Use the same charging executor as live CPU play.
+ *
+ * Both round plans were selected before this execution starts.
+ * These are not new neural decisions on every charging tick.
+ */
+const actors = {
+  p1: E.planned(selected.p1),
+  p2: E.planned(selected.p2)
+};
+
+while (!env.done) {
+  // Collect both proposals before mutating either control cell.
+  const inputs = {
+    p1: actors.p1(env, "p1"),
+    p2: actors.p2(env, "p2")
+  };
+
+  const previousTime = env.t;
+  const rejected = E.step(env, inputs);
+
+  if (rejected.length) {
+    throw new Error(
+      "Simulation controller produced a rejected charging input."
+    );
+  }
+
+  if (!env.done && env.t <= previousTime) {
+    throw new Error(
+      "Simulation charging clock failed to advance."
+    );
+  }
+
+  // Cooperative worker cancellation/progress point.
+  yield { type: "clock" };
+}
+
+const executed = E.actions(env);
+
+/*
+ * Do not train a requested move while the environment actually
+ * executed something else, such as a timeout idle.
+ */
+for (const slot of ["p1", "p2"]) {
+  if (
+    executed[slot].key !== selected[slot].key ||
+    executed[slot].charge !== selected[slot].charge
+  ) {
+    throw new Error(
+      "Planned/executed action mismatch for " + slot +
+      ". Refusing to create a mislabeled replay transition."
+    );
+  }
+}
+
+const result = C.resolve(
+  state,
+  executed.p1,
+  executed.p2,
+  combatRng,
+  false
+);
 
       if (
         !result?.state ||
