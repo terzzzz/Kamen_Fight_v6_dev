@@ -1,5 +1,10 @@
 /* js/common.js
- * Kamen Fight — Core Constants, Utilities, PRNG & Data Loader
+ * Shared constants, utilities, PRNG and data loader.
+ *
+ * Compatibility: shared-core-1
+ * Patch: release-routing-1
+ *
+ * Combat rules and standard-search settings are unchanged.
  */
 (function (g) {
   "use strict";
@@ -7,11 +12,13 @@
   const KF = g.KF = {};
 
   KF.VERSION = "shared-core-1";
+  KF.PATCH = "release-routing-1";
 
   KF.clamp = (value, min = 0, max = 1) =>
     Math.min(max, Math.max(min, value));
 
-  KF.wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  KF.wait = ms =>
+    new Promise(resolve => setTimeout(resolve, ms));
 
   KF.difficulty = function (value) {
     const key = String(value || "balanced").toLowerCase();
@@ -19,10 +26,14 @@
     return {
       novice: "easy",
       easy: "easy",
-      balanced: "balanced",
       normal: "balanced",
+      balanced: "balanced",
       master: "master",
-      soul: "soul"
+      soul: "soul",
+      rider: "rider",
+
+      // Compatibility alias. RIDER is not an MCTS implementation.
+      mcts: "rider"
     }[key] || "balanced";
   };
 
@@ -45,13 +56,27 @@
       state = (state + 0x6D2B79F5) >>> 0;
 
       let value = state;
-      value = Math.imul(value ^ (value >>> 15), value | 1);
-      value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
 
-      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+      value = Math.imul(
+        value ^ (value >>> 15),
+        value | 1
+      );
+
+      value ^= value + Math.imul(
+        value ^ (value >>> 7),
+        value | 61
+      );
+
+      return (
+        (value ^ (value >>> 14)) >>> 0
+      ) / 4294967296;
     };
   };
 
+  /*
+   * Keep these standard-search settings unchanged.
+   * RIDER uses its own dispatcher path.
+   */
   KF.levels = Object.freeze({
     easy: {
       charges: [60, 100],
@@ -61,6 +86,7 @@
       risk: 0,
       nearBest: 160
     },
+
     balanced: {
       charges: [60, 90, 100],
       horizon: 1,
@@ -69,6 +95,7 @@
       risk: 0,
       nearBest: 16
     },
+
     master: {
       charges: [0, 35, 60, 90, 100],
       horizon: 3,
@@ -77,6 +104,7 @@
       risk: 0.15,
       nearBest: 4
     },
+
     soul: {
       charges: [0, 35, 60, 90, 100],
       horizon: 3,
@@ -91,13 +119,16 @@
     STARTING_CHI: 8,
     MAX_CHI: 16,
     PASSIVE_CHI: 1,
+
     FAINT_THRESHOLD: 100,
     HIT_BUILDUP: 25,
     SCRATCH_BUILDUP: 10,
     ROUND_RECOVERY: 13,
+
     FAINT_PENALTY_CHI_GUARD: 15,
     FAINT_PENALTY_STANDARD_GUARD: 12,
     FAINT_PENALTY_IDLE_GUARD: 5,
+
     MAX_ROUNDS: 50
   });
 
@@ -108,6 +139,7 @@
 
     MASTER_CPU_HP_MULTIPLIER: 1,
     MASTER_CPU_DMG_MULTIPLIER: 1,
+
     SOUL_CPU_HP_MULTIPLIER: 1,
     SOUL_CPU_DMG_MULTIPLIER: 1
   });
@@ -120,12 +152,20 @@
   });
 
   g.getChargeTimeMs = function (direction) {
-    return g.CHARGE_TIMES[String(direction).toUpperCase()] || 3000;
+    return g.CHARGE_TIMES[
+      String(direction).toUpperCase()
+    ] || 3000;
   };
 
-  g.calculateChargeProgress = function (direction, elapsedMs) {
+  g.calculateChargeProgress = function (
+    direction,
+    elapsedMs
+  ) {
     return KF.clamp(
-      Math.floor(100 * elapsedMs / g.getChargeTimeMs(direction)),
+      Math.floor(
+        100 * elapsedMs /
+        g.getChargeTimeMs(direction)
+      ),
       0,
       100
     );
@@ -142,15 +182,21 @@
         ]);
 
         if (responses.some(response => !response.ok)) {
-          throw new Error("Could not load rider/move data.");
+          throw new Error(
+            "Could not load rider/move data."
+          );
         }
 
         const [allRiders, rawMoves] = await Promise.all(
           responses.map(response => response.json())
         );
 
-        const riders = allRiders.filter(rider => rider.active === true);
-        const moves = g.CombatCore.compileMoves(rawMoves);
+        const riders = allRiders.filter(
+          rider => rider.active === true
+        );
+
+        const moves =
+          g.CombatCore.compileMoves(rawMoves);
 
         if (!riders.length) {
           throw new Error("No active riders found.");
@@ -158,7 +204,9 @@
 
         for (const rider of riders) {
           if (!moves[rider.id]) {
-            throw new Error(`Missing moves for ${rider.id}.`);
+            throw new Error(
+              `Missing moves for ${rider.id}.`
+            );
           }
         }
 
