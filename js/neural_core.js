@@ -453,7 +453,39 @@
       ) {
         throw new Error("Invalid replay transition.");
       }
+/*
+ * Combat replay must identify the action that actually executed.
+ * Generic Network.train() remains usable for ordinary test rows;
+ * this guard protects the combat replay ingestion path.
+ */
+const actionKey =
+  g.SoulEnv.ACTION_MAP[transition.a];
 
+const selectedCharge = transition.selectedCharge;
+
+const validCharge = actionKey === "DO_NOTHING"
+  ? selectedCharge === 0
+  : (
+      Number.isFinite(selectedCharge) &&
+      selectedCharge >= 1 &&
+      selectedCharge <= 100
+    );
+
+if (
+  !actionKey ||
+  !validCharge ||
+  transition.actionKey !== actionKey ||
+  transition.selectedActionKey !== actionKey ||
+  transition.resolvedActionKey !== actionKey ||
+  transition.charge !== selectedCharge ||
+  transition.resolvedCharge !== selectedCharge ||
+  transition.coreAdjustedAction === true
+) {
+  throw new Error(
+    "Replay action/charge mismatch. " +
+    "Non-idle replay moves must execute at 1–100% charge."
+  );
+}
       this.steps++;
 
       this.replay.add({
