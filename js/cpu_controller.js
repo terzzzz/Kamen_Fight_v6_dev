@@ -161,42 +161,74 @@
     }
   }
 
-  function verifyDecision(context, result) {
+ function verifyDecision(context, result) {
+  if (!result?.action) {
+    throw new Error(
+      "CPU planner returned no action."
+    );
+  }
+
+  function requirePositiveMoveCharge(action) {
+    // Explicit idle is separate from all sixteen moves.
+    if (action.key === "DO_NOTHING") return;
+
     if (
-      !result?.action ||
-      !C.isLegal(
-        context.state,
-        context.slot,
-        result.action
-      )
+      !Number.isFinite(action.charge) ||
+      action.charge < 1 ||
+      action.charge > 100
     ) {
       throw new Error(
-        "CPU planner returned an illegal action."
+        "CPU planner returned an invalid move charge. " +
+        "Playable moves require 1–100% charge."
       );
     }
+  }
 
-    const action = C.normalizeAction(
+  // Validate before normalization so an invalid proposal
+  // cannot silently be converted into a different action.
+  requirePositiveMoveCharge(result.action);
+
+  if (
+    !C.isLegal(
       context.state,
       context.slot,
       result.action
+    )
+  ) {
+    throw new Error(
+      "CPU planner returned an illegal action."
     );
+  }
 
-    if (action.key !== "DO_NOTHING") {
-      const move =
-        context.state.moves[context.slot][action.key];
+  const action = C.normalizeAction(
+    context.state,
+    context.slot,
+    result.action
+  );
 
-      const chargeLimit = C.maxCharge(
-        context.state[context.slot],
-        move.direction
+  requirePositiveMoveCharge(action);
+
+  if (action.key !== "DO_NOTHING") {
+    const move =
+      context.state.moves[context.slot][action.key];
+
+    if (!move) {
+      throw new Error(
+        "CPU planner returned an unknown move."
       );
-
-      if (action.charge > chargeLimit) {
-        throw new Error(
-          "CPU planner returned an unreachable charge level."
-        );
-      }
     }
 
+    const chargeLimit = C.maxCharge(
+      context.state[context.slot],
+      move.direction
+    );
+
+    if (action.charge > chargeLimit) {
+      throw new Error(
+        "CPU planner returned an unreachable charge level."
+      );
+    }
+  }
     return {
       ...result,
       action
