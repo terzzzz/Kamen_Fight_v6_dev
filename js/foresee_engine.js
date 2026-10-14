@@ -532,40 +532,72 @@ continuationDelta +=
       const roll = rng();
 
       // Rule 1: 10% chance to DO_NOTHING (pretend charging with no attack buttons)
-      if (roll < 0.10) {
-        const doNothingBase = ownActions.find(a => a.key === "DO_NOTHING") || { key: "DO_NOTHING", charge: 0 };
-        const chargesPool = [4, 45, 85, 100];
-        const pretendCharge = chargesPool[Math.floor(rng() * chargesPool.length)];
-        const doNothingChoice = Object.assign({}, doNothingBase, { charge: pretendCharge });
+     if (roll < 0.10) {
+  return {
+    rows: [{
+      action: {
+        key: "DO_NOTHING",
+        charge: 0
+      },
+      score: 0
+    }],
+    debug: {
+      difficulty,
+      strategy: "Novice 10% explicit idle",
+      rootActions: ownActions.length,
+      completedHorizon: 1
+    }
+  };
+}
 
-        return {
-          rows: [{ action: doNothingChoice, score: 0 }],
-          debug: {
-            difficulty,
-            strategy: "Novice 10% Pretend Charge (DO_NOTHING)",
-            rootActions: ownActions.length,
-            completedHorizon: 1
-          }
-        };
-      }
+    // Next 40%: random legal move and positive reachable charge.
+if (roll < 0.50) {
+  const randomBase =
+    ownActions[Math.floor(rng() * ownActions.length)];
 
-      // Rule 2: 40% chance to select a completely random move with random charge %
-      if (roll < 0.50) {
-        const randomBase = ownActions[Math.floor(rng() * ownActions.length)];
-        const chargesPool = [0, 25, 50, 75, 100];
-        const randomCharge = chargesPool[Math.floor(rng() * chargesPool.length)];
-        const randomChoice = Object.assign({}, randomBase, { charge: randomCharge });
+  let randomChoice;
 
-        return {
-          rows: [{ action: randomChoice, score: 0 }],
-          debug: {
-            difficulty,
-            strategy: "Novice 40% Random Move (Incl. A-Stance & Random Charge)",
-            rootActions: ownActions.length,
-            completedHorizon: 1
-          }
-        };
-      }
+  if (randomBase.key === "DO_NOTHING") {
+    randomChoice = {
+      key: "DO_NOTHING",
+      charge: 0
+    };
+  } else {
+    const chargesPool = [1, 25, 50, 75, 100];
+
+    const sampled =
+      chargesPool[Math.floor(rng() * chargesPool.length)];
+
+    const move = state.moves[slot][randomBase.key];
+
+    randomChoice = {
+      key: randomBase.key,
+      charge: Math.min(
+        sampled,
+        C.maxCharge(state[slot], move.direction)
+      )
+    };
+  }
+
+  if (!C.isLegal(state, slot, randomChoice)) {
+    throw new Error(
+      "Novice random generator produced an illegal action."
+    );
+  }
+
+  return {
+    rows: [{
+      action: randomChoice,
+      score: 0
+    }],
+    debug: {
+      difficulty,
+      strategy: "Novice 40% random legal move",
+      rootActions: ownActions.length,
+      completedHorizon: 1
+    }
+  };
+}
 
       // Rule 3: Remaining 50% chance — select 2nd or 3rd best candidate
       let noviceRows = [];
