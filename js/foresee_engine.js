@@ -1,6 +1,10 @@
-/* js/foresee_engine.js */
-// Kamen Fight — Neural-Guided Expectimax & Monte Carlo Horizon Lookahead Search Engine
-
+/* js/foresee_engine.js
+ * Kamen Fight
+ * Neural-Guided Expectimax & Monte Carlo Horizon Search
+ *
+ * Fix: warmstart-history-loop-fix1
+ * Restores the missing opponent-history loop in search().
+ */
 (function (g) {
   "use strict";
 
@@ -9,77 +13,93 @@
   const B = g.RiderBrains;
 
   /*
- * Extend a hypothetical branch's completed-turn history.
- *
- * This is RAM-only search data:
- * - Do not mutate the actual match history.
- * - Do not persist hypothetical turns as real experience.
- */
-function appendForecastHistory(history, before, action1, action2) {
-  const p1 = {
-    ...C.normalizeAction(before, "p1", action1)
-  };
+   * Extend a hypothetical branch's completed-turn history.
+   *
+   * This is RAM-only search data:
+   * - Do not mutate the actual match history.
+   * - Do not persist hypothetical turns as real experience.
+   */
+  function appendForecastHistory(
+    history,
+    before,
+    action1,
+    action2
+  ) {
+    const p1 = {
+      ...C.normalizeAction(before, "p1", action1)
+    };
 
-  const p2 = {
-    ...C.normalizeAction(before, "p2", action2)
-  };
+    const p2 = {
+      ...C.normalizeAction(before, "p2", action2)
+    };
 
-  return [
-    ...(Array.isArray(history) ? history : []),
-    {
-      p1,
-      p2,
-      actions: { p1, p2 },
-      fainted: {
-        p1: Boolean(before.p1.isFainted),
-        p2: Boolean(before.p2.isFainted)
+    return [
+      ...(Array.isArray(history) ? history : []),
+      {
+        p1,
+        p2,
+        actions: { p1, p2 },
+        fainted: {
+          p1: Boolean(before.p1.isFainted),
+          p2: Boolean(before.p2.isFainted)
+        }
       }
-    }
-  ].slice(-24);
-}
-
-let evaluatorWarningShown = false;
-
-/*
- * Preserve the existing heuristic fallback, but pass branch history
- * through to neural evaluation and reject all non-finite results.
- */
-function evaluatePosition(state, slot, history, evaluator) {
-  if (typeof evaluator === "function") {
-    try {
-      const value = evaluator(state, slot, history);
-
-      if (Number.isFinite(value)) {
-        return value;
-      }
-
-      throw new Error("Evaluator returned a non-finite score.");
-    } catch (error) {
-      if (!evaluatorWarningShown) {
-        evaluatorWarningShown = true;
-
-        console.warn(
-          "[ForeseeEngine] Evaluator failed; using heuristic fallback.",
-          error
-        );
-      }
-    }
+    ].slice(-24);
   }
 
-  return B.evaluate(state, slot);
-}
+  let evaluatorWarningShown = false;
 
-  /** Generates unique key string for move+charge pair. */
+  /*
+   * Pass branch history through to neural evaluation.
+   * If the evaluator fails or returns a non-finite score,
+   * use the existing RiderBrains heuristic fallback.
+   */
+  function evaluatePosition(
+    state,
+    slot,
+    history,
+    evaluator
+  ) {
+    if (typeof evaluator === "function") {
+      try {
+        const value = evaluator(state, slot, history);
+
+        if (Number.isFinite(value)) {
+          return value;
+        }
+
+        throw new Error(
+          "Evaluator returned a non-finite score."
+        );
+      } catch (error) {
+        if (!evaluatorWarningShown) {
+          evaluatorWarningShown = true;
+
+          console.warn(
+            "[ForeseeEngine] Evaluator failed; using heuristic fallback.",
+            error
+          );
+        }
+      }
+    }
+
+    return B.evaluate(state, slot);
+  }
+
+  /*
+   * Unique identifier for a move/charge pair.
+   */
   function actionId(action) {
     return `${action.key}@${action.charge ?? 0}`;
   }
 
-  /**
-   * Deterministic sorting for move evaluation rows.
-   * Breaks score ties using action identifier strings to prevent non-deterministic sorting jitter.
+  /*
+   * Deterministic score sorting with action-ID tie breaking.
    */
   function stableSort(a, b) {
-    if (b.score !== a.score) return b.score - a.score;
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
 
     const x = actionId(a.action);
     const y = actionId(b.action);
@@ -87,35 +107,37 @@ function evaluatePosition(state, slot, history, evaluator) {
     return x < y ? -1 : x > y ? 1 : 0;
   }
 
-  /**
-   * Samples an action from a weighted probability distribution.
-   *
-   * @param {Array<{action: Object, probability: number}>} entries - Weighted distribution.
-   * @param {function(): number} rng - Deterministic PRNG function.
-   * @returns {Object} Sampled action.
+  /*
+   * Sample an action from a weighted distribution.
    */
   function sample(entries, rng) {
     let remaining = rng();
 
     for (const entry of entries) {
       remaining -= entry.probability;
-      if (remaining <= 0) return entry.action;
+
+      if (remaining <= 0) {
+        return entry.action;
+      }
     }
 
     return entries[entries.length - 1].action;
   }
 
-  /**
-   * Samples an action candidate from sorted finalists using fixed rank probabilities:
-   * - 50% -> 1st best (Index 0)
-   * - 30% -> 2nd best (Index 1)
-   * - 15% -> 3rd best (Index 2)
-   * -  5% -> 4th best (Index 3)
+  /*
+   * Sample from sorted finalists using rank probabilities:
    *
-   * Falls back safely to the highest available index if candidate count is small.
+   * 50% -> first
+   * 30% -> second
+   * 15% -> third
+   *  5% -> fourth
+   *
+   * Clamp to the last available row for smaller lists.
    */
   function sampleRankedAction(rows, rng) {
-    if (!rows || rows.length === 0) return null;
+    if (!rows || rows.length === 0) {
+      return null;
+    }
 
     const roll = rng();
     let targetIndex = 0;
@@ -130,13 +152,17 @@ function evaluatePosition(state, slot, history, evaluator) {
       targetIndex = 3;
     }
 
-    const safeIndex = Math.min(targetIndex, rows.length - 1);
+    const safeIndex = Math.min(
+      targetIndex,
+      rows.length - 1
+    );
+
     return rows[safeIndex];
   }
 
-  /**
-   * Analyzes recent match history to model opponent usage patterns and charge habits.
-   * Uses exponential decay weighting (0.90^t) to favor recent turn trends over older ones.
+  /*
+   * Model move usage and charge habits from recent history.
+   * Recent turns receive greater weight.
    */
   function observations(history, slot) {
     const counts = {};
@@ -145,43 +171,65 @@ function evaluatePosition(state, slot, history, evaluator) {
     for (let i = 0; i < history.length; i++) {
       const turn = history[i];
 
-      if (turn.fainted && turn.fainted[slot]) continue;
-      if (!turn[slot]) continue;
+      if (turn.fainted && turn.fainted[slot]) {
+        continue;
+      }
 
-      const weight = Math.pow(0.90, history.length - 1 - i);
+      if (!turn[slot]) {
+        continue;
+      }
+
+      const weight = Math.pow(
+        0.90,
+        history.length - 1 - i
+      );
+
       const action = turn[slot];
 
-      counts[action.key] = (counts[action.key] || 0) + weight;
+      counts[action.key] =
+        (counts[action.key] || 0) + weight;
 
-    if (
-  action.key !== "DO_NOTHING" &&
-  Number.isFinite(action.charge) &&
-  action.charge >= 1 &&
-  action.charge <= 100
-) {
-  charges.push({
-    charge: action.charge,
-    weight
-  });
-}
+      if (
+        action.key !== "DO_NOTHING" &&
+        Number.isFinite(action.charge) &&
+        action.charge >= 1 &&
+        action.charge <= 100
+      ) {
+        charges.push({
+          charge: action.charge,
+          weight
+        });
+      }
     }
 
     return { counts, charges };
   }
 
-  /**
-   * Constructs an action probability distribution (policy model) for a player slot.
-   * Combines RiderBrains tactical prior heuristics, historical opponent tendencies, and state constraints.
+  /*
+   * Build an action probability distribution from:
+   * - RiderBrains tactical priors
+   * - Observed move and charge tendencies
+   * - Current legal actions
    */
-  function policy(state, slot, history, difficulty, rolloutSelf = false) {
+  function policy(
+    state,
+    slot,
+    history,
+    difficulty,
+    rolloutSelf = false
+  ) {
     const observed = observations(history || [], slot);
 
-    const chargeChoices = [...K.levels.master.charges];
+    const chargeChoices = [
+      ...K.levels.master.charges
+    ];
 
-    // Adaptively append observed opponent charge levels into search tree options
+    // Include recent observed charges and slightly faster replies.
     for (const item of observed.charges.slice(-3)) {
       chargeChoices.push(item.charge);
-      chargeChoices.push(Math.max(1, item.charge - 1));
+      chargeChoices.push(
+        Math.max(1, item.charge - 1)
+      );
     }
 
     const available = C.actions(
@@ -196,30 +244,54 @@ function evaluatePosition(state, slot, history, evaluator) {
       (groups[action.key] ||= []).push(action);
     }
 
-    const tree = B.intent(state, slot, difficulty) || {};
-    const preferredMoves = Array.isArray(tree.preferred) ? tree.preferred : [];
+    const tree = B.intent(
+      state,
+      slot,
+      difficulty
+    ) || {};
+
+    const preferredMoves = Array.isArray(tree.preferred)
+      ? tree.preferred
+      : [];
+
     const entries = [];
 
     for (const [key, group] of Object.entries(groups)) {
       let keyWeight =
-        3 * B.prior(state, slot, group[0], difficulty) +
+        3 * B.prior(
+          state,
+          slot,
+          group[0],
+          difficulty
+        ) +
         (observed.counts[key] || 0);
 
-      if (rolloutSelf && preferredMoves.includes(key)) {
+      if (
+        rolloutSelf &&
+        preferredMoves.includes(key)
+      ) {
         keyWeight *= 3;
       }
 
       const local = group.map(action => {
         const actCharge = action.charge ?? 0;
-        let weight = actCharge >= 90 ? 1.3 : 0.65;
+
+        let weight = actCharge >= 90
+          ? 1.3
+          : 0.65;
 
         for (const item of observed.charges) {
-          weight += item.weight *
-            Math.exp(-Math.abs(actCharge - item.charge) / 12);
+          weight +=
+            item.weight *
+            Math.exp(
+              -Math.abs(actCharge - item.charge) / 12
+            );
         }
 
         if (state[C.other(slot)].isFainted) {
-          weight *= actCharge === 100 ? 5 : 0.2;
+          weight *= actCharge === 100
+            ? 5
+            : 0.2;
         }
 
         return { action, weight };
@@ -233,7 +305,13 @@ function evaluatePosition(state, slot, history, evaluator) {
       for (const entry of local) {
         entries.push({
           action: entry.action,
-          weight: keyWeight * (localTotal > 0 ? entry.weight / localTotal : 1.0)
+          weight:
+            keyWeight *
+            (
+              localTotal > 0
+                ? entry.weight / localTotal
+                : 1.0
+            )
         });
       }
     }
@@ -245,62 +323,73 @@ function evaluatePosition(state, slot, history, evaluator) {
 
     return entries.map(entry => ({
       action: entry.action,
-      probability: total > 0 ? entry.weight / total : 1 / entries.length
+      probability: total > 0
+        ? entry.weight / total
+        : 1 / entries.length
     }));
   }
 
-  /** Maps player actions to P1/P2 slot positions for evaluation. */
-  function orderedActions(slot, ownAction, opponentAction) {
+  /*
+   * Map own/opponent actions to P1/P2 order.
+   */
+  function orderedActions(
+    slot,
+    ownAction,
+    opponentAction
+  ) {
     return slot === "p1"
       ? [ownAction, opponentAction]
       : [opponentAction, ownAction];
   }
 
-  /**
-   * Computes expected utility value of a single move exchange using an optional neural evaluator.
-   * Features automatic fallback to RiderBrains heuristic if neural output returns NaN or throws error.
+  /*
+   * Expected value of a single move exchange.
+   * Hypothetical history is passed to the evaluator.
    */
-function pairValue(
-  state,
-  slot,
-  ownAction,
-  opponentAction,
-  evaluator = null,
-  history = []
-) {
-  const [a1, a2] = orderedActions(
+  function pairValue(
+    state,
     slot,
     ownAction,
-    opponentAction
-  );
+    opponentAction,
+    evaluator = null,
+    history = []
+  ) {
+    const [a1, a2] = orderedActions(
+      slot,
+      ownAction,
+      opponentAction
+    );
 
-  const nextHistory = appendForecastHistory(
-    history,
-    state,
-    a1,
-    a2
-  );
+    const nextHistory = appendForecastHistory(
+      history,
+      state,
+      a1,
+      a2
+    );
 
-  return C.distribution(state, a1, a2).reduce(
-    (sum, result) =>
-      sum +
-      result.probability *
-      evaluatePosition(
-        result.state,
-        slot,
-        nextHistory,
-        evaluator
-      ),
-    0
-  );
-}
+    return C.distribution(state, a1, a2).reduce(
+      (sum, result) =>
+        sum +
+        result.probability *
+        evaluatePosition(
+          result.state,
+          slot,
+          nextHistory,
+          evaluator
+        ),
+      0
+    );
+  }
 
-  /**
-   * Main AI Search Entry Point (Neural-Guided Expectimax & Monte Carlo Horizon).
-   * Supports candidate filtering via neural priors and custom leaf evaluation via SoulNN.
+  /*
+   * Main search entry point.
    *
-   * @param {Object} context - Match state, acting slot, difficulty, history, seed, evaluator, candidates, and isTraining flag.
-   * @returns {Object} Evaluated candidate move rows sorted by score, plus debug metadata.
+   * Supports:
+   * - Root candidate filtering
+   * - Optional neural leaf evaluation
+   * - Expectimax root evaluation
+   * - Multi-turn Monte Carlo continuation
+   * - Difficulty-specific selection behavior
    */
   function search(context) {
     const {
@@ -313,38 +402,74 @@ function pairValue(
       isTraining = false
     } = context;
 
-   const evalFn = (s, sl, branchHistory = history) =>
-  evaluatePosition(
-    s,
-    sl,
-    branchHistory,
-    evaluator
-  );
+    const evalFn = (
+      s,
+      sl,
+      branchHistory = history
+    ) => evaluatePosition(
+      s,
+      sl,
+      branchHistory,
+      evaluator
+    );
 
-    const difficulty = K.difficulty(context.difficulty);
+    const difficulty = K.difficulty(
+      context.difficulty
+    );
 
-    const settings = { ...K.levels[difficulty] };
-    if (isTraining || typeof evaluator === "function") {
-      settings.horizon = Math.min(settings.horizon, 2);   // Cap lookahead depth to 2 max
-      settings.rollouts = Math.min(settings.rollouts, 4); // Cap rollouts per finalist to 4
-      settings.finalists = Math.min(settings.finalists, 2); // Cap root finalists to 2
+    const settings = {
+      ...K.levels[difficulty]
+    };
+
+    if (
+      isTraining ||
+      typeof evaluator === "function"
+    ) {
+      settings.horizon = Math.min(
+        settings.horizon,
+        2
+      );
+
+      settings.rollouts = Math.min(
+        settings.rollouts,
+        4
+      );
+
+      settings.finalists = Math.min(
+        settings.finalists,
+        2
+      );
     }
 
     const opponentSlot = C.other(slot);
     const chargeChoices = [...settings.charges];
 
-   if (
-  observed &&
-  observed.key !== "DO_NOTHING" &&
-  !turn.fainted?.[opponentSlot] &&
-  Number.isFinite(observed.charge) &&
-  observed.charge >= 1 &&
-  observed.charge <= 100
-) {
-  chargeChoices.push(
-    Math.max(1, observed.charge - 1)
-  );
-}
+    /*
+     * FIX:
+     * Read each opponent action inside a history loop.
+     *
+     * The previous file referenced `observed` and `turn`
+     * here without declaring either variable, causing
+     * search() to throw during Warm Start.
+     *
+     * Empty history is valid: this loop simply does nothing.
+     */
+    for (const turn of history) {
+      const observed = turn[opponentSlot];
+
+      if (
+        observed &&
+        observed.key !== "DO_NOTHING" &&
+        !turn.fainted?.[opponentSlot] &&
+        Number.isFinite(observed.charge) &&
+        observed.charge >= 1 &&
+        observed.charge <= 100
+      ) {
+        chargeChoices.push(
+          Math.max(1, observed.charge - 1)
+        );
+      }
+    }
 
     let ownActions = C.actions(
       state,
@@ -352,19 +477,27 @@ function pairValue(
       [...new Set(chargeChoices)]
     );
 
-    // Apply Neural Candidate Filter at Root Node (if provided by RIDER mode)
-    if (Array.isArray(candidates) && candidates.length > 0) {
-      const filtered = ownActions.filter(a =>
-        candidates.includes(a.key) ||
-        candidates.includes(a) ||
-        candidates.some(c => typeof c === "object" && c.key === a.key && c.charge === a.charge)
+    // Apply the optional root candidate filter.
+    if (
+      Array.isArray(candidates) &&
+      candidates.length > 0
+    ) {
+      const filtered = ownActions.filter(action =>
+        candidates.includes(action.key) ||
+        candidates.includes(action) ||
+        candidates.some(candidate =>
+          typeof candidate === "object" &&
+          candidate.key === action.key &&
+          candidate.charge === action.charge
+        )
       );
+
       if (filtered.length > 0) {
         ownActions = filtered;
       }
     }
 
-    // Predict opponent behavior using a Master difficulty policy model
+    // Model the opponent using the Master policy.
     const opponentPolicy = policy(
       state,
       opponentSlot,
@@ -374,20 +507,22 @@ function pairValue(
 
     const rows = [];
 
-    // Step 1: Depth 1 Expectimax matrix evaluation across filtered root choices
+    /*
+     * Step 1: one-turn expectimax evaluation.
+     */
     for (const action of ownActions) {
       let expected = 0;
       let worst = Infinity;
 
       for (const opponent of opponentPolicy) {
-       const value = pairValue(
-  state,
-  slot,
-  action,
-  opponent.action,
-  evalFn,
-  history
-);
+        const value = pairValue(
+          state,
+          slot,
+          action,
+          opponent.action,
+          evalFn,
+          history
+        );
 
         expected += opponent.probability * value;
         worst = Math.min(worst, value);
@@ -400,7 +535,12 @@ function pairValue(
         score:
           (1 - settings.risk) * expected +
           settings.risk * worst +
-          B.bonus(state, slot, action, difficulty)
+          B.bonus(
+            state,
+            slot,
+            action,
+            difficulty
+          )
       });
     }
 
@@ -409,7 +549,9 @@ function pairValue(
     let finalists = rows;
     let completedHorizon = 1;
 
-    // Step 2: Multi-turn Monte Carlo Horizon Rollouts (Master, Soul, and RIDER difficulties)
+    /*
+     * Step 2: multi-turn Monte Carlo continuation.
+     */
     if (
       settings.horizon > 1 &&
       rows.length > 1 &&
@@ -422,15 +564,23 @@ function pairValue(
       for (const row of finalists) {
         let continuationDelta = 0;
 
-        for (let sampleIndex = 0;
+        for (
+          let sampleIndex = 0;
           sampleIndex < settings.rollouts;
           sampleIndex++
         ) {
           const rng = K.rng(
-            K.hash(seed, "forecast", sampleIndex)
+            K.hash(
+              seed,
+              "forecast",
+              sampleIndex
+            )
           );
 
-          const opponentAction = sample(opponentPolicy, rng);
+          const opponentAction = sample(
+            opponentPolicy,
+            rng
+          );
 
           let [a1, a2] = orderedActions(
             slot,
@@ -438,172 +588,210 @@ function pairValue(
             opponentAction
           );
 
- const firstResult = C.resolve(
-  state,
-  a1,
-  a2,
-  rng,
-  false
-);
+          const firstResult = C.resolve(
+            state,
+            a1,
+            a2,
+            rng,
+            false
+          );
 
-let future = firstResult.state;
+          let future = firstResult.state;
 
-let futureHistory = appendForecastHistory(
-  history,
-  state,
-  firstResult.actions.p1,
-  firstResult.actions.p2
-);
+          let futureHistory = appendForecastHistory(
+            history,
+            state,
+            firstResult.actions.p1,
+            firstResult.actions.p2
+          );
 
-const firstValue = evalFn(
-  future,
-  slot,
-  futureHistory
-);
+          const firstValue = evalFn(
+            future,
+            slot,
+            futureHistory
+          );
 
-for (
-  let depth = 1;
-  depth < settings.horizon && !future.winner;
-  depth++
-) {
-  /*
-   * Both policy models see the completed hypothetical turns.
-   * Previously the own policy received [] and the opponent
-   * continued receiving the unchanged root history.
-   */
-  const ownPolicy = policy(
-    future,
-    slot,
-    futureHistory,
-    difficulty,
-    true
-  );
+          for (
+            let depth = 1;
+            depth < settings.horizon && !future.winner;
+            depth++
+          ) {
+            /*
+             * Both policy models see completed
+             * hypothetical turns from this branch.
+             */
+            const ownPolicy = policy(
+              future,
+              slot,
+              futureHistory,
+              difficulty,
+              true
+            );
 
-  const enemyPolicy = policy(
-    future,
-    opponentSlot,
-    futureHistory,
-    "master"
-  );
+            const enemyPolicy = policy(
+              future,
+              opponentSlot,
+              futureHistory,
+              "master"
+            );
 
-  const ownNext = sample(ownPolicy, rng);
-  const enemyNext = sample(enemyPolicy, rng);
+            const ownNext = sample(
+              ownPolicy,
+              rng
+            );
 
-  [a1, a2] = orderedActions(
-    slot,
-    ownNext,
-    enemyNext
-  );
+            const enemyNext = sample(
+              enemyPolicy,
+              rng
+            );
 
-  const beforeFuture = future;
+            [a1, a2] = orderedActions(
+              slot,
+              ownNext,
+              enemyNext
+            );
 
-  const nextResult = C.resolve(
-    beforeFuture,
-    a1,
-    a2,
-    rng,
-    false
-  );
+            const beforeFuture = future;
 
-  futureHistory = appendForecastHistory(
-    futureHistory,
-    beforeFuture,
-    nextResult.actions.p1,
-    nextResult.actions.p2
-  );
+            const nextResult = C.resolve(
+              beforeFuture,
+              a1,
+              a2,
+              rng,
+              false
+            );
 
-  future = nextResult.state;
-}
+            futureHistory = appendForecastHistory(
+              futureHistory,
+              beforeFuture,
+              nextResult.actions.p1,
+              nextResult.actions.p2
+            );
 
-continuationDelta +=
-  evalFn(future, slot, futureHistory) - firstValue;
+            future = nextResult.state;
+          }
+
+          continuationDelta +=
+            evalFn(
+              future,
+              slot,
+              futureHistory
+            ) - firstValue;
         }
 
-        row.score += continuationDelta / settings.rollouts;
+        row.score +=
+          continuationDelta / settings.rollouts;
       }
 
       finalists.sort(stableSort);
       completedHorizon = settings.horizon;
     }
 
-    // --- DIFFICULTY-SPECIFIC OVERRIDES & HUMAN-LIKE BLUNDER INJECTION ---
+    /*
+     * Difficulty-specific overrides.
+     */
     if (difficulty === "easy") {
-      const rng = K.rng(K.hash(seed, "novice_blunder"));
+      const rng = K.rng(
+        K.hash(seed, "novice_blunder")
+      );
+
       const roll = rng();
 
-      // Rule 1: 10% chance to DO_NOTHING (pretend charging with no attack buttons)
-     if (roll < 0.10) {
-  return {
-    rows: [{
-      action: {
-        key: "DO_NOTHING",
-        charge: 0
-      },
-      score: 0
-    }],
-    debug: {
-      difficulty,
-      strategy: "Novice 10% explicit idle",
-      rootActions: ownActions.length,
-      completedHorizon: 1
-    }
-  };
-}
+      // First 10%: explicit idle.
+      if (roll < 0.10) {
+        return {
+          rows: [{
+            action: {
+              key: "DO_NOTHING",
+              charge: 0
+            },
+            score: 0
+          }],
+          debug: {
+            difficulty,
+            strategy: "Novice 10% explicit idle",
+            rootActions: ownActions.length,
+            completedHorizon: 1
+          }
+        };
+      }
 
-    // Next 40%: random legal move and positive reachable charge.
-if (roll < 0.50) {
-  const randomBase =
-    ownActions[Math.floor(rng() * ownActions.length)];
+      /*
+       * Next 40%:
+       * random legal move and positive reachable charge.
+       */
+      if (roll < 0.50) {
+        const randomBase = ownActions[
+          Math.floor(rng() * ownActions.length)
+        ];
 
-  let randomChoice;
+        let randomChoice;
 
-  if (randomBase.key === "DO_NOTHING") {
-    randomChoice = {
-      key: "DO_NOTHING",
-      charge: 0
-    };
-  } else {
-    const chargesPool = [1, 25, 50, 75, 100];
+        if (randomBase.key === "DO_NOTHING") {
+          randomChoice = {
+            key: "DO_NOTHING",
+            charge: 0
+          };
+        } else {
+          const chargesPool = [
+            1,
+            25,
+            50,
+            75,
+            100
+          ];
 
-    const sampled =
-      chargesPool[Math.floor(rng() * chargesPool.length)];
+          const sampled = chargesPool[
+            Math.floor(rng() * chargesPool.length)
+          ];
 
-    const move = state.moves[slot][randomBase.key];
+          const move =
+            state.moves[slot][randomBase.key];
 
-    randomChoice = {
-      key: randomBase.key,
-      charge: Math.min(
-        sampled,
-        C.maxCharge(state[slot], move.direction)
-      )
-    };
-  }
+          randomChoice = {
+            key: randomBase.key,
+            charge: Math.min(
+              sampled,
+              C.maxCharge(
+                state[slot],
+                move.direction
+              )
+            )
+          };
+        }
 
-  if (!C.isLegal(state, slot, randomChoice)) {
-    throw new Error(
-      "Novice random generator produced an illegal action."
-    );
-  }
+        if (!C.isLegal(state, slot, randomChoice)) {
+          throw new Error(
+            "Novice random generator produced an illegal action."
+          );
+        }
 
-  return {
-    rows: [{
-      action: randomChoice,
-      score: 0
-    }],
-    debug: {
-      difficulty,
-      strategy: "Novice 40% random legal move",
-      rootActions: ownActions.length,
-      completedHorizon: 1
-    }
-  };
-}
+        return {
+          rows: [{
+            action: randomChoice,
+            score: 0
+          }],
+          debug: {
+            difficulty,
+            strategy: "Novice 40% random legal move",
+            rootActions: ownActions.length,
+            completedHorizon: 1
+          }
+        };
+      }
 
-      // Rule 3: Remaining 50% chance — select 2nd or 3rd best candidate
+      // Remaining 50%: prefer the second/third candidate.
       let noviceRows = [];
+
       if (rows.length >= 3) {
-        const choiceIdx = rng() < 0.5 ? 1 : 2;
-        noviceRows = [rows[choiceIdx], rows[choiceIdx === 1 ? 2 : 1]];
+        const choiceIdx = rng() < 0.5
+          ? 1
+          : 2;
+
+        noviceRows = [
+          rows[choiceIdx],
+          rows[choiceIdx === 1 ? 2 : 1]
+        ];
       } else if (rows.length === 2) {
         noviceRows = [rows[1]];
       } else {
@@ -619,58 +807,111 @@ if (roll < 0.50) {
           completedHorizon: 1
         }
       };
-
     } else if (difficulty === "balanced") {
       const turnIndex = history.length + 1;
-      const rng = K.rng(K.hash(seed, "balanced_variation", turnIndex));
 
-      if (turnIndex % 5 === 0 || turnIndex % 6 === 0 || rng() < 0.18) {
-        const randomChoice = ownActions[Math.floor(rng() * ownActions.length)];
+      const rng = K.rng(
+        K.hash(
+          seed,
+          "balanced_variation",
+          turnIndex
+        )
+      );
+
+      if (
+        turnIndex % 5 === 0 ||
+        turnIndex % 6 === 0 ||
+        rng() < 0.18
+      ) {
+        const randomChoice = ownActions[
+          Math.floor(rng() * ownActions.length)
+        ];
+
         return {
-          rows: [{ action: randomChoice, score: 0 }],
+          rows: [{
+            action: randomChoice,
+            score: 0
+          }],
           debug: {
             difficulty,
-            strategy: `Balanced Periodic Random Move (Turn ${turnIndex})`,
+            strategy:
+              `Balanced Periodic Random Move (Turn ${turnIndex})`,
             rootActions: ownActions.length,
             completedHorizon
           }
         };
       }
-
-    } else if (difficulty === "master" || difficulty === "soul") {
+    } else if (
+      difficulty === "master" ||
+      difficulty === "soul"
+    ) {
       const turnIndex = history.length + 1;
-      const rng = K.rng(K.hash(seed, "master_charge_shortening", turnIndex));
+
+      const rng = K.rng(
+        K.hash(
+          seed,
+          "master_charge_shortening",
+          turnIndex
+        )
+      );
 
       if (
-  typeof evaluator !== "function" &&
-  finalists.length > 0 &&
-  rng() < 0.15
-) {
+        typeof evaluator !== "function" &&
+        finalists.length > 0 &&
+        rng() < 0.15
+      ) {
         const bestRow = finalists[0];
-       const shortenedCharge =
-  bestRow.action.key === "DO_NOTHING"
-    ? 0
-    : Math.max(
-        1,
-        Math.round(bestRow.action.charge * 0.5)
-      );
+
+        const shortenedCharge =
+          bestRow.action.key === "DO_NOTHING"
+            ? 0
+            : Math.max(
+                1,
+                Math.round(
+                  bestRow.action.charge * 0.5
+                )
+              );
 
         finalists[0] = {
           ...bestRow,
-          action: { ...bestRow.action, charge: shortenedCharge }
+          action: {
+            ...bestRow.action,
+            charge: shortenedCharge
+          }
         };
       }
     }
 
-    // --- WEIGHTED RANK SELECTION (STRICTLY FOR RIDER / NEURAL AGENT) ---
+    /*
+     * Weighted rank selection for candidate-filtered
+     * RIDER/neural searches.
+     */
     let orderedFinalists = finalists;
 
-    if (Array.isArray(candidates) && candidates.length > 0) {
-      const selectionRng = K.rng(K.hash(seed, "rider_ranked_selection", history.length));
-      const chosenRow = sampleRankedAction(finalists, selectionRng);
+    if (
+      Array.isArray(candidates) &&
+      candidates.length > 0
+    ) {
+      const selectionRng = K.rng(
+        K.hash(
+          seed,
+          "rider_ranked_selection",
+          history.length
+        )
+      );
+
+      const chosenRow = sampleRankedAction(
+        finalists,
+        selectionRng
+      );
 
       if (chosenRow && finalists.length > 0) {
-        orderedFinalists = [chosenRow, ...finalists.filter(r => r !== chosenRow)];
+        orderedFinalists = [
+          chosenRow,
+          ...finalists.filter(
+            row => row !== chosenRow
+          )
+        ];
       }
     }
 
@@ -678,24 +919,31 @@ if (roll < 0.50) {
       rows: orderedFinalists,
       debug: {
         difficulty,
-        strategy: (B.intent(state, slot, difficulty) || {}).name || "default",
+        strategy:
+          (B.intent(state, slot, difficulty) || {}).name ||
+          "default",
         rootActions: ownActions.length,
         opponentActions: opponentPolicy.length,
         completedHorizon,
         rolloutsPerFinalist: settings.rollouts,
-        usingNeuralEvaluator: typeof evaluator === "function",
+        usingNeuralEvaluator:
+          typeof evaluator === "function",
         isTraining,
-        selectedRank: candidates && orderedFinalists.length > 0 ? finalists.indexOf(orderedFinalists[0]) + 1 : 1,
-        finalists: orderedFinalists.slice(0, 6).map(row => ({
-          key: row.action.key,
-          charge: row.action.charge,
-          score: Number(row.score.toFixed(2))
-        }))
+        selectedRank:
+          candidates && orderedFinalists.length > 0
+            ? finalists.indexOf(orderedFinalists[0]) + 1
+            : 1,
+        finalists: orderedFinalists
+          .slice(0, 6)
+          .map(row => ({
+            key: row.action.key,
+            charge: row.action.charge,
+            score: Number(row.score.toFixed(2))
+          }))
       }
     };
   }
 
-  // Global namespace export
   g.ForeseeEngine = {
     search,
     policy,
