@@ -23,13 +23,13 @@
   "use strict";
 
   const BUILD = "v5-state256-action17";
-  const SCHEMA = "kf-state256-action17-v1";
+  const SCHEMA = "kf-state256-action17-v2-charge1-reset1";
 
   const C = g.CombatCore;
   const K = g.KF;
 
   const GAMMA = 0.95;
-  const STEP = 50;
+  const STEP = C.CHARGE_STEP_MS;
 
   const SLOTS = ["p1", "p2"];
   const DIRS = ["W", "A", "S", "D"];
@@ -79,12 +79,9 @@
       : fallback;
   }
 
-  function limit() {
-    return Math.max(
-      STEP,
-      number(g.GAME_CONFIG?.ROUND_TIME_LIMIT, 8) * 1000
-    );
-  }
+ function limit() {
+  return C.decisionLimitMs();
+}
 
   function makeSpec() {
     return {
@@ -105,10 +102,11 @@
       JSON.stringify(spec.actions) !== JSON.stringify(ACTION_MAP) ||
       JSON.stringify(spec.statusIds) !== JSON.stringify(STATUS_IDS)
     ) {
-      throw new Error(
-        "Incompatible observation/action schema. " +
-        "This build requires a new 256-input, 17-action checkpoint."
-      );
+   throw new Error(
+  "Incompatible observation/action/rules schema. " +
+  "This build requires a 256-input, 17-action checkpoint " +
+  "trained with positive move charges and direction-reset charging."
+);
     }
 
     return spec;
@@ -145,115 +143,154 @@
     return env;
   }
 
-  function refresh(env) {
-    for (const slot of SLOTS) {
-      const cell = env.cells[slot];
+ function refresh(env) {
+  for (const slot of SLOTS) {
+    const cell = env.cells[slot];
 
-      if (
-        cell.locked ||
-        cell.startedAt === null ||
-        !cell.direction
-      ) {
-        continue;
-      }
+    if (
+      cell.locked ||
+      cell.startedAt === null ||
+      !cell.direction
+    ) {
+      continue;
+    }
 
-      const duration = C.chargeMs(env.state[slot], cell.direction);
+    cell.charge = C.chargePercent(
+      env.state[slot],
+      cell.direction,
+      env.t - cell.startedAt
+    );
+  }
+}
 
-      cell.charge = K.clamp(
-        Math.floor(
-          100 * Math.max(0, env.t - cell.startedAt) / duration
-        ),
-        0,
-        100
-      );
+ function lock(env, slot, action) {
+  const cell = env.cells[slot];
+
+  if (
+    !cell ||
+    cell.locked ||
+    !C.isLegal(env.state, slot, action)
+  ) {
+    return false;
+  }
+
+  const normalized = C.normalizeAction(
+    env.state,
+    slot,
+    action
+  );
+
+  if (normalized.key !== "DO_NOTHING") {
+    const move = env.state.moves[slot][normalized.key];
+
+    if (
+      cell.direction !== move.direction ||
+      cell.startedAt === null ||
+      normalized.charge > cell.charge
+    ) {
+      return false;
     }
   }
 
-  function lock(env, slot, action) {
-    if (!C.isLegal(env.state, slot, action)) return false;
+  cell.action = normalized;
+  cell.charge = normalized.charge;
+  cell.locked = true;
 
-    const cell = env.cells[slot];
+  if (normalized.key === "DO_NOTHING") {
+    cell.direction = null;
+    cell.startedAt = null;
+    cell.start = null;
+  }
 
-    cell.action = C.normalizeAction(env.state, slot, action);
-    cell.charge = cell.action.charge;
-    cell.locked = true;
+  return true;
+}
 
-    if (cell.action.key === "DO_NOTHING") {
-      cell.direction = null;
-    }
+ function apply(env, slot, input) {
+  const cell = env.cells[slot];
 
+  if (!cell) return false;
+
+  // Missing input is WAIT, never action index zero.
+  if (
+    input === undefined ||
+    input === null ||
+    input === "WAIT"
+  ) {
     return true;
   }
 
-  function apply(env, slot, input) {
-    const cell = env.cells[slot];
+  if (cell.locked || env.t >= limit()) {
+    return false;
+  }
 
-    if (!cell) return false;
-
-    // A missing input must never mean action zero.
-    if (input === undefined || input === null || input === "WAIT") {
-      return true;
-    }
-
-    if (cell.locked || env.t >= limit()) {
+  if (typeof input === "object") {
+    if (typeof input.key !== "string") {
       return false;
     }
 
-    if (typeof input === "object") {
-      return lock(env, slot, {
-        key: input.key || "DO_NOTHING",
-        charge: input.charge ?? cell.charge
-      });
-    }
-
-    if (typeof input === "number") {
-      if (
-        !Number.isInteger(input) ||
-        input < 0 ||
-        input >= ACTION_MAP.length
-      ) {
-        return false;
-      }
-
-      return lock(env, slot, {
-        key: ACTION_MAP[input],
-        charge: input === IDLE_INDEX ? 0 : cell.charge
-      });
-    }
-
-    if (input === "IDLE" || input === "DO_NOTHING") {
-      return lock(env, slot, idle());
-    }
-
-    if (ACTION_MAP.includes(input)) {
-      return lock(env, slot, {
-        key: input,
-        charge: cell.charge
-      });
-    }
-
-    if (DIRS.includes(input)) {
-      cell.direction = input;
-
-      // Zero is a valid start time.
-      if (cell.startedAt === null) {
-        cell.startedAt = env.t;
-        cell.start = env.t;
-      }
-
-      refresh(env);
-      return true;
-    }
-
-    if (BUTTONS.includes(input) && cell.direction) {
-      return lock(env, slot, {
-        key: cell.direction + "+" + input,
-        charge: cell.charge
-      });
-    }
-
-    return false;
+    return lock(env, slot, {
+      key: input.key,
+      charge: input.charge ?? (
+        input.key === "DO_NOTHING"
+          ? 0
+          : cell.charge
+      )
+    });
   }
+
+  if (typeof input === "number") {
+    if (
+      !Number.isInteger(input) ||
+      input < 0 ||
+      input >= ACTION_MAP.length
+    ) {
+      return false;
+    }
+
+    return lock(env, slot, {
+      key: ACTION_MAP[input],
+      charge: input === IDLE_INDEX
+        ? 0
+        : cell.charge
+    });
+  }
+
+  if (input === "IDLE" || input === "DO_NOTHING") {
+    return lock(env, slot, idle());
+  }
+
+  if (ACTION_MAP.includes(input)) {
+    return lock(env, slot, {
+      key: input,
+      charge: cell.charge
+    });
+  }
+
+  if (DIRS.includes(input)) {
+    /*
+     * A DIFFERENT direction loses all accumulated charge.
+     * Repeating the SAME direction keeps its clock.
+     */
+    if (cell.direction !== input) {
+      cell.direction = input;
+      cell.startedAt = env.t;
+      cell.start = env.t;
+      cell.charge = 1;
+    }
+
+    refresh(env);
+    return true;
+  }
+
+  if (BUTTONS.includes(input) && cell.direction) {
+    return lock(env, slot, {
+      key: cell.direction + "+" + input,
+      charge: cell.charge
+    });
+  }
+
+  return false;
+}
 
   function step(env, inputs = {}) {
     if (env.done) return [];
@@ -491,26 +528,35 @@
    * This matters for replay next-state masks because terminal transitions
    * have discount zero and must never be bootstrapped anyway.
    */
-  function mask(env, slot, allowEmpty = false) {
-    const result = new Uint8Array(ACTION_MAP.length);
+ function mask(env, slot, allowEmpty = false) {
+  const result = new Uint8Array(ACTION_MAP.length);
 
-    for (let index = 0; index < ACTION_MAP.length; index++) {
-      result[index] = Number(
-        C.isLegal(env.state, slot, {
-          key: ACTION_MAP[index],
-          charge: 0
-        })
-      );
-    }
+  for (let index = 0; index < ACTION_MAP.length; index++) {
+    const key = ACTION_MAP[index];
+    const move = env.state.moves?.[slot]?.[key];
 
-    if (!result.some(Boolean) && !allowEmpty) {
-      throw new Error(
-        "Combat state has no legal action, including idle."
-      );
-    }
+    if (!move) continue;
 
-    return result;
+    const charge = index === IDLE_INDEX
+      ? 0
+      : C.maxCharge(
+          env.state[slot],
+          move.direction
+        );
+
+    result[index] = Number(
+      C.isLegal(env.state, slot, { key, charge })
+    );
   }
+
+  if (!result.some(Boolean) && !allowEmpty) {
+    throw new Error(
+      "Combat state has no legal action, including idle."
+    );
+  }
+
+  return result;
+}
 
   function actionFromIndex(env, slot, index, charge = 0) {
     if (!Number.isInteger(index) || !ACTION_MAP[index]) {
