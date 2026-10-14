@@ -16,12 +16,127 @@
     'assets/sounds/matchup2.mp3'
   ];
 
-  const DIFF_LABELS = {
-    easy: 'NOVICE',
-    balanced: 'BALANCED',
-    master: 'MASTER',
-    soul: 'SOUL'
-  };
+const DIFF_LABELS = {
+  easy: 'NOVICE',
+  balanced: 'BALANCED',
+  master: 'MASTER',
+  soul: 'SOUL',
+  rider: 'RIDER'
+};
+
+  /*
+ * Add more IDs here when their RIDER models are ready.
+ * This controls selection availability, not checkpoint validation.
+ */
+const RIDER_READY_IDS = new Set([
+  'ichigo'
+]);
+
+function riderLevelAvailable(rider) {
+  return RIDER_READY_IDS.has(rider?.id);
+}
+
+function difficultyOptions(rider) {
+  const options = [
+    'easy',
+    'balanced',
+    'master',
+    'soul'
+  ];
+
+  if (riderLevelAvailable(rider)) {
+    options.push('rider');
+  }
+
+  return options;
+}
+
+function normalizeSelectedDifficulty(value, rider) {
+  let difficulty = String(value || 'balanced').toLowerCase();
+
+  if (difficulty === 'mcts') {
+    difficulty = 'rider';
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(
+    DIFF_LABELS,
+    difficulty
+  )) {
+    difficulty = 'balanced';
+  }
+
+  if (
+    difficulty === 'rider' &&
+    !riderLevelAvailable(rider)
+  ) {
+    return 'soul';
+  }
+
+  return difficulty;
+}
+
+/*
+ * Static rainbow text: no animation or motion required.
+ * The ordinary badge background remains intact.
+ */
+function installRiderBadgeStyles() {
+  if (document.getElementById('kf-rider-badge-styles')) {
+    return;
+  }
+
+  const style = document.createElement('style');
+  style.id = 'kf-rider-badge-styles';
+
+  style.textContent = `
+    #p1-diff-display.rider,
+    #p2-diff-display.rider {
+      border-color: #e0a6ff;
+      box-shadow: 0 0 10px rgba(187, 100, 255, 0.3);
+    }
+
+    .kf-rider-rainbow {
+      display: inline-block;
+      color: #ffe17d;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
+    @supports ((background-clip: text) or (-webkit-background-clip: text)) {
+      .kf-rider-rainbow {
+        background-image: linear-gradient(
+          90deg,
+          #ff6b8b 0%,
+          #ffac60 17%,
+          #fff176 33%,
+          #78ff9c 50%,
+          #6ee7ff 67%,
+          #a7a0ff 83%,
+          #f58bff 100%
+        );
+
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+      }
+    }
+
+    @media (forced-colors: active) {
+      .kf-rider-rainbow {
+        background: none;
+        color: ButtonText;
+        -webkit-text-fill-color: ButtonText;
+      }
+    }
+  `;
+
+  (document.head || document.documentElement).appendChild(style);
+}
+
+installRiderBadgeStyles();
+
+
+  
 
   // Default fallback roster definitions
   window.AVAILABLE_RIDERS = window.AVAILABLE_RIDERS || [
@@ -44,15 +159,38 @@
   };
 
   /** Applies difficulty badge styling classes to UI element. */
-  function setDiffBadgeClasses(el, difficulty, isCPU) {
-    if (!el) return;
-    el.classList.remove('easy', 'normal', 'balanced', 'hard', 'master', 'soul');
-    if (!isCPU) return;
-    if (difficulty === 'easy') el.classList.add('easy');
-    else if (difficulty === 'master') el.classList.add('master');
-    else if (difficulty === 'soul') el.classList.add('soul');
-    else el.classList.add('balanced');
+function setDiffBadgeClasses(el, difficulty, isCPU) {
+  if (!el) return;
+
+  el.classList.remove(
+    'easy',
+    'normal',
+    'balanced',
+    'hard',
+    'master',
+    'soul',
+    'rider'
+  );
+
+  if (!isCPU) return;
+
+  const name = Object.prototype.hasOwnProperty.call(
+    DIFF_LABELS,
+    difficulty
+  )
+    ? difficulty
+    : 'balanced';
+
+  el.classList.add(name);
+
+  if (name === 'rider') {
+    const label = document.createElement('span');
+    label.className = 'kf-rider-rainbow';
+    label.textContent = 'RIDER';
+
+    el.replaceChildren(label);
   }
+}
 
   /** Toggles active/locked highlight styles on selection cards. */
   function setCardSlotClasses(cardEl, isActive) {
@@ -181,20 +319,44 @@
   };
 
   /** Toggles player control type between Human and CPU. */
-  window.toggleControlType = function(playerKey) {
-    const errorBanner = document.getElementById('vs-error-banner');
-    const state = window.vsSelectionState;
-    const currentStep = parseInt(state.step, 10) || 1;
+ window.toggleDifficulty = function(playerKey) {
+  if (playerKey !== 'p1' && playerKey !== 'p2') {
+    return;
+  }
 
-    if (playerKey === 'p1' && currentStep === 1) {
-      state.p1IsCPU = !state.p1IsCPU;
-      if (errorBanner) errorBanner.hidden = true;
-    } else if (playerKey === 'p2' && currentStep === 2) {
-      state.p2IsCPU = !state.p2IsCPU;
-      if (errorBanner) errorBanner.hidden = true;
-    }
-    window.updateSelectionUI();
-  };
+  const state = window.vsSelectionState;
+  const riders = window.AVAILABLE_RIDERS || [];
+
+  const currentStep = parseInt(state.step, 10) || 1;
+  const requiredStep = playerKey === 'p1' ? 1 : 2;
+
+  if (
+    currentStep !== requiredStep ||
+    !state[playerKey + 'IsCPU']
+  ) {
+    return;
+  }
+
+  const rider =
+    riders[state[playerKey + 'Index']] ||
+    riders[0];
+
+  if (!rider) return;
+
+  const options = difficultyOptions(rider);
+
+  const current = normalizeSelectedDifficulty(
+    state[playerKey + 'Difficulty'],
+    rider
+  );
+
+  const index = options.indexOf(current);
+
+  state[playerKey + 'Difficulty'] =
+    options[(index + 1) % options.length];
+
+  window.updateSelectionUI();
+};
 
   /** Cycles CPU difficulty setting (easy -> balanced -> master -> soul). */
   window.toggleDifficulty = function(playerKey) {
@@ -224,6 +386,18 @@
     const p1 = riders[state.p1Index] || riders[0];
     const p2 = riders[state.p2Index] || riders[0];
 
+
+    state.p1Difficulty = normalizeSelectedDifficulty(
+  state.p1Difficulty,
+  p1
+);
+
+state.p2Difficulty = normalizeSelectedDifficulty(
+  state.p2Difficulty,
+  p2
+);
+
+    
     // P1 Display updates
     const p1ImgEl = document.getElementById('p1-img');
     if (p1ImgEl) p1ImgEl.src = p1.icon;
