@@ -1,72 +1,203 @@
-ver. 20261005-
+# Kamen Fight — Project Documentation
+**Version: 20261015 · Updated: 15 October 2026**
 
-Kamen Fight - Project Documentation
-Kamen Fight is a Web-based, turn-based Kamen Rider fighting game built with vanilla JavaScript (ES6+), HTML5 Video, and CSS3.
-The game features simultaneous command selection, directional charge mechanics, sequential video-driven combat resolution, deterministic PRNG-based mechanics, multi-threaded Expectimax & simultaneous-move PUCT Monte Carlo Tree Search (MCTS) lookahead AI engines, Double DQN neural network learning systems, specialized evolutionary policy agents, headless batch simulation with replay verification, and full mirror-match support.
+Kamen Fight is a web-based, turn-based Kamen Rider fighting game built with vanilla JavaScript (ES6+), HTML5 Video, and CSS3.
 
-Key Features & Architecture
-Directional Charge System: Players hold directional keys (W, A, S, D) to build charge percentages prior to confirming attacks with action keys (I, J, K, L). Charge levels dynamically scale attack damage, accuracy, priority, and guard effectiveness.
+The game features simultaneous command selection, directional charge mechanics, sequential video-driven combat resolution, deterministic seeded combat, parallel AI lookahead, Double DQN neural learning, specialized evolutionary policy agents, headless batch simulation, replay verification, and full mirror-match support.
 
-Decoupled Deterministic Combat Core: Pure state-machine combat resolution engine (js/combat_core.js) supporting deterministic state resolution, seedable Mulberry32 PRNG, outcome probability enumeration, move compilation (compileMoves), and side-swapping spatial symmetry.
+The v5 neural pipeline uses **256 observation inputs and 17 discrete actions**, including an explicit `DO_NOTHING` action. A dedicated training page and integration test suite support observation validation, action-mask checks, reward verification, checkpoint round-trips, and basic training stability checks.
 
-Advanced Multi-Engine AI & Neural Architecture: Flexible decision search pipeline utilizing parallel Web Workers (js/cpu_controller.js), Depth-1 Expectimax evaluation (js/foresee_engine.js), simultaneous-move PUCT Monte Carlo Tree Search (js/mcts_engine.js), CPU Multi-Layer Perceptron & Double DQN learning loops with Adam optimizer (js/neural_core.js), character-specific tactical posture heuristics (js/rider_brains.js), and specialized evolutionary policy models (js/agent_ichigo.js).
+## Key Features & Architecture
 
-Neural Environment & Observation Vector: 256-input feature vector generator and state wrapper (js/charge_env.js / SoulEnv) supporting 17 discrete actions, charging clock tracking, and status encoding for reinforcement learning and MCTS state lookahead.
+### Directional Charge System
+Players hold directional keys (**W, A, S, D**) to build charge before confirming attacks with action keys (**I, J, K, L**). Charge levels influence damage, accuracy, priority, and guard effectiveness according to each move’s rules.
 
-Resource & Stun Mechanics: Chi resource pool capped at 16 with dynamic Low Power (<5 Chi) debuffs and Full Power (>14 Chi) status bonuses. Faint buildup (100-point threshold) forces targets into a 1-turn stunned idle state.
+The neural environment tracks charging separately from action confirmation. Missing inputs represent **WAIT**, rather than automatically selecting or locking an attack. Switching stance must preserve the existing charge-start timestamp, including a timestamp of zero.
 
-Headless Batch Simulator & Evolutionary Trainer: Fast background Monte Carlo simulation engine (js/simulator.js) powering offline evolutionary policy mutations, CPU vs. CPU balancing (10 to 100+ runs), and strict bit-identical state replay verification (verifyReplay).
+### Decoupled Deterministic Combat Core
+The combat rules engine (`js/combat_core.js`) separates state resolution from visual playback. It supports seedable Mulberry32 PRNG mechanics, outcome probability enumeration, move compilation (`compileMoves`), and side-swapping spatial symmetry.
 
-Automated Testing Dashboard: On-screen browser testing suite (test_dashboard.html / js/combat_tests.js) verifying combat rules, state immutability, interrupt logic, PRNG determinism, and AI difficulty benchmarks.
+Shared legality and charge calculations allow gameplay, simulation, and AI environments to use consistent combat rules.
 
-Project Directory Structure
-├── index.html            # Playable game entry point & dynamic view mounting
-├── index_test.html       # Automated browser test dashboard & AI benchmark harness
+### Multi-Engine AI & Neural Architecture
+The AI decision pipeline includes:
+
+- Parallel Web Worker execution through `js/cpu_controller.js`.
+- Expectimax evaluation and rollout search through `js/foresee_engine.js`.
+- Simultaneous-move PUCT Monte Carlo Tree Search through `js/mcts_engine.js`.
+- CPU-based multilayer perceptrons, Double DQN learning, and Adam optimization through `js/neural_core.js`.
+- Character-specific tactical heuristics through `js/rider_brains.js`.
+- Specialized evolutionary policy agents such as `js/agent_ichigo.js`.
+- Neural-agent initialization and integration through `js/soul_agent.js`.
+
+### Neural Environment & Observation Vector
+The `SoulEnv` wrapper (`js/charge_env.js`) provides a **256-input observation vector** and **17-action interface** for neural decision-making and simulation.
+
+Key contracts checked by the pipeline tests include:
+
+- LP and CHI features read the actual fighter state rather than control-cell values.
+- Faint buildup and active status effects influence the observation.
+- Observation values remain finite.
+- Action index **16** maps to `DO_NOTHING`.
+- A fainted fighter has only the explicit idle action available.
+- Missing inputs do not lock either fighter’s command.
+- Stance switches preserve the charge clock.
+
+The updated mask test checks the **reachable-charge planning-mask contract**, comparing each action with `CombatCore.isLegal()` at the charge returned by `CombatCore.maxCharge(fighter, direction)`. This is distinct from checking immediate legality at zero charge.
+
+### Resource & Stun Mechanics
+CHI is capped at **16**, with Low Power penalties below **5 CHI** and Full Power bonuses above **14 CHI**.
+
+Faint buildup uses a **100-point threshold**. Reaching the threshold forces the affected fighter into a one-turn stunned idle state.
+
+### Neural Training & Reward Modes
+The dedicated training page (`Train.html`) loads the combat core, neural environment, simulator, agent, pipeline tests, and training interface.
+
+The neural simulation layer (`js/soul_sim.js`) includes a `terminal_only` reward mode. The integration suite checks that nonterminal LP and CHI changes produce no reward in this mode and that a terminal win returns the expected positive reward.
+
+Network checks cover checkpoint reconstruction and a basic training update to detect non-finite losses or predictions.
+
+### Headless Batch Simulation & Evolutionary Training
+The background simulation engine (`js/simulator.js`) supports CPU-versus-CPU balancing, batch evaluations, evolutionary policy mutation, and deterministic replay verification through `verifyReplay`.
+
+These tools allow combat rules and agent performance to be evaluated without video playback.
+
+### Automated Testing
+The project includes two complementary testing layers:
+
+- **Combat tests and AI benchmarks:** `index_test.html` and `js/combat_tests.js` cover combat rules, state immutability, interrupt behavior, PRNG determinism, and AI difficulty comparisons.
+- **Neural pipeline integration tests:** `js/soul_pipeline_tests.js`, exposed as `runSoulPipelineTests()`, checks the v5 observation/action interface, planning masks, input handling, rewards, checkpoints, and training stability.
+
+The pipeline suite reports descriptive failures and returns `{ passed, lines }` when all checks pass.
+
+## Project Directory Structure
+
+```text
+.
+├── index.html             # Playable game entry point and dynamic view mounting
+├── index_test.html        # Browser combat-test dashboard and AI benchmarks
+├── Train.html             # Neural training tools and pipeline-test interface
 ├── css/
-│   └── style.css        # Layouts, HUD overlays, bar tracks, video containers, popups
+│   └── style.css          # Layouts, HUD overlays, bars, video containers, popups
 ├── data/
-│   ├── moves.json       # Master move database, Chi costs, damage ratios, video mappings
-│   ├── riders.json      # Roster list, base stats (LP, orientation), video folders
-│   └── wt_ichigo.json   # Exported neural/linear weights policy file for Ichigo evolutionary agent
+│   ├── moves.json         # Move definitions, CHI costs, damage ratios, video mappings
+│   ├── riders.json        # Rider roster, base stats, orientation, video folders
+│   └── wt_ichigo.json     # Exported weights for the Ichigo evolutionary policy
 ├── js/
-│   ├── agent_ichigo.js  # Evolutionary agent for Ichigo (AgentIchigo), candidate mutation & weight persistence
-│   ├── ai.js            # AI decision dispatcher routing across Expectimax, MCTS, and neural search engines
-│   ├── ai_worker.js     # Background Web Worker thread for parallelized AI lookahead search
-│   ├── charge_env.js    # 256-input observation vector generator & SoulEnv state transition environment wrapper
-│   ├── combat_core.js   # Decoupled deterministic combat rules engine, move compiler & state resolution
-│   ├── combat_engine.js # Live visual event presentation engine (CombatPlayback) & video cutscene orchestrator
-│   ├── combat_tests.js  # Automated unit test suite verifying PRNG determinism, damage formulas & AI benchmarks
-│   ├── common.js        # Core constants (COMBAT_RULES), Mulberry32 PRNG, FNV-1a hash & async JSON loader
-│   ├── cpu_controller.js# Asynchronous Web Worker pool dispatcher (AIService) & CPU decision manager
-│   ├── foresee_engine.js# Neural-guided Expectimax decision search engine & Monte Carlo horizon rollouts
-│   ├── game.js          # Core application lifecycle manager, screen router & view state bootstrapper
-│   ├── match_manager.js # Live match controller (MatchManager), input handlers, charge monitors & turn lifecycles
-│   ├── mcts_engine.js   # Simultaneous-move PUCT Monte Carlo Tree Search (MCTSEngine) engine
-│   ├── media.js         # Sequential video/sprite loader (KFMedia), dual-stream video player & canvas flipper
-│   ├── neural_core.js   # CPU Multi-Layer Perceptron (SoulNN), Double DQN trainer (Learner) & Adam optimizer
-│   ├── rider_brains.js  # Character-specific tactical intelligence profiles (RiderBrains) & state heuristics
-│   ├── simulator.js     # Headless batch simulation engine (Simulator) & replay verifier
-│   ├── storage.js       # LocalStorage persistence manager for user settings & AI policy weights
-│   ├── ui.js            # Battle HUD renderer, LP/Chi/Faint bars, status badges & damage popups
-│   └── vs_select.js     # 3-step character select wizard, BGM manager & simulation modal UI
+│   ├── agent_ichigo.js    # Ichigo evolutionary agent, mutations, weight persistence
+│   ├── ai.js              # AI dispatcher for available decision engines
+│   ├── ai_worker.js       # Background worker for parallel AI lookahead
+│   ├── charge_env.js      # SoulEnv: 256-input observations and 17-action environment
+│   ├── combat_core.js     # Deterministic combat rules, move compilation, legality
+│   ├── combat_engine.js   # CombatPlayback visual events and video orchestration
+│   ├── combat_tests.js    # Combat assertions, determinism tests, AI benchmarks
+│   ├── common.js          # Shared rules, Mulberry32 PRNG, hashing, JSON loading
+│   ├── cpu_controller.js  # AIService worker pool and asynchronous CPU decisions
+│   ├── foresee_engine.js # Expectimax search and Monte Carlo horizon rollouts
+│   ├── game.js            # Application lifecycle, screen routing, view bootstrap
+│   ├── match_manager.js   # Live input handling, charge tracking, turn lifecycle
+│   ├── mcts_engine.js     # Simultaneous-move PUCT MCTS
+│   ├── media.js           # Media loading, video playback, canvas flipping
+│   ├── neural_core.js     # SoulNN networks, Double DQN learning, Adam optimizer
+│   ├── rider_brains.js    # Rider-specific tactical profiles and heuristics
+│   ├── simulator.js       # Headless batch simulation and replay verification
+│   ├── soul_agent.js      # Neural-agent initialization and integration
+│   ├── soul_pipeline_tests.js
+│   │                      # v5 neural pipeline integration checks
+│   ├── soul_sim.js        # Neural simulation and reward calculation
+│   ├── storage.js         # LocalStorage settings and policy-weight persistence
+│   ├── training_ui.js     # Training-page interface and pipeline-test controls
+│   ├── ui.js              # Battle HUD, resource bars, status badges, damage popups
+│   └── vs_select.js       # Character selection, BGM, simulation controls
 └── assets/
-├── sounds/          # BGM tracks (matchup.mp3, matchup1.mp3, etc.)
-├── images/icons/    # Rider thumbnail icons
-└── videos/          # Rider video cutscenes (idle.mp4, faint.mp4, etc.)
+    ├── sounds/            # BGM and sound assets
+    ├── images/
+    │   └── icons/         # Rider thumbnails
+    └── videos/            # Rider cutscenes, idle clips, faint animations
+```
 
-Setup & Deployment Instructions
-Local Execution:
-To run locally, execute through a local HTTP web server (e.g., Python python -m http.server, Node npx serve, or VS Code Live Server) to support Web Worker multi-threading and fetch() requests for local JSON data files.
+> Some project versions may use `test_dashboard.html` instead of, or alongside, `index_test.html`. Use the test entry point present in your repository.
 
-GitHub Pages Deployment:
-Push the repository to GitHub and enable GitHub Pages under Settings > Pages.
+## Setup & Deployment
 
-Asset Naming Warning:
-Ensure all asset paths and video filenames inside assets/videos/<rider_id>/ are strictly lowercase (e.g., idle.mp4, guard.mp4) to prevent 404 case-sensitivity errors on Linux production hosts.
+### Local Execution
+Serve the project through a local HTTP server rather than opening the HTML files directly. This supports JSON `fetch()` requests and Web Worker loading.
 
-Automated Testing & AI Benchmarking:
-Open index_test.html (or test_dashboard.html) in any browser to execute the combat rule assertion suite (runCombatTests) and run head-to-head AI difficulty benchmarks (benchmarkDifficulties).
+For example, run either command from the project root:
 
+```bash
+python -m http.server 8000
+```
+
+```bash
+npx serve .
+```
+
+With the Python server, open:
+
+- **Game:** `http://localhost:8000/index.html`
+- **Combat tests:** `http://localhost:8000/index_test.html`
+- **Neural training:** `http://localhost:8000/Train.html`
+
+VS Code Live Server is also supported.
+
+### GitHub Pages Deployment
+Push the repository to GitHub and enable GitHub Pages under **Settings → Pages**, selecting the appropriate publishing branch and folder.
+
+### Filename & Asset Casing
+Paths must match filename casing exactly on case-sensitive hosts.
+
+Keep rider video filenames and their references consistently lowercase, for example:
+
+```text
+assets/videos/<rider_id>/idle.mp4
+assets/videos/<rider_id>/guard.mp4
+```
+
+If the training page is saved as `Train.html`, links must use `Train.html`, not `train.html`.
+
+### Script Cache Refresh
+The training page uses versioned script URLs to reduce stale-cache issues. Update the query-string version when publishing JavaScript changes.
+
+The current training-page cache tag is:
+
+```text
+v5-state256-action17-charge1-reset1-tests2
+```
+
+A cache tag requests a fresh resource; it does not update the underlying implementation. Deploy the corresponding JavaScript files alongside the HTML.
+
+## Testing & AI Benchmarking
+
+### Combat Rules & AI Benchmarks
+Open `index_test.html`—or `test_dashboard.html` if that is your project’s entry point—to run:
+
+- `runCombatTests`: combat-rule and determinism assertions.
+- `benchmarkDifficulties`: head-to-head AI difficulty comparisons.
+
+### Neural Pipeline Checks
+Open `Train.html` and select **Run Pipeline Tests**.
+
+The current suite contains **10 integration tests**, covering:
+
+1. The 256-input, 17-action specification.
+2. Actual fighter LP and CHI observations.
+3. Reachable-charge planning-mask legality.
+4. Fainted-fighter idle restrictions.
+5. Missing-input WAIT behavior.
+6. Charge-clock preservation during stance switches.
+7. Faint and status observation features.
+8. Terminal-only reward behavior.
+9. Network checkpoint prediction preservation.
+10. Finite loss and predictions after a basic training update.
+
+A successful run reports:
+
+```text
+10 pipeline tests passed.
+```
+
+Mask failures include the fighter slot, action key, CHI, charge, mask value, and core legality result. Investigate discrepancies against the intended environment contract rather than changing combat rules solely to make a test pass.
 
 # Kamen_Fight game development timeline
 
