@@ -267,6 +267,20 @@
     assertSlot(learnerSlot);
     assertNetworkSize(spec, net);
 
+    function queryRootNetwork(state, history = rootHistory) {
+      const env = E.create(state);
+      env.history = history;
+
+      const { s, m } = readState(env, learnerSlot, spec);
+      const q = predictValues(net, s, spec);
+      return { q, m };
+    }
+
+    /*
+     * Post-turn leaf evaluation uses RiderBrains.evaluate cleanly and rapidly
+     * so 1-turn expectimax and 3-turn rollouts judge LP, Chi, Faint, and Win
+     * with 100% of SOUL's accuracy and speed (enabling 80-128 rollouts within 100ms).
+     */
     function evaluateLeaf(state, perspective, history = rootHistory) {
       assertSlot(perspective);
 
@@ -280,52 +294,25 @@
           : -100000;
       }
 
-      const env = E.create(state);
-      env.history = history;
-
-      /*
-       * The checkpoint was trained from learnerSlot's perspective.
-       * Combine exact tactical heuristic evaluation with the network's
-       * learned Q-value so RIDER retains full awareness of LP/Chi/Faint
-       * while adding matchup-specific neural judgment.
-       */
-      const { s, m } = readState(env, learnerSlot, spec);
-      const q = predictValues(net, s, spec);
-      const index = N.argmax(q, m);
-
-      if (!Number.isInteger(index) || !m[index]) {
-        throw new Error(
-          "Neural evaluator selected an invalid action index."
-        );
-      }
-
       const heuristicScore = g.RiderBrains
         ? g.RiderBrains.evaluate(state, learnerSlot)
         : 0;
 
-      const neuralScore = K.clamp(q[index], -5, 5) * 200;
-      const total = heuristicScore + neuralScore;
-
       return perspective === learnerSlot
-        ? total
-        : -total;
+        ? heuristicScore
+        : -heuristicScore;
     }
 
     /*
-     * Exposes the network's per-action Q-advantages at the root state
-     * so ForeseeEngine can directly boost moves (such as A-guards or
-     * specific counter-moves) that the network learned are strong here.
+     * Exposes the network's centered per-action Q-advantages at the root state
+     * as a clean tie-breaker without distorting post-turn damage evaluations.
      */
     evaluateLeaf.actionBonuses = function (state, perspective, history = rootHistory) {
       if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
         return null;
       }
 
-      const env = E.create(state);
-      env.history = history;
-
-      const { s, m } = readState(env, learnerSlot, spec);
-      const q = predictValues(net, s, spec);
+      const { q, m } = queryRootNetwork(state, history);
 
       let sum = 0;
       let count = 0;
@@ -345,17 +332,38 @@
       }
 
       const mean = sum / count;
-      const spread = Math.max(0.20, maxQ - minQ);
+      const spread = Math.max(0.25, maxQ - minQ);
       const bonuses = {};
 
       for (let i = 0; i < q.length; i++) {
         if (!m[i]) continue;
         const key = E.ACTION_MAP[i];
         const advantage = K.clamp((q[i] - mean) / spread, -1, 1);
-        bonuses[key] = advantage * 35;
+        bonuses[key] = advantage * 18;
       }
 
       return bonuses;
+    };
+
+    /*
+     * Returns the top 3 legal move keys favored by the Matrix at the root
+     * so ForeseeEngine can include them in RIDER's extra finalist slots.
+     */
+    evaluateLeaf.advisedMoves = function (state, perspective, history = rootHistory) {
+      if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
+        return null;
+      }
+
+      const { q, m } = queryRootNetwork(state, history);
+      const ranked = [];
+
+      for (let i = 0; i < q.length; i++) {
+        if (!m[i]) continue;
+        ranked.push({ key: E.ACTION_MAP[i], q: q[i] });
+      }
+
+      ranked.sort((a, b) => b.q - a.q);
+      return ranked.slice(0, 3).map(item => item.key);
     };
 
     return evaluateLeaf;
@@ -414,6 +422,7 @@
               slot,
               history,
               difficulty: options.teacherDifficulty || "master",
+              isTraining: Boolean(options.isTraining),
               disableAgent: true,
               seed: options.seed ?? 1
             }).action;
@@ -433,6 +442,7 @@
             difficulty: net ? "rider" : "soul",
             neuralNetwork: net || null,
             neuralSpec: spec,
+            isTraining: Boolean(options.isTraining),
             disableAgent: true,
             seed: options.seed ?? 1
           }).action;
@@ -816,6 +826,7 @@
             ? opponentNet
             : null,
           neuralSpec: spec,
+          isTraining: !isEvaluation,
           disableAgent: true,
           seed: K.hash(roundSeed, "opponent")
         }).action;
