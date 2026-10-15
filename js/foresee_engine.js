@@ -2,8 +2,7 @@
  * Kamen Fight
  * Neural-Guided Expectimax & Monte Carlo Horizon Search
  *
- * Fix: warmstart-history-loop-fix1
- * Restores the missing opponent-history loop in search().
+ * Fix: rider-full-horizon-and-neural-priors-fix2
  */
 (function (g) {
   "use strict";
@@ -12,13 +11,6 @@
   const C = g.CombatCore;
   const B = g.RiderBrains;
 
-  /*
-   * Extend a hypothetical branch's completed-turn history.
-   *
-   * This is RAM-only search data:
-   * - Do not mutate the actual match history.
-   * - Do not persist hypothetical turns as real experience.
-   */
   function appendForecastHistory(
     history,
     before,
@@ -49,11 +41,6 @@
 
   let evaluatorWarningShown = false;
 
-  /*
-   * Pass branch history through to neural evaluation.
-   * If the evaluator fails or returns a non-finite score,
-   * use the existing RiderBrains heuristic fallback.
-   */
   function evaluatePosition(
     state,
     slot,
@@ -86,16 +73,10 @@
     return B.evaluate(state, slot);
   }
 
-  /*
-   * Unique identifier for a move/charge pair.
-   */
   function actionId(action) {
     return `${action.key}@${action.charge ?? 0}`;
   }
 
-  /*
-   * Deterministic score sorting with action-ID tie breaking.
-   */
   function stableSort(a, b) {
     if (b.score !== a.score) {
       return b.score - a.score;
@@ -108,8 +89,36 @@
   }
 
   /*
-   * Sample an action from a weighted distribution.
+   * Select up to `limit` finalists while ensuring distinct move keys
+   * are represented first before adding extra charge variants of the
+   * same move key.
    */
+  function selectDiverseFinalists(sortedRows, limit) {
+    if (sortedRows.length <= limit) {
+      return sortedRows.map(row => ({ ...row }));
+    }
+
+    const chosen = [];
+    const overflow = [];
+    const seenKeys = new Set();
+
+    for (const row of sortedRows) {
+      if (!seenKeys.has(row.action.key) && chosen.length < limit) {
+        seenKeys.add(row.action.key);
+        chosen.push({ ...row });
+      } else {
+        overflow.push(row);
+      }
+    }
+
+    for (const row of overflow) {
+      if (chosen.length >= limit) break;
+      chosen.push({ ...row });
+    }
+
+    return chosen;
+  }
+
   function sample(entries, rng) {
     let remaining = rng();
 
@@ -124,16 +133,6 @@
     return entries[entries.length - 1].action;
   }
 
-  /*
-   * Sample from sorted finalists using rank probabilities:
-   *
-   * 50% -> first
-   * 30% -> second
-   * 15% -> third
-   *  5% -> fourth
-   *
-   * Clamp to the last available row for smaller lists.
-   */
   function sampleRankedAction(rows, rng) {
     if (!rows || rows.length === 0) {
       return null;
@@ -160,10 +159,6 @@
     return rows[safeIndex];
   }
 
-  /*
-   * Model move usage and charge habits from recent history.
-   * Recent turns receive greater weight.
-   */
   function observations(history, slot) {
     const counts = {};
     const charges = [];
@@ -205,18 +200,13 @@
     return { counts, charges };
   }
 
-  /*
-   * Build an action probability distribution from:
-   * - RiderBrains tactical priors
-   * - Observed move and charge tendencies
-   * - Current legal actions
-   */
   function policy(
     state,
     slot,
     history,
     difficulty,
-    rolloutSelf = false
+    rolloutSelf = false,
+    evaluator = null
   ) {
     const observed = observations(history || [], slot);
 
@@ -224,7 +214,6 @@
       ...K.levels.master.charges
     ];
 
-    // Include recent observed charges and slightly faster replies.
     for (const item of observed.charges.slice(-3)) {
       chargeChoices.push(item.charge);
       chargeChoices.push(
@@ -254,6 +243,11 @@
       ? tree.preferred
       : [];
 
+    const neuralPriors =
+      rolloutSelf && typeof evaluator?.actionPriors === "function"
+        ? evaluator.actionPriors(state, slot, history)
+        : null;
+
     const entries = [];
 
     for (const [key, group] of Object.entries(groups)) {
@@ -271,6 +265,10 @@
         preferredMoves.includes(key)
       ) {
         keyWeight *= 3;
+      }
+
+      if (neuralPriors && Number.isFinite(neuralPriors[key])) {
+        keyWeight *= neuralPriors[key];
       }
 
       const local = group.map(action => {
@@ -329,9 +327,6 @@
     }));
   }
 
-  /*
-   * Map own/opponent actions to P1/P2 order.
-   */
   function orderedActions(
     slot,
     ownAction,
@@ -342,10 +337,6 @@
       : [opponentAction, ownAction];
   }
 
-  /*
-   * Expected value of a single move exchange.
-   * Hypothetical history is passed to the evaluator.
-   */
   function pairValue(
     state,
     slot,
@@ -381,16 +372,6 @@
     );
   }
 
-  /*
-   * Main search entry point.
-   *
-   * Supports:
-   * - Root candidate filtering
-   * - Optional neural leaf evaluation
-   * - Expectimax root evaluation
-   * - Multi-turn Monte Carlo continuation
-   * - Difficulty-specific selection behavior
-   */
   function search(context) {
     const {
       state,
@@ -399,7 +380,9 @@
       seed = 1,
       evaluator = null,
       candidates = null,
-      isTraining = false
+      isTraining = false,
+      isRider = false,
+      isTeacher = false
     } = context;
 
     const evalFn = (
@@ -421,10 +404,12 @@
       ...K.levels[difficulty]
     };
 
-    if (
-      isTraining ||
-      typeof evaluator === "function"
-    ) {
+    /*
+     * Only reduce search depth/rollouts when isTraining === true.
+     * Live RIDER and evaluation RIDER keep the full SOUL horizon (3),
+     * finalists (8), and rollouts (64).
+     */
+    if (isTraining) {
       settings.horizon = Math.min(
         settings.horizon,
         2
@@ -432,29 +417,19 @@
 
       settings.rollouts = Math.min(
         settings.rollouts,
-        4
+        8
       );
 
       settings.finalists = Math.min(
         settings.finalists,
-        2
+        4
       );
     }
 
     const opponentSlot = C.other(slot);
     const chargeChoices = [...settings.charges];
 
-    /*
-     * FIX:
-     * Read each opponent action inside a history loop.
-     *
-     * The previous file referenced `observed` and `turn`
-     * here without declaring either variable, causing
-     * search() to throw during Warm Start.
-     *
-     * Empty history is valid: this loop simply does nothing.
-     */
-    for (const turn of history) {
+    for (const turn of history.slice(-4)) {
       const observed = turn[opponentSlot];
 
       if (
@@ -477,7 +452,6 @@
       [...new Set(chargeChoices)]
     );
 
-    // Apply the optional root candidate filter.
     if (
       Array.isArray(candidates) &&
       candidates.length > 0
@@ -497,13 +471,19 @@
       }
     }
 
-    // Model the opponent using the Master policy.
     const opponentPolicy = policy(
       state,
       opponentSlot,
       history,
-      "master"
+      "master",
+      false,
+      null
     );
+
+    const rootNeuralBonuses =
+      typeof evaluator?.actionBonuses === "function"
+        ? evaluator.actionBonuses(state, slot, history)
+        : null;
 
     const rows = [];
 
@@ -528,6 +508,11 @@
         worst = Math.min(worst, value);
       }
 
+      const neuralBonus =
+        rootNeuralBonuses && Number.isFinite(rootNeuralBonuses[action.key])
+          ? rootNeuralBonuses[action.key]
+          : 0;
+
       rows.push({
         action,
         expected,
@@ -540,7 +525,8 @@
             slot,
             action,
             difficulty
-          )
+          ) +
+          neuralBonus
       });
     }
 
@@ -550,16 +536,17 @@
     let completedHorizon = 1;
 
     /*
-     * Step 2: multi-turn Monte Carlo continuation.
+     * Step 2: multi-turn Monte Carlo continuation across diverse finalists.
      */
     if (
       settings.horizon > 1 &&
       rows.length > 1 &&
       !state.winner
     ) {
-      finalists = rows
-        .slice(0, settings.finalists)
-        .map(row => ({ ...row }));
+      finalists = selectDiverseFinalists(
+        rows,
+        settings.finalists
+      );
 
       for (const row of finalists) {
         let continuationDelta = 0;
@@ -616,23 +603,22 @@
             depth < settings.horizon && !future.winner;
             depth++
           ) {
-            /*
-             * Both policy models see completed
-             * hypothetical turns from this branch.
-             */
             const ownPolicy = policy(
               future,
               slot,
               futureHistory,
               difficulty,
-              true
+              true,
+              evaluator
             );
 
             const enemyPolicy = policy(
               future,
               opponentSlot,
               futureHistory,
-              "master"
+              "master",
+              false,
+              null
             );
 
             const ownNext = sample(
@@ -697,7 +683,6 @@
 
       const roll = rng();
 
-      // First 10%: explicit idle.
       if (roll < 0.10) {
         return {
           rows: [{
@@ -716,10 +701,6 @@
         };
       }
 
-      /*
-       * Next 40%:
-       * random legal move and positive reachable charge.
-       */
       if (roll < 0.50) {
         const randomBase = ownActions[
           Math.floor(rng() * ownActions.length)
@@ -780,7 +761,6 @@
         };
       }
 
-      // Remaining 50%: prefer the second/third candidate.
       let noviceRows = [];
 
       if (rows.length >= 3) {
@@ -856,6 +836,8 @@
       );
 
       if (
+        !isRider &&
+        !isTeacher &&
         typeof evaluator !== "function" &&
         finalists.length > 0 &&
         rng() < 0.15
@@ -882,10 +864,6 @@
       }
     }
 
-    /*
-     * Weighted rank selection for candidate-filtered
-     * RIDER/neural searches.
-     */
     let orderedFinalists = finalists;
 
     if (
