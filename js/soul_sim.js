@@ -1,16 +1,5 @@
 /* js/soul_sim.js
  * Round-based training and evaluation using CombatCore.resolve().
- *
- * Features:
- *   - One v5 implementation; no legacy sub-tick simulation.
- *   - Environment-owned observations and legal-action masks.
- *   - One replay transition per resolved round.
- *   - Core-owned execution-charge limits.
- *   - Deterministic seeded action selection.
- *   - Evaluation without guidance or training exploration.
- *   - Reverse-matchup opponent networks only.
- *   - Cooperative yield points for training_worker.js.
- *
  * Build: v5-state256-action17
  */
 (function (g) {
@@ -162,41 +151,36 @@
     };
   }
 
- function resolveExecutionCharge(key, state, slot) {
-  assertSlot(slot);
+  function resolveExecutionCharge(key, state, slot) {
+    assertSlot(slot);
 
-  if (key === "DO_NOTHING") {
-    return 0;
-  }
+    if (key === "DO_NOTHING") {
+      return 0;
+    }
 
-  const move = state.moves?.[slot]?.[key];
+    const move = state.moves?.[slot]?.[key];
 
-  if (!move) {
-    throw new Error("Cannot charge an unknown move: " + key);
-  }
+    if (!move) {
+      throw new Error("Cannot charge an unknown move: " + key);
+    }
 
-  /*
-   * The 17-output network chooses a move key.
-   * Direct-network training retains one canonical execution
-   * charge for each state/key.
-   */
-  const charge = C.maxCharge(
-    state[slot],
-    move.direction
-  );
-
-  if (
-    !Number.isFinite(charge) ||
-    charge < 1 ||
-    charge > 100
-  ) {
-    throw new Error(
-      "No positive execution charge is reachable for " + key
+    const charge = C.maxCharge(
+      state[slot],
+      move.direction
     );
-  }
 
-  return charge;
-}
+    if (
+      !Number.isFinite(charge) ||
+      charge < 1 ||
+      charge > 100
+    ) {
+      throw new Error(
+        "No positive execution charge is reachable for " + key
+      );
+    }
+
+    return charge;
+  }
 
   function normalizeLegalAction(state, slot, action, source) {
     if (!action || typeof action.key !== "string") {
@@ -267,7 +251,7 @@
     assertSlot(learnerSlot);
     assertNetworkSize(spec, net);
 
-    return function (state, perspective, history = rootHistory) {
+    function evaluateLeaf(state, perspective, history = rootHistory) {
       assertSlot(perspective);
 
       if (state.winner) {
@@ -283,10 +267,6 @@
       const env = E.create(state);
       env.history = history;
 
-      /*
-       * The checkpoint was trained from learnerSlot's perspective.
-       * Do not encode the requested search perspective instead.
-       */
       const { s, m } = readState(env, learnerSlot, spec);
       const q = predictValues(net, s, spec);
       const index = N.argmax(q, m);
@@ -297,12 +277,92 @@
         );
       }
 
-      const scaled = q[index] * 500;
+      const heuristicLearner = g.RiderBrains
+        ? g.RiderBrains.evaluate(state, learnerSlot)
+        : 0;
+
+      const neuralLearner = K.clamp(q[index], -5, 5) * 180;
+      const combined = heuristicLearner + neuralLearner;
 
       return perspective === learnerSlot
-        ? scaled
-        : -scaled;
+        ? combined
+        : -combined;
+    }
+
+    /*
+     * Root action Q-advantage bonuses for ForeseeEngine Step 1.
+     * Uses relative advantage (Q(s, a) - mean_legal_Q) so that learned
+     * teacher imitation and TD action rankings directly guide root selection.
+     */
+    evaluateLeaf.actionBonuses = function (state, perspective, history = rootHistory) {
+      if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
+        return null;
+      }
+
+      const env = E.create(state);
+      env.history = history;
+
+      const { s, m } = readState(env, learnerSlot, spec);
+      const q = predictValues(net, s, spec);
+
+      let sum = 0;
+      let count = 0;
+      let maxQ = -Infinity;
+      let minQ = Infinity;
+
+      for (let i = 0; i < q.length; i++) {
+        if (!m[i]) continue;
+        sum += q[i];
+        count++;
+        if (q[i] > maxQ) maxQ = q[i];
+        if (q[i] < minQ) minQ = q[i];
+      }
+
+      if (count <= 1 || !(maxQ - minQ > 1e-6)) {
+        return null;
+      }
+
+      const mean = sum / count;
+      const spread = Math.max(0.25, maxQ - minQ);
+      const bonuses = {};
+
+      for (let i = 0; i < q.length; i++) {
+        if (!m[i]) continue;
+        const key = E.ACTION_MAP[i];
+        const normalizedAdvantage = K.clamp((q[i] - mean) / spread, -1, 1);
+        bonuses[key] = normalizedAdvantage * 24;
+      }
+
+      return bonuses;
     };
+
+    /*
+     * Rollout policy multipliers for ForeseeEngine Step 2.
+     */
+    evaluateLeaf.actionPriors = function (state, perspective, history = rootHistory) {
+      if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
+        return null;
+      }
+
+      const env = E.create(state);
+      env.history = history;
+
+      const { s, m } = readState(env, learnerSlot, spec);
+      const q = predictValues(net, s, spec);
+      const best = N.argmax(q, m);
+
+      const priors = {};
+      for (let i = 0; i < q.length; i++) {
+        if (!m[i]) continue;
+        const key = E.ACTION_MAP[i];
+        const diff = K.clamp(q[i] - q[best], -4, 0);
+        priors[key] = 0.5 + 2.5 * Math.exp(diff);
+      }
+
+      return priors;
+    };
+
+    return evaluateLeaf;
   }
 
   function reactor(spec, net, rng, options = {}) {
@@ -357,17 +417,13 @@
               state: C.copyState(env.state),
               slot,
               history,
-              difficulty: options.teacherDifficulty || "master",
+              difficulty: options.teacherDifficulty || "soul",
+              isTeacher: true,
               disableAgent: true,
               seed: options.seed ?? 1
             }).action;
           }
         } else if (mode === "rider") {
-          /*
-           * RIDER selects with Foresee search. When enabled, retain these
-           * as low-weight demo rows so the raw network can distill search
-           * choices without overpowering TD learning.
-           */
           demo = Boolean(options.distillRider);
 
           action = getAI().choose({
@@ -405,10 +461,6 @@
           action = actionForIndex(env, slot, index);
         }
 
-        /*
-         * Preserve what the policy/search requested for telemetry.
-         * It may contain a search-chosen charge value.
-         */
         const proposedAction = normalizeLegalAction(
           env.state,
           slot,
@@ -430,22 +482,14 @@
           );
         }
 
-     /*
- * DDQN training uses canonical charge because an action index
- * represents a key, not a key+charge pair.
- *
- * RIDER evaluation performs no training, so preserve its actual
- * search-selected charge to match live KF_AI.choose() behavior.
- */
-const preserveRiderSearchCharge =
-  mode === "rider" &&
-  options.isTraining === false &&
-  !options.guide;
+        const preserveRiderSearchCharge =
+          mode === "rider" &&
+          options.isTraining === false &&
+          !options.guide;
 
-action = preserveRiderSearchCharge
-  ? proposedAction
-  : actionForIndex(env, slot, a);
-        
+        action = preserveRiderSearchCharge
+          ? proposedAction
+          : actionForIndex(env, slot, a);
 
         const selectedQ = q ? q[a] : 0;
 
@@ -520,7 +564,7 @@ action = preserveRiderSearchCharge
       seed = 1,
       epsilon = 0,
       guideProbability = 0,
-      teacher = "master",
+      teacher = "soul",
       rewardMode = "standard",
       initialStateOverride = null,
       learnerMode = "network",
@@ -619,7 +663,7 @@ action = preserveRiderSearchCharge
     const teacherDifficulty =
       typeof teacher === "string"
         ? teacher
-        : "master";
+        : "soul";
 
     let rounds = 0;
     let qSum = 0;
@@ -745,73 +789,61 @@ action = preserveRiderSearchCharge
 
       const before = C.copyState(state);
 
-  const selected = {
-  [learnerSlot]: decision.action,
-  [enemySlot]: opposingAction
-};
+      const selected = {
+        [learnerSlot]: decision.action,
+        [enemySlot]: opposingAction
+      };
 
-/*
- * Use the same charging executor as live CPU play.
- *
- * Both round plans were selected before this execution starts.
- * These are not new neural decisions on every charging tick.
- */
-const actors = {
-  p1: E.planned(selected.p1),
-  p2: E.planned(selected.p2)
-};
+      const actors = {
+        p1: E.planned(selected.p1),
+        p2: E.planned(selected.p2)
+      };
 
-while (!env.done) {
-  // Collect both proposals before mutating either control cell.
-  const inputs = {
-    p1: actors.p1(env, "p1"),
-    p2: actors.p2(env, "p2")
-  };
+      while (!env.done) {
+        const inputs = {
+          p1: actors.p1(env, "p1"),
+          p2: actors.p2(env, "p2")
+        };
 
-  const previousTime = env.t;
-  const rejected = E.step(env, inputs);
+        const previousTime = env.t;
+        const rejected = E.step(env, inputs);
 
-  if (rejected.length) {
-    throw new Error(
-      "Simulation controller produced a rejected charging input."
-    );
-  }
+        if (rejected.length) {
+          throw new Error(
+            "Simulation controller produced a rejected charging input."
+          );
+        }
 
-  if (!env.done && env.t <= previousTime) {
-    throw new Error(
-      "Simulation charging clock failed to advance."
-    );
-  }
+        if (!env.done && env.t <= previousTime) {
+          throw new Error(
+            "Simulation charging clock failed to advance."
+          );
+        }
 
-  // Cooperative worker cancellation/progress point.
-  yield { type: "clock" };
-}
+        yield { type: "clock" };
+      }
 
-const executed = E.actions(env);
+      const executed = E.actions(env);
 
-/*
- * Do not train a requested move while the environment actually
- * executed something else, such as a timeout idle.
- */
-for (const slot of ["p1", "p2"]) {
-  if (
-    executed[slot].key !== selected[slot].key ||
-    executed[slot].charge !== selected[slot].charge
-  ) {
-    throw new Error(
-      "Planned/executed action mismatch for " + slot +
-      ". Refusing to create a mislabeled replay transition."
-    );
-  }
-}
+      for (const slot of ["p1", "p2"]) {
+        if (
+          executed[slot].key !== selected[slot].key ||
+          executed[slot].charge !== selected[slot].charge
+        ) {
+          throw new Error(
+            "Planned/executed action mismatch for " + slot +
+            ". Refusing to create a mislabeled replay transition."
+          );
+        }
+      }
 
-const result = C.resolve(
-  state,
-  executed.p1,
-  executed.p2,
-  combatRng,
-  false
-);
+      const result = C.resolve(
+        state,
+        executed.p1,
+        executed.p2,
+        combatRng,
+        false
+      );
 
       if (
         !result?.state ||
@@ -835,10 +867,6 @@ const result = C.resolve(
       const nextEnv = E.create(state);
       nextEnv.history = history;
 
-      /*
-       * Terminal masks may be completely empty. They are permitted because
-       * terminal transitions always have discount zero and never bootstrap.
-       */
       const next = readState(nextEnv, learnerSlot, spec, done);
 
       let category = "Neu";
@@ -884,10 +912,6 @@ const result = C.resolve(
           rewardCategory: category,
           isFinalRoundResolution: true,
 
-          /*
-           * The action used for DQN is decision.a, corresponding to the
-           * selectedAction fields below. Core-resolved fields are diagnostics.
-           */
           actionKey: decision.action.key,
           selectedActionKey: decision.action.key,
           selectedCharge: decision.action.charge,
