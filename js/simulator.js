@@ -1,8 +1,5 @@
 // js/simulator.js
 // Uses the same AIService planning path as live battles.
-//
-// Candidate policies are passed per slot through options.
-// No global evaluation-weight variable is used.
 
 (function (g) {
   "use strict";
@@ -41,33 +38,23 @@
     for (const slot of ["p1", "p2"]) {
       if (options.disableAgentSlots?.includes(slot)) continue;
 
-      if (supplied[slot] != null) {
-        if (riders[slot].id !== "ichigo") {
-          throw new Error(
-            "Ichigo candidate weights were assigned to another rider."
-          );
-        }
-
-        policies[slot] = { ...supplied[slot] };
+      if (Object.prototype.hasOwnProperty.call(supplied, slot)) {
+        policies[slot] = supplied[slot]
+          ? JSON.parse(JSON.stringify(supplied[slot]))
+          : null;
         continue;
       }
 
-      if (
-        riders[slot].id === "ichigo" &&
-        difficulties[slot] === "soul"
-      ) {
-        if (!g.AgentIchigo?.loadActivePolicyStore) {
-          throw new Error(
-            "Soul Ichigo simulation requires AgentIchigo."
-          );
-        }
-
-        await g.AgentIchigo.loadActivePolicyStore();
-
-        policies[slot] =
-          g.AgentIchigo.getPolicyForOpponent(
-            riders[C.other(slot)].id
-          );
+      if (difficulties[slot] === "rider" && g.SoulAgent) {
+        await g.SoulAgent.ready();
+        const checkpoint = g.SoulAgent.getSection(
+          riders[slot].id,
+          riders[C.other(slot)].id,
+          "active"
+        );
+        policies[slot] = checkpoint
+          ? JSON.parse(JSON.stringify(checkpoint))
+          : null;
       }
     }
 
@@ -122,8 +109,11 @@
             options.disableAgentSlots?.includes(slot) === true
         };
 
-        if (policies[slot]) {
-          context.policyWeights = { ...policies[slot] };
+        if (Object.prototype.hasOwnProperty.call(policies, slot)) {
+          context.policyWeights = policies[slot]
+            ? JSON.parse(JSON.stringify(policies[slot]))
+            : null;
+          context.disableAgent = true;
         }
 
         return g.AIService.plan(context);
@@ -215,7 +205,6 @@
 
       const seed = Number(options.seed ?? Date.now()) >>> 0;
 
-      // Freeze policies for the whole evaluation batch.
       const policies = await policySnapshot(
         rider1,
         rider2,
