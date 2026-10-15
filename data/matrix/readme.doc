@@ -2,7 +2,7 @@ Trained Matrix:
 
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
-001	 n   n   n   n   n   n	
+001	 n   n   y   y   n   n	
 002	 n   n   n   n   n   n						
 003	 n   n   n   n   n   n								
 004	 n   n   n   n   n   n								
@@ -11,108 +11,9 @@ x\y	001	002	003	004	005	006	007	008
 007								
 008								
 								
+001_004:
 
-001_003:
- 
-
-# Matchup Evaluation Report: `001_003` (Ichigo $\rightarrow$ V3)
-
-* **Build / Patch:** `v5-state256-action17` / `charge1-reset1`
-* **Candidate Experience:** `4,607` games (`68,874` accepted decisions)
-* **Checkpoint Fingerprint:** `1559654951`
-* **Promotion Gate:** Beat all 4 difficulties (`NOVICE`, `BALANCED`, `MASTER`, `SOUL`) at **$>50\%$ Win Rate** (using pure `network` matrix whenever it passes directly, and `RIDER` where search is required).
-
----
-
-## 1. Consolidated Evaluation Summary
-
-| Opponent Tier | Eval Policy Used | Matches | W / L / D | Win Rate | Avg Rounds | Speed (Matches/Min) | Mean Selected Q | Gate Status ($>50\%$) |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **NOVICE (`easy`)** | `network` (Matrix only) | 100 / 100 | 85 / 15 / 0 | **85.0%** | 13.6 | 406.3 | `1.2598` | **PASS** |
-| **BALANCED** | `network` (Matrix only) | 100 / 100 | 54 / 46 / 0 | **54.0%** | 14.1 | 325.0 | `1.1394` | **PASS** |
-| **MASTER** | `rider` (Live search) | 20 / 100 | 14 / 6 / 0 | **70.0%** | 14.2 | 3.3 | `0.9865` | **PASS** *(20g sample)* |
-| **SOUL** | *Pending* | — | — | **< 50.0%** *(Pending)* | — | — | — | **IN PROGRESS** |
-
-> **Current Standing:** **3 of 4 tiers passed (>50%)** with only **4,607 training games** on the new 256-input schema. Crucially, the raw neural matrix (`network`) **already passes `NOVICE` (85.0%) and `BALANCED` (54.0%) without needing live search**, while turning on `RIDER` crushes `MASTER` at **70.0%**.
-
----
-
-## 2. Merged Action & Stance Distribution
-
-### A. Directional Usage Across Difficulties
-| Direction | vs. NOVICE (`network`) | vs. BALANCED (`network`) | vs. MASTER (`rider`) | Strategic Role in `001_003` |
-| :--- | :---: | :---: | :---: | :--- |
-| **`W` (Up/Jump)** | 3 (`0.2%`) | 14 (`1.0%`) | 0 (`0.0%`) | **Abandoned:** Completely cut out against V3 due to high punishment risk. |
-| **`A` (Retreat)** | 70 (`5.1%`) | 88 (`6.3%`) | 7 (`2.4%`) | **Tactical Reset:** Minor spacing adjustment, cut in half under `RIDER`. |
-| **`S` (Hold/Counter)** | 552 (`40.5%`) | 554 (`39.3%`) | 113 (`39.1%`) | **Secondary Engine:** Steady ~40% anchor across all difficulties. |
-| **`D` (Advance/Press)** | 664 (`48.7%`) | 658 (`46.7%`) | 155 (`53.6%`) | **Primary Engine:** Main offensive driver, peaking at 53.6% vs. Master. |
-| **`IDLE` (Recovery)** | 75 (`5.5%`) | 94 (`6.7%`) | 14 (`4.8%`) | **Forced Recovery:** Kept tight (around ~1 forced recovery per match). |
-| **Total Decisions** | **1,364** | **1,408** | **289** | **`S` + `D` = 86.0% to 92.7% of all moves** |
-
-### B. Top Stance Combinations (`J / K / I / L`)
-| Move Key | vs. NOVICE (`1,364` dec) | vs. BALANCED (`1,408` dec) | vs. MASTER (`289` dec) | Tactical Function |
-| :--- | :---: | :---: | :---: | :--- |
-| **`D + L`** | **310** (`22.7%`) | **240** (`17.0%`) | **47** (`16.3%`) | Primary forward finisher / heavy pressure |
-| **`D + I`** | **209** (`15.3%`) | **235** (`16.7%`) | **49** (`17.0%`) | Primary forward poke / priority check |
-| **`S + J`** | **220** (`16.1%`) | **272** (`19.3%`) | **50** (`17.3%`) | Core defensive counter-hit |
-| **`S + L`** | **175** (`12.8%`) | **155** (`11.0%`) | **31** (`10.7%`) | Secondary `S`-line heavy trade |
-| **`D + K`** | 78 (`5.7%`) | 105 (`7.5%`) | 34 (`11.8%`) | Mix-up stance (scaled up heavily by `RIDER` vs. Master) |
-| **`S + I`** | 100 (`7.3%`) | 90 (`6.4%`) | 16 (`5.5%`) | Mid-priority `S` check |
-| **`D + J`** | 67 (`4.9%`) | 78 (`5.5%`) | 25 (`8.7%`) | Fast advancing jab (scaled up by `RIDER` vs. Master) |
-| **`A + L`** | 59 (`4.3%`) | 56 (`4.0%`) | 1 (`0.3%`) | Retreat L-stance (used by raw `network`, dropped by `RIDER`) |
-
----
-
-## 3. How the `001_003` (Ichigo vs. V3) Fight Pair Behaves
-
-1. **The "Two-Gear Charge Engine" (`D` + `S` = ~90% of all moves):**
-   Under the `charge1-reset1` rule, **switching directions resets your charge clock to 1%, while repeating the same direction preserves your accumulated charge**. Ichigo has learned a major structural truth about fighting V3: if you bounce around between `W`, `A`, `S`, and `D`, your charge is perpetually reset to 1% and V3's high-priority kit runs you over. By compressing its movement almost entirely into **`D` (~49%)** and **`S` (~40%)**, Ichigo keeps its charge clock intact across consecutive rounds.
-2. **Total Elimination of `W` (`0.0%` – `1.0%`):**
-   Unlike other matchups where `W` has niche utility, V3 punishes Ichigo's `W` options severely. The network has effectively zeroed out `W` across all four stances (`J/K/I/L`), refusing to waste turns on low-EV vertical commitments.
-3. **Bimodal Stance Specialization:**
-   * **When advancing (`D`):** Ichigo relies on **`D+I` and `D+L`** (~34% of all decisions combined) to control space and force high-value trades.
-   * **When holding (`S`):** Ichigo pivots to **`S+J` and `S+L`** (~28–30% of all decisions combined) to intercept V3's aggressive entries.
-
----
-
-## 4. How Ichigo Behaves Across Difficulties (`network` vs. `rider`)
-
-* **vs. NOVICE (`network` policy — 85.0% Win Rate):**
-  * Your policy rule ("don't use live search if the matrix itself passes") works ideally here. Running pure `network` finishes 100 games in **14.8 seconds** at an **85% win rate**.
-  * Against Novice, the matrix bullies V3 with **`D+L` (22.7%)** and **`S+J` (16.1%)**, maintaining a very high Q-confidence (`1.2598`).
-* **vs. BALANCED (`network` policy — 54.0% Win Rate):**
-  * Even without search or dynamic charge optimization, the raw 256-input matrix **passes the >50% gate (54.0%)** in 18.5 seconds.
-  * Notice how the matrix adapts automatically to Balanced's stronger attacks: it shifts away from raw `D+L` spam (dropping from `22.7%` to `17.0%`) and increases **`S+J` counter-punching (`19.3%`)** and **`D+I` (`16.7%`)**.
-* **vs. MASTER (`rider` policy — 70.0% Win Rate):**
-  * Against Master, turning on `RIDER` unlocks dynamic charge selection + lookahead on top of your `1559654951` matrix, jumping the win rate to **70.0%**.
-  * Look at how `RIDER` sharpens the neural network's behavior against Master:
-    1. **Zeroes out passive retreats:** `A+L` drops from `4.0%` (in `network` mode) down to **`0.3%`**, because backing up against Master gives V3 free charge priority.
-    2. **Increases forward pressure:** `D` usage climbs to **`53.6%`**, forcing Master onto the back foot.
-    3. **Balances all 4 `D` stances to prevent Master from counter-reading:** While the raw `network` heavily leans on just `D+I` and `D+L`, `RIDER` spreads its `D` attacks across **`D+I` (49), `D+L` (47), `D+K` (34), and `D+J` (25)** so Master's lookahead cannot lock onto a single stance weakness.
-
----
-
-## 5. Why Didn't the Charge Bug Fix + 256-History Make `SOUL` an Easy >50%?
-
-It is completely natural to feel frustrated here—you fixed the charge reset rules and expanded the network to 256 inputs so it can read match history, yet `SOUL` is still a tough wall to crack. Here is why that happens:
-
-1. **Every Engine Fix Upgrades `SOUL` Instantly (at 0 Games), While the Network Must Learn It from Scratch:**
-   * `SOUL` isn't a static script—it runs deep lookahead simulations using the live game rules. The moment you fixed `charge1-reset1` (preserving charge on same-direction repeats and resetting to 1% on direction switches), **`SOUL` immediately gained 100% mathematical mastery of charge-clock manipulation**.
-   * Meanwhile, your neural network had to throw away all old 136/16 checkpoints and learn a much larger **256-input state space** from zero.
-2. **256 Inputs Have Higher Capacity, Which Means a Longer Early Learning Curve:**
-   * Reading multi-round history and charge states (256 inputs vs. 136) gives the network a much higher ceiling, but it also means there are more input weights to calibrate.
-   * Your `001_003` model has only played **4,607 games** (one-fourth of the 18,561 games on `001_002`). Reaching **85% Easy / 54% Balanced (pure matrix) / 70% Master (RIDER)** in only 4,607 games is actually ahead of the old schema's pace!
-3. **Why Raw `network` Hits a Wall Against `SOUL`:**
-   * As noted in the build spec: *"The 17 outputs represent move keys, not charge percentages... Direct-network training uses a canonical reachable charge. RIDER evaluation preserves the search-selected charge."*
-   * When `network` plays `SOUL`, `network` is forced to use a single fixed canonical charge %, while `SOUL` is micro-adjusting its charge between 1% and 100% to beat your canonical charge by 1 priority step. Only **`RIDER` evaluation** (and the actual live game engine, which gives the model even more thinking time) unlocks variable charge % to fight `SOUL` on equal footing.
-
----
-
-## 6. Recommended Next Steps to Finalize `001_003`
-
-1. **Evaluate `SOUL` Using `RIDER — live search policy` (20–30 Matches):**
-   Since your raw matrix (`network`) **already passed `NOVICE` (85%) and `BALANCED` (54%)**, you only need `RIDER` for `MASTER` (already **70%**) and `SOUL`. Make sure your `SOUL` evaluation is set to **`RIDER — live search policy`**, not `Direct network`.
-2. **If `RIDER` vs. `SOUL` Is Still Just Under 50%:**
-   * Run **2,000–3,000 more training matches** on `001_003` (bringing it from `4,607` to `~7,000` games).
-   * Keep **`Only winning matches update candidate` UNCHECKED** and set **`Guidance %` around `15%–20%`** against `SOUL` or `MIXED` so the network calibrates its defensive Q-values (`S+K` and `S+I` counters) against `SOUL`'s favorite lines.
-   * Once `SOUL` crosses **$>50\%$**, click **ACTIVATE SELECTED CANDIDATE** and export it to `/data`—with the live game's extra move-calculation time, this `001_003` checkpoint will be brutal against human players.
+Candidate Evaluation Report: Matchup 001_004 (Ichigo vs Riderman)Build: v5-state256-action17 | Schema Patch: charge1-reset1Checkpoint Fingerprint: 3647371530Status: PASSED ALL TIERS (>50% WIN RATE) — Significant SOUL Benchmark Upgrade1. Overall Performance SummaryCheckpoint 3647371530 represents a major structural upgrade over the previous candidate (4184720518). The win rate against the top-tier SOUL engine increased from 50.5% to 61.6%, while the MASTER tier win rate jumped from 53.8% to 68.2%. Furthermore, diagnostic testing on EASY confirms that the direct standalone network handles lower tiers cleanly without search assistance.Opponent TierEvaluator PolicyMatches RunRecord (W / L / D)Win RateMean QDecision SpeedStatusEASY / NOVICEDirect Network (Standalone)7254 / 18 / 075.0%1.1286406.3 matches/minPASSBALANCEDRIDER Search3021 / 9 / 070.0%0.766648.8 matches/minPASSMASTERRIDER Search2215 / 7 / 068.2%0.769837.8 matches/minPASSSOULRIDER Search8653 / 33 / 061.6%0.735429.2 matches/minPASSTOTAL / AVGCombined Evaluation210143 / 67 / 068.1%0.8501—PASSED2. Tactical Evolution & Move DistributionComparing the Direct Network on Easy against RIDER Search on higher tiers reveals how search filters the underlying neural policy.                    ACTION DISTRIBUTION COMPARISON
+Direct Net (Easy):   [S: 34.8%] [D: 31.6%] [A: 17.0%] [IDLE: 13.8%] [W: 2.8%]
+RIDER Search (Soul): [S: 49.5%] [D: 39.9%] [IDLE: 7.7%]  [A: 2.7%]  [W: 0.2%]
+Key Differences in Decision MakingDirect Network Mobility (Standalone Dynamics):When playing standalone against Easy, the direct network uses retreat guards (A at 17.0% / 177 uses) and aerial hops (W at 2.8% / 29 uses). This proves the base network weights have learned spatial defense and jumping attacks without becoming degenerately locked into ground pokes.RIDER Search Compression (High-Tier Optimization):When facing Master and Soul, ForeseeEngine uses the $Q$-matrix to prune airborne entries (W reduced to 0.2%–0.4%) and retreat guards (A reduced to 2.2%–2.9%). Instead, search concentrates 89% to 90% of decisions into crouching pokes (S ~50%) and forward pushes (D ~40%), neutralizing Riderman's attachment weapons through frame advantage.Calibrated $Q$-Value Range:Under RIDER search, mean $Q$-values settled in a tight, realistic range (0.7354 to 0.7698), confirming that leaf state evaluation scores are well-behaved and free of artificial inflation.3. Tier-by-Tier BreakdownEASY (75.0% Win Rate — Direct Network):Runs at 406.3 matches/minute. The standalone feedforward pass beats Easy AI in 14.3 rounds average using balanced mixes of D+L forward extensions, S+K sweeps, and A+L defensive resets.BALANCED (70.0% Win Rate — RIDER Search):RIDER search shuts down Balanced AI's mid-range pressure, taking 21 of 30 games in an average of 12.0 rounds.MASTER (68.2% Win Rate — RIDER Search):A significant leap over the previous 53.8% baseline. The updated leaf values allow search to consistently out-calculate Master AI's parry traps.SOUL (61.6% Win Rate — RIDER Search):Completes 53 wins out of 86 matches. The +11.1% win-rate gain over the prior candidate confirms that 3647371530 provides a far superior evaluation matrix for multi-turn search rollouts against Soul's heuristic engine.
