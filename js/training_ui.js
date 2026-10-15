@@ -654,7 +654,7 @@
         warmStart &&
         ["easy", "balanced", "master", "soul"].includes(mode)
           ? mode
-          : "master";
+          : "soul";
 
       const opponentCheckpoint = mode === "rider"
         ? g.SoulAgent.getSection(
