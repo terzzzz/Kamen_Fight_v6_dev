@@ -235,79 +235,34 @@
     };
   }
 
-  async function prepareContext(context) {
-    const prepared = {
-      ...context,
-      difficulty: K.difficulty(
-        context.difficulty || context.mode
-      )
-    };
-
-    if (context.useMCTS === true) {
-      prepared.difficulty = "rider";
-    }
-
-    /*
-     * Explicit null means no model.
-     * Do not replace it with a newer repository/ACTIVE model.
-     */
-    if (hasOwn(context, "policyWeights")) {
-      prepared.policyWeights =
-        cloneJSON(context.policyWeights);
-
-      prepared.disableAgent = true;
-      return prepared;
-    }
-
-    /*
-     * A supplied Network instance is only usable on the main
-     * thread. Its prototype methods do not survive postMessage.
-     */
-    if (context.neuralNetwork) {
-      prepared.disableAgent = true;
+  if (!g.SoulAgent) {
+      delete prepared.policyWeights;
+      prepared.disableAgent = false;
       return prepared;
     }
 
     if (
-      prepared.difficulty !== "rider" ||
-      context.disableAgent === true
+      g.SoulAgent.VERSION !== BUILD ||
+      typeof g.SoulAgent.ready !== "function" ||
+      typeof g.SoulAgent.getSection !== "function"
     ) {
-      prepared.policyWeights = null;
-      prepared.disableAgent = true;
-      return prepared;
-    }
-
-    /*
-     * Live MatchManager normally provides its own match-frozen
-     * checkpoint. This path also supports other direct callers.
-     */
-    let checkpoint = null;
-
-    if (g.SoulAgent) {
-      if (
-        g.SoulAgent.VERSION !== BUILD ||
-        typeof g.SoulAgent.ready !== "function" ||
-        typeof g.SoulAgent.getSection !== "function"
-      ) {
-        throw new Error(
-          "SoulAgent and AI dispatcher builds do not match."
-        );
-      }
-
-      await g.SoulAgent.ready();
-
-      checkpoint = g.SoulAgent.getSection(
-        context.state[context.slot].id,
-        context.state[C.other(context.slot)].id,
-        "active"
+      throw new Error(
+        "SoulAgent and AI dispatcher builds do not match."
       );
     }
+
+    await g.SoulAgent.ready();
+
+    const checkpoint = g.SoulAgent.getSection(
+      context.state[context.slot].id,
+      context.state[C.other(context.slot)].id,
+      "active"
+    );
 
     prepared.policyWeights = cloneJSON(checkpoint);
     prepared.disableAgent = true;
 
     return prepared;
-  }
 
   async function mainThread(context) {
     if (!mainThreadWarningShown) {
