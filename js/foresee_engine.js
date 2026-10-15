@@ -2,7 +2,7 @@
  * Kamen Fight
  * Neural-Guided Expectimax & Monte Carlo Horizon Search
  *
- * Fix: rider-full-horizon-and-neural-priors-fix2
+ * Fix: warmstart-history-loop-fix1 + rider-guard-counterplay-fix2
  */
 (function (g) {
   "use strict";
@@ -89,9 +89,9 @@
   }
 
   /*
-   * Select up to `limit` finalists while ensuring distinct move keys
-   * are represented first before adding extra charge variants of the
-   * same move key.
+   * Ensures finalist slots aren't monopolized by 5 charge variations
+   * of the exact same move key, and guarantees RIDER's best A-guard
+   * and W-utility options are represented in multi-turn rollouts.
    */
   function selectDiverseFinalists(sortedRows, limit) {
     if (sortedRows.length <= limit) {
@@ -159,9 +159,15 @@
     return rows[safeIndex];
   }
 
+  /*
+   * Model move usage, attack-button habits (J/K/I/L), and A-guard habits
+   * from recent history.
+   */
   function observations(history, slot) {
     const counts = {};
     const charges = [];
+    const buttonCounts = { J: 0, K: 0, I: 0, L: 0 };
+    let guardWeight = 0;
 
     for (let i = 0; i < history.length; i++) {
       const turn = history[i];
@@ -180,12 +186,24 @@
       );
 
       const action = turn[slot];
+      const key = String(action.key || "");
 
-      counts[action.key] =
-        (counts[action.key] || 0) + weight;
+      counts[key] = (counts[key] || 0) + weight;
+
+      if (key.includes("+")) {
+        const [dir, btn] = key.split("+");
+        if (dir === "A") {
+          guardWeight += weight;
+        } else if (
+          (dir === "D" || dir === "S" || dir === "W") &&
+          Object.prototype.hasOwnProperty.call(buttonCounts, btn)
+        ) {
+          buttonCounts[btn] += weight;
+        }
+      }
 
       if (
-        action.key !== "DO_NOTHING" &&
+        key !== "DO_NOTHING" &&
         Number.isFinite(action.charge) &&
         action.charge >= 1 &&
         action.charge <= 100
@@ -197,18 +215,28 @@
       }
     }
 
-    return { counts, charges };
+    return { counts, charges, buttonCounts, guardWeight };
   }
 
+  /*
+   * Build an action probability distribution from:
+   * - RiderBrains tactical priors
+   * - Observed move, button, and guard tendencies
+   * - Current legal actions
+   */
   function policy(
     state,
     slot,
     history,
     difficulty,
     rolloutSelf = false,
-    evaluator = null
+    counterRead = false
   ) {
+    const otherSlot = C.other(slot);
     const observed = observations(history || [], slot);
+    const otherObserved = counterRead
+      ? observations(history || [], otherSlot)
+      : null;
 
     const chargeChoices = [
       ...K.levels.master.charges
@@ -243,14 +271,17 @@
       ? tree.preferred
       : [];
 
-    const neuralPriors =
-      rolloutSelf && typeof evaluator?.actionPriors === "function"
-        ? evaluator.actionPriors(state, slot, history)
-        : null;
+    const otherTree = counterRead
+      ? B.intent(state, otherSlot, "master") || {}
+      : null;
+    const otherPreferred = Array.isArray(otherTree?.preferred)
+      ? otherTree.preferred
+      : [];
 
     const entries = [];
 
     for (const [key, group] of Object.entries(groups)) {
+      const move = state.moves?.[slot]?.[key];
       let keyWeight =
         3 * B.prior(
           state,
@@ -267,8 +298,36 @@
         keyWeight *= 3;
       }
 
-      if (neuralPriors && Number.isFinite(neuralPriors[key])) {
-        keyWeight *= neuralPriors[key];
+      /*
+       * Counter-read awareness for RIDER:
+       * 1. If `slot` is the opponent and has a guarding move (A+button),
+       *    account for the opponent parrying our (`otherSlot`'s) most-used
+       *    or telegraphed preferred attack buttons, especially when we have
+       *    high Chi or when the opponent has shown A-guard habits.
+       * 2. If `slot` is the opponent and has an offensive move on a button
+       *    they repeatedly spam, emphasize that button so our matching
+       *    A-guard evaluates its true parry value.
+       */
+      if (counterRead && move) {
+        if (move.guardKind === "matching" && move.guardButton) {
+          const btn = move.guardButton;
+          const ourButtonHabit = otherObserved?.buttonCounts?.[btn] || 0;
+          const ourTelegraphedPreferred = otherPreferred.some(prefKey => {
+            const pm = state.moves?.[otherSlot]?.[prefKey];
+            return pm?.offensive && pm.button === btn && pm.chiCost <= state[otherSlot].chi;
+          });
+
+          let parryLikelihood = 1.0 + 0.8 * ourButtonHabit + 1.2 * observed.guardWeight;
+          if (ourTelegraphedPreferred && state[otherSlot].chi >= 5) {
+            parryLikelihood += 1.5;
+          }
+          keyWeight *= parryLikelihood;
+        } else if (move.offensive && move.button) {
+          const btnHabit = observed.buttonCounts[move.button] || 0;
+          if (btnHabit > 0) {
+            keyWeight *= 1 + 0.35 * btnHabit;
+          }
+        }
       }
 
       const local = group.map(action => {
@@ -286,7 +345,7 @@
             );
         }
 
-        if (state[C.other(slot)].isFainted) {
+        if (state[otherSlot].isFainted) {
           weight *= actCharge === 100
             ? 5
             : 0.2;
@@ -380,10 +439,10 @@
       seed = 1,
       evaluator = null,
       candidates = null,
-      isTraining = false,
-      isRider = false,
-      isTeacher = false
+      isTraining = false
     } = context;
+
+    const usingNeural = typeof evaluator === "function";
 
     const evalFn = (
       s,
@@ -405,8 +464,8 @@
     };
 
     /*
-     * Only reduce search depth/rollouts when isTraining === true.
-     * Live RIDER and evaluation RIDER keep the full SOUL horizon (3),
+     * FIX: Only clamp horizon/rollouts/finalists when isTraining === true.
+     * Live and evaluated RIDER searches use full SOUL search depth (3),
      * finalists (8), and rollouts (64).
      */
     if (isTraining) {
@@ -417,19 +476,19 @@
 
       settings.rollouts = Math.min(
         settings.rollouts,
-        8
+        4
       );
 
       settings.finalists = Math.min(
         settings.finalists,
-        4
+        2
       );
     }
 
     const opponentSlot = C.other(slot);
     const chargeChoices = [...settings.charges];
 
-    for (const turn of history.slice(-4)) {
+    for (const turn of history) {
       const observed = turn[opponentSlot];
 
       if (
@@ -471,17 +530,18 @@
       }
     }
 
+    // Model the opponent; enable button/guard counter-reading when RIDER is active.
     const opponentPolicy = policy(
       state,
       opponentSlot,
       history,
       "master",
       false,
-      null
+      usingNeural
     );
 
     const rootNeuralBonuses =
-      typeof evaluator?.actionBonuses === "function"
+      usingNeural && typeof evaluator.actionBonuses === "function"
         ? evaluator.actionBonuses(state, slot, history)
         : null;
 
@@ -536,17 +596,16 @@
     let completedHorizon = 1;
 
     /*
-     * Step 2: multi-turn Monte Carlo continuation across diverse finalists.
+     * Step 2: multi-turn Monte Carlo continuation.
      */
     if (
       settings.horizon > 1 &&
       rows.length > 1 &&
       !state.winner
     ) {
-      finalists = selectDiverseFinalists(
-        rows,
-        settings.finalists
-      );
+      finalists = usingNeural
+        ? selectDiverseFinalists(rows, settings.finalists)
+        : rows.slice(0, settings.finalists).map(row => ({ ...row }));
 
       for (const row of finalists) {
         let continuationDelta = 0;
@@ -609,7 +668,7 @@
               futureHistory,
               difficulty,
               true,
-              evaluator
+              usingNeural
             );
 
             const enemyPolicy = policy(
@@ -618,7 +677,7 @@
               futureHistory,
               "master",
               false,
-              null
+              usingNeural
             );
 
             const ownNext = sample(
@@ -836,8 +895,6 @@
       );
 
       if (
-        !isRider &&
-        !isTeacher &&
         typeof evaluator !== "function" &&
         finalists.length > 0 &&
         rng() < 0.15
