@@ -95,13 +95,14 @@
     }
 
     const rider = difficulty === "rider";
+    const isTeacher = Boolean(context.isTeacher);
 
     if (rider && net) {
       spec = spec || g.SoulEnv.makeSpec();
       g.SoulEnv.assertSpec(spec);
     }
 
-    const evaluator = rider && net
+    const evaluator = rider && net && typeof g.SoulSim?.makeNeuralEvaluator === "function"
       ? g.SoulSim.makeNeuralEvaluator(
           net,
           spec,
@@ -119,7 +120,9 @@
       history: context.history || [],
       difficulty: searchDifficulty,
       evaluator,
-      isTraining: false
+      isRider: rider,
+      isTeacher,
+      isTraining: Boolean(context.isTraining)
     };
 
     // These are dispatcher-only fields, not search inputs.
@@ -143,7 +146,7 @@
 
     let selected = rows[0];
 
-    if (!rider) {
+    if (!rider && !isTeacher) {
       const tolerance = Math.max(
         0,
         K.levels?.[searchDifficulty]?.nearBest ?? 0
