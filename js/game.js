@@ -117,8 +117,8 @@
     );
   }
 
-  /** Transitions view back to character selection screen from Game Over state. */
-  function returnToSelection() {
+/** Transitions view back to character selection screen from Game Over state. */
+  function returnToSelection(event) {
     const gs = g.gameState;
 
     if (
@@ -129,12 +129,16 @@
       return;
     }
 
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     g.MatchManager.stop();
     gs.roundPhase = "IDLE";
 
-    // Restore standard CPU move selector if AgentIchigo policy was active
-    if (g.AgentIchigo && typeof g.AgentIchigo.restoreOriginalSelector === "function") {
-      g.AgentIchigo.restoreOriginalSelector();
+    if (g.vsSelectionState) {
+      g.vsSelectionState.step = 1;
     }
 
     if (g.hideCenterScreen) g.hideCenterScreen();
