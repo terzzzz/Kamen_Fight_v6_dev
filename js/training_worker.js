@@ -322,8 +322,8 @@ async function run(job) {
         KF.hash(seed, "replay"),
         baseSteps,
         job.warmStart
-          ? { interval: 4, warmup: 32 }
-          : { interval: 32, warmup: 256 }
+          ? { interval: 2, warmup: 32 }
+          : { interval: 4, warmup: 128 }
       )
     : null;
 
