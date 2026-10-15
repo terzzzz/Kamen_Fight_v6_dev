@@ -2,7 +2,7 @@
  * Kamen Fight
  * Neural-Guided Expectimax & Monte Carlo Horizon Search
  *
- * Fix: warmstart-history-loop-fix1 + rider-guard-counterplay-fix2
+ * Fix: warmstart-history-loop-fix1 + rider-superset-timebudget-fix3
  */
 (function (g) {
   "use strict";
@@ -10,6 +10,13 @@
   const K = g.KF;
   const C = g.CombatCore;
   const B = g.RiderBrains;
+
+  function nowMs() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+    return Date.now();
+  }
 
   function appendForecastHistory(
     history,
@@ -89,31 +96,56 @@
   }
 
   /*
-   * Ensures finalist slots aren't monopolized by 5 charge variations
-   * of the exact same move key, and guarantees RIDER's best A-guard
-   * and W-utility options are represented in multi-turn rollouts.
+   * Preserves SOUL's top 8 highest-scoring (move, charge) finalists intact
+   * first so RIDER never loses optimal charge variations, then uses RIDER's
+   * extra finalist slots to test Matrix-advised moves and diverse options.
    */
-  function selectDiverseFinalists(sortedRows, limit) {
+  function selectDiverseFinalists(sortedRows, limit, advisedKeys = null) {
     if (sortedRows.length <= limit) {
       return sortedRows.map(row => ({ ...row }));
     }
 
-    const chosen = [];
-    const overflow = [];
-    const seenKeys = new Set();
+    const baseCount = Math.min(8, limit);
+    const chosen = sortedRows.slice(0, baseCount).map(row => ({ ...row }));
+    const chosenIds = new Set(chosen.map(row => actionId(row.action)));
+    const seenKeys = new Set(chosen.map(row => row.action.key));
 
-    for (const row of sortedRows) {
-      if (!seenKeys.has(row.action.key) && chosen.length < limit) {
-        seenKeys.add(row.action.key);
-        chosen.push({ ...row });
-      } else {
-        overflow.push(row);
+    // First priority for extra slots: top moves advised by the Neural Matrix
+    if (Array.isArray(advisedKeys)) {
+      for (const advisedKey of advisedKeys) {
+        if (chosen.length >= limit) break;
+        if (seenKeys.has(advisedKey)) continue;
+
+        const match = sortedRows.find(
+          row => row.action.key === advisedKey && !chosenIds.has(actionId(row.action))
+        );
+        if (match) {
+          chosen.push({ ...match });
+          chosenIds.add(actionId(match.action));
+          seenKeys.add(advisedKey);
+        }
       }
     }
 
-    for (const row of overflow) {
-      if (chosen.length >= limit) break;
-      chosen.push({ ...row });
+    // Second priority: other unseen move keys in score order
+    for (let i = baseCount; i < sortedRows.length && chosen.length < limit; i++) {
+      const row = sortedRows[i];
+      const id = actionId(row.action);
+      if (!seenKeys.has(row.action.key) && !chosenIds.has(id)) {
+        chosen.push({ ...row });
+        chosenIds.add(id);
+        seenKeys.add(row.action.key);
+      }
+    }
+
+    // Fill any remaining slots by raw score order
+    for (let i = baseCount; i < sortedRows.length && chosen.length < limit; i++) {
+      const row = sortedRows[i];
+      const id = actionId(row.action);
+      if (!chosenIds.has(id)) {
+        chosen.push({ ...row });
+        chosenIds.add(id);
+      }
     }
 
     return chosen;
@@ -299,14 +331,9 @@
       }
 
       /*
-       * Counter-read awareness for RIDER:
-       * 1. If `slot` is the opponent and has a guarding move (A+button),
-       *    account for the opponent parrying our (`otherSlot`'s) most-used
-       *    or telegraphed preferred attack buttons, especially when we have
-       *    high Chi or when the opponent has shown A-guard habits.
-       * 2. If `slot` is the opponent and has an offensive move on a button
-       *    they repeatedly spam, emphasize that button so our matching
-       *    A-guard evaluates its true parry value.
+       * Evidence-based counter-read awareness for RIDER:
+       * Only boost opponent parry likelihood when the opponent has actually
+       * shown A-guard usage in history or when we have heavily spammed a single button.
        */
       if (counterRead && move) {
         if (move.guardKind === "matching" && move.guardButton) {
@@ -317,15 +344,15 @@
             return pm?.offensive && pm.button === btn && pm.chiCost <= state[otherSlot].chi;
           });
 
-          let parryLikelihood = 1.0 + 0.8 * ourButtonHabit + 1.2 * observed.guardWeight;
-          if (ourTelegraphedPreferred && state[otherSlot].chi >= 5) {
-            parryLikelihood += 1.5;
+          let parryLikelihood = 1.0 + 0.25 * Math.max(0, ourButtonHabit - 0.8) + 0.75 * observed.guardWeight;
+          if (ourTelegraphedPreferred && state[otherSlot].chi >= 5 && observed.guardWeight > 0.25) {
+            parryLikelihood += 0.35;
           }
           keyWeight *= parryLikelihood;
         } else if (move.offensive && move.button) {
           const btnHabit = observed.buttonCounts[move.button] || 0;
-          if (btnHabit > 0) {
-            keyWeight *= 1 + 0.35 * btnHabit;
+          if (btnHabit > 1.0) {
+            keyWeight *= 1 + 0.20 * (btnHabit - 1.0);
           }
         }
       }
@@ -432,6 +459,8 @@
   }
 
   function search(context) {
+    const startTimeMs = nowMs();
+
     const {
       state,
       slot,
@@ -443,6 +472,18 @@
     } = context;
 
     const usingNeural = typeof evaluator === "function";
+    const isRider = Boolean(context.isRider) || usingNeural;
+
+    const requestedBudgetMs = Number(
+      context.timeBudgetMs ?? context.timeLimitMs ?? context.maxTimeMs ?? 0
+    );
+    const activeTimeBudgetMs =
+      !isTraining && isRider && Number.isFinite(requestedBudgetMs) && requestedBudgetMs > 0
+        ? requestedBudgetMs
+        : 0;
+    const deadlineMs = activeTimeBudgetMs > 0
+      ? startTimeMs + activeTimeBudgetMs
+      : 0;
 
     const evalFn = (
       s,
@@ -463,11 +504,9 @@
       ...K.levels[difficulty]
     };
 
-    /*
-     * FIX: Only clamp horizon/rollouts/finalists when isTraining === true.
-     * Live and evaluated RIDER searches use full SOUL search depth (3),
-     * finalists (8), and rollouts (64).
-     */
+    let minRollouts = settings.rollouts;
+    let maxRollouts = settings.rollouts;
+
     if (isTraining) {
       settings.horizon = Math.min(
         settings.horizon,
@@ -483,6 +522,22 @@
         settings.finalists,
         2
       );
+
+      minRollouts = settings.rollouts;
+      maxRollouts = settings.rollouts;
+    } else if (isRider) {
+      /*
+       * RIDER gets a strict superset of SOUL's search:
+       * - 10 finalists (SOUL's top 8 + 2 Matrix-advised / diverse moves)
+       * - Guaranteed minimum of 80 rollouts per finalist (vs SOUL's 64),
+       *   scaling up to 128 rollouts per finalist within the 100ms time budget.
+       */
+      settings.finalists = Math.max(settings.finalists, 10);
+      minRollouts = Math.max(settings.rollouts, 80);
+      maxRollouts = activeTimeBudgetMs > 0
+        ? Math.max(minRollouts, 128)
+        : Math.max(settings.rollouts, 96);
+      settings.rollouts = maxRollouts;
     }
 
     const opponentSlot = C.other(slot);
@@ -530,7 +585,7 @@
       }
     }
 
-    // Model the opponent; enable button/guard counter-reading when RIDER is active.
+    // Model the opponent; enable evidence-based counter-reading when RIDER is active.
     const opponentPolicy = policy(
       state,
       opponentSlot,
@@ -543,6 +598,11 @@
     const rootNeuralBonuses =
       usingNeural && typeof evaluator.actionBonuses === "function"
         ? evaluator.actionBonuses(state, slot, history)
+        : null;
+
+    const advisedKeys =
+      usingNeural && typeof evaluator.advisedMoves === "function"
+        ? evaluator.advisedMoves(state, slot, history)
         : null;
 
     const rows = [];
@@ -594,27 +654,41 @@
 
     let finalists = rows;
     let completedHorizon = 1;
+    let completedRollouts = 0;
 
     /*
      * Step 2: multi-turn Monte Carlo continuation.
+     * Iterates by sampleIndex across all finalists so every finalist
+     * shares the exact same rollout count and stops cleanly at deadlineMs
+     * once minRollouts has been guaranteed.
      */
     if (
       settings.horizon > 1 &&
       rows.length > 1 &&
       !state.winner
     ) {
-      finalists = usingNeural
-        ? selectDiverseFinalists(rows, settings.finalists)
+      finalists = isRider
+        ? selectDiverseFinalists(rows, settings.finalists, advisedKeys)
         : rows.slice(0, settings.finalists).map(row => ({ ...row }));
 
-      for (const row of finalists) {
-        let continuationDelta = 0;
+      const continuationSums = new Float64Array(finalists.length);
 
-        for (
-          let sampleIndex = 0;
-          sampleIndex < settings.rollouts;
-          sampleIndex++
+      for (
+        let sampleIndex = 0;
+        sampleIndex < maxRollouts;
+        sampleIndex++
+      ) {
+        if (
+          deadlineMs > 0 &&
+          sampleIndex >= minRollouts &&
+          nowMs() >= deadlineMs
         ) {
+          break;
+        }
+
+        for (let fIdx = 0; fIdx < finalists.length; fIdx++) {
+          const row = finalists[fIdx];
+
           const rng = K.rng(
             K.hash(
               seed,
@@ -668,7 +742,7 @@
               futureHistory,
               difficulty,
               true,
-              usingNeural
+              false
             );
 
             const enemyPolicy = policy(
@@ -716,7 +790,7 @@
             future = nextResult.state;
           }
 
-          continuationDelta +=
+          continuationSums[fIdx] +=
             evalFn(
               future,
               slot,
@@ -724,8 +798,14 @@
             ) - firstValue;
         }
 
-        row.score +=
-          continuationDelta / settings.rollouts;
+        completedRollouts = sampleIndex + 1;
+      }
+
+      if (completedRollouts > 0) {
+        for (let fIdx = 0; fIdx < finalists.length; fIdx++) {
+          finalists[fIdx].score +=
+            continuationSums[fIdx] / completedRollouts;
+        }
       }
 
       finalists.sort(stableSort);
@@ -895,6 +975,7 @@
       );
 
       if (
+        !isRider &&
         typeof evaluator !== "function" &&
         finalists.length > 0 &&
         rng() < 0.15
@@ -950,6 +1031,8 @@
       }
     }
 
+    const elapsedMs = Number((nowMs() - startTimeMs).toFixed(2));
+
     return {
       rows: orderedFinalists,
       debug: {
@@ -960,7 +1043,9 @@
         rootActions: ownActions.length,
         opponentActions: opponentPolicy.length,
         completedHorizon,
-        rolloutsPerFinalist: settings.rollouts,
+        rolloutsPerFinalist: completedRollouts || settings.rollouts,
+        timeBudgetMs: activeTimeBudgetMs,
+        elapsedMs,
         usingNeuralEvaluator:
           typeof evaluator === "function",
         isTraining,
