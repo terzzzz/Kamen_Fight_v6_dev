@@ -18,7 +18,7 @@ const MIXED_CPU_SEQUENCE = [
   "balanced",
   "soul"
 ];
-const MIXED_ROUND_SPAN = 3;
+const MIXED_ROUND_SPAN = 30;
 
 importScripts(...[
   "common.js",
@@ -401,7 +401,7 @@ async function run(job) {
       ? "RIDER with reverse-matchup active checkpoint"
       : "SOUL fallback; reverse-matchup checkpoint unavailable"
     : job.mode === "mixed"
-      ? "MIXED cycle (3 NOVICE -> 3 MASTER -> 3 BALANCED -> 3 SOUL)"
+      ? "MIXED cycle (30 NOVICE -> 30 MASTER -> 30 BALANCED -> 30 SOUL)"
       : job.mode;
 
   function checkpoint() {
