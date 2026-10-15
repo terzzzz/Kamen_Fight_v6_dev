@@ -76,7 +76,7 @@
 
         <label>Opponent controller
           <select data-field="mode">
-            <option value="mixed">Random legal moves — fast baseline</option>
+            <option value="mixed">MIXED — 3 NOVICE / 3 MASTER / 3 BALANCED / 3 SOUL cycle</option>
             <option value="easy">NOVICE search</option>
             <option value="balanced">BALANCED search</option>
             <option value="master">MASTER search</option>
@@ -117,22 +117,13 @@
                  value="100">
         </label>
 
-        <label>Guide hold until % of this job
-          <input data-field="guide-hold-pct"
+        <label>Guidance % (0–100)
+          <input data-field="guide-pct"
                  type="number"
                  min="0"
                  max="100"
                  step="1"
-                 value="20">
-        </label>
-
-        <label>Guide reaches zero at %
-          <input data-field="guide-zero-pct"
-                 type="number"
-                 min="0"
-                 max="100"
-                 step="1"
-                 value="80">
+                 value="25">
         </label>
 
         <label>Initial Epsilon %
@@ -145,7 +136,7 @@
         </label>
 
         <label class="soul-checkbox-label">
-          <input data-field="win-only" type="checkbox" checked>
+          <input data-field="win-only" type="checkbox">
           <span>Only winning matches update candidate</span>
         </label>
 
@@ -465,9 +456,13 @@
               : "DISABLED — all matches update"
           }`,
 
-          `Current guide probability: ${
+          `Guidance probability: ${
             (100 * report.guideProbability).toFixed(1)
-          }%`,
+          }%${
+            Number.isFinite(report.guidePct) && !report.warmStart
+              ? ` (Input: ${report.guidePct}%)`
+              : ""
+          }`,
 
           `Scheduled epsilon: ${
             (100 * report.epsilon).toFixed(1)
@@ -637,15 +632,7 @@
         field("eval-count").value = matches;
       }
 
-      const guideHoldPct = integer("guide-hold-pct", 0, 100);
-      const guideZeroPct = integer("guide-zero-pct", 0, 100);
-
-      if (guideHoldPct > guideZeroPct) {
-        throw new Error(
-          "Guide hold cannot exceed the guide-zero percentage."
-        );
-      }
-
+      const guidePct = integer("guide-pct", 0, 100);
       const initialEpsilon = integer("initial-epsilon", 1, 100);
       const winOnly = Boolean(field("win-only").checked);
       const mode = field("mode").value;
@@ -696,8 +683,9 @@
         mode,
 
         rewardMode: field("reward-mode").value,
-        guideHoldPct,
-        guideZeroPct,
+        guidePct,
+        guideHoldPct: guidePct,
+        guideZeroPct: guidePct,
         initialEpsilon,
         winOnly,
         teacher,
