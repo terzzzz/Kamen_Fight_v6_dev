@@ -1,5 +1,16 @@
 /* js/soul_sim.js
  * Round-based training and evaluation using CombatCore.resolve().
+ *
+ * Features:
+ *   - One v5 implementation; no legacy sub-tick simulation.
+ *   - Environment-owned observations and legal-action masks.
+ *   - One replay transition per resolved round.
+ *   - Core-owned execution-charge limits.
+ *   - Deterministic seeded action selection.
+ *   - Evaluation without guidance or training exploration.
+ *   - Reverse-matchup opponent networks only.
+ *   - Cooperative yield points for training_worker.js.
+ *
  * Build: v5-state256-action17
  */
 (function (g) {
@@ -164,6 +175,11 @@
       throw new Error("Cannot charge an unknown move: " + key);
     }
 
+    /*
+     * The 17-output network chooses a move key.
+     * Direct-network training retains one canonical execution
+     * charge for each state/key.
+     */
     const charge = C.maxCharge(
       state[slot],
       move.direction
@@ -267,6 +283,12 @@
       const env = E.create(state);
       env.history = history;
 
+      /*
+       * The checkpoint was trained from learnerSlot's perspective.
+       * Combine exact tactical heuristic evaluation with the network's
+       * learned Q-value so RIDER retains full awareness of LP/Chi/Faint
+       * while adding matchup-specific neural judgment.
+       */
       const { s, m } = readState(env, learnerSlot, spec);
       const q = predictValues(net, s, spec);
       const index = N.argmax(q, m);
@@ -277,22 +299,22 @@
         );
       }
 
-      const heuristicLearner = g.RiderBrains
+      const heuristicScore = g.RiderBrains
         ? g.RiderBrains.evaluate(state, learnerSlot)
         : 0;
 
-      const neuralLearner = K.clamp(q[index], -5, 5) * 180;
-      const combined = heuristicLearner + neuralLearner;
+      const neuralScore = K.clamp(q[index], -5, 5) * 200;
+      const total = heuristicScore + neuralScore;
 
       return perspective === learnerSlot
-        ? combined
-        : -combined;
+        ? total
+        : -total;
     }
 
     /*
-     * Root action Q-advantage bonuses for ForeseeEngine Step 1.
-     * Uses relative advantage (Q(s, a) - mean_legal_Q) so that learned
-     * teacher imitation and TD action rankings directly guide root selection.
+     * Exposes the network's per-action Q-advantages at the root state
+     * so ForeseeEngine can directly boost moves (such as A-guards or
+     * specific counter-moves) that the network learned are strong here.
      */
     evaluateLeaf.actionBonuses = function (state, perspective, history = rootHistory) {
       if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
@@ -323,43 +345,17 @@
       }
 
       const mean = sum / count;
-      const spread = Math.max(0.25, maxQ - minQ);
+      const spread = Math.max(0.20, maxQ - minQ);
       const bonuses = {};
 
       for (let i = 0; i < q.length; i++) {
         if (!m[i]) continue;
         const key = E.ACTION_MAP[i];
-        const normalizedAdvantage = K.clamp((q[i] - mean) / spread, -1, 1);
-        bonuses[key] = normalizedAdvantage * 24;
+        const advantage = K.clamp((q[i] - mean) / spread, -1, 1);
+        bonuses[key] = advantage * 35;
       }
 
       return bonuses;
-    };
-
-    /*
-     * Rollout policy multipliers for ForeseeEngine Step 2.
-     */
-    evaluateLeaf.actionPriors = function (state, perspective, history = rootHistory) {
-      if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
-        return null;
-      }
-
-      const env = E.create(state);
-      env.history = history;
-
-      const { s, m } = readState(env, learnerSlot, spec);
-      const q = predictValues(net, s, spec);
-      const best = N.argmax(q, m);
-
-      const priors = {};
-      for (let i = 0; i < q.length; i++) {
-        if (!m[i]) continue;
-        const key = E.ACTION_MAP[i];
-        const diff = K.clamp(q[i] - q[best], -4, 0);
-        priors[key] = 0.5 + 2.5 * Math.exp(diff);
-      }
-
-      return priors;
     };
 
     return evaluateLeaf;
@@ -417,13 +413,17 @@
               state: C.copyState(env.state),
               slot,
               history,
-              difficulty: options.teacherDifficulty || "soul",
-              isTeacher: true,
+              difficulty: options.teacherDifficulty || "master",
               disableAgent: true,
               seed: options.seed ?? 1
             }).action;
           }
         } else if (mode === "rider") {
+          /*
+           * RIDER selects with Foresee search. When enabled, retain these
+           * as low-weight demo rows so the raw network can distill search
+           * choices without overpowering TD learning.
+           */
           demo = Boolean(options.distillRider);
 
           action = getAI().choose({
@@ -461,6 +461,10 @@
           action = actionForIndex(env, slot, index);
         }
 
+        /*
+         * Preserve what the policy/search requested for telemetry.
+         * It may contain a search-chosen charge value.
+         */
         const proposedAction = normalizeLegalAction(
           env.state,
           slot,
@@ -482,6 +486,13 @@
           );
         }
 
+        /*
+         * DDQN training uses canonical charge because an action index
+         * represents a key, not a key+charge pair.
+         *
+         * RIDER evaluation performs no training, so preserve its actual
+         * search-selected charge to match live KF_AI.choose() behavior.
+         */
         const preserveRiderSearchCharge =
           mode === "rider" &&
           options.isTraining === false &&
@@ -528,10 +539,42 @@
 
       reward = 1.5 * enemyLpChange - ownLpChange;
 
-      reward +=
-        0.05 *
-        Math.max(0, after[slot].chi - before[slot].chi) /
-        Math.max(1, before[slot].maxChi);
+      /*
+       * Net Chi Differential:
+       * - Rewards parrying an enemy's expensive move with an A-guard
+       *   (enemy loses Chi, self gains guardReward Chi).
+       * - Penalizes throwing expensive moves into an enemy A-guard
+       *   (self loses Chi, enemy gains guardReward Chi).
+       */
+      const ownChiDelta =
+        (after[slot].chi - before[slot].chi) /
+        Math.max(1, before[slot].maxChi || 16);
+
+      const enemyChiDelta =
+        (after[enemySlot].chi - before[enemySlot].chi) /
+        Math.max(1, before[enemySlot].maxChi || 16);
+
+      reward += 0.25 * (ownChiDelta - enemyChiDelta);
+
+      /*
+       * Faint Differential:
+       * - Rewards building faint on the opponent or recovering own faint.
+       * - Penalizes taking faint buildup (including idle-guard faint penalty).
+       */
+      const faintThreshold = Math.max(
+        1,
+        Number(g.COMBAT_RULES?.FAINT_THRESHOLD || 100)
+      );
+
+      const ownFaintDelta =
+        (after[slot].faintMeter - before[slot].faintMeter) /
+        faintThreshold;
+
+      const enemyFaintDelta =
+        (after[enemySlot].faintMeter - before[enemySlot].faintMeter) /
+        faintThreshold;
+
+      reward += 0.12 * (enemyFaintDelta - ownFaintDelta);
     } else if (mode !== "terminal_only") {
       throw new Error("Unknown reward mode: " + mode);
     }
@@ -564,7 +607,7 @@
       seed = 1,
       epsilon = 0,
       guideProbability = 0,
-      teacher = "soul",
+      teacher = "master",
       rewardMode = "standard",
       initialStateOverride = null,
       learnerMode = "network",
@@ -663,7 +706,7 @@
     const teacherDifficulty =
       typeof teacher === "string"
         ? teacher
-        : "soul";
+        : "master";
 
     let rounds = 0;
     let qSum = 0;
