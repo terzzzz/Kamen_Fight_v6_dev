@@ -76,7 +76,7 @@
 
         <label>Opponent controller
           <select data-field="mode">
-            <option value="mixed">MIXED — 3 NOVICE / 3 MASTER / 3 BALANCED / 3 SOUL cycle</option>
+            <option value="mixed">MIXED — 30 each of NOVICE/MASTER/BALANCED/SOUL cycle</option>
             <option value="easy">NOVICE search</option>
             <option value="balanced">BALANCED search</option>
             <option value="master">MASTER search</option>
