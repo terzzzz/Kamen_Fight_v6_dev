@@ -54,7 +54,7 @@
     "W+J": {
       "name": "Accelerator",
       "type": "UTILITY",
-      "chiCost": 4,
+      "chiCost": 3,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "accel.mp4",
@@ -74,9 +74,9 @@
       "video": "red_lamp.mp4",
       "buff": {
         "id": "red_lamp_boost",
-        "label": "RED LAMP (+15% D/S ATK)",
+        "label": "RED LAMP (+20% D/S ATK)",
         "type": "attack",
-        "duration": 2
+        "duration": 3
       }
     },
     "W+L": {
@@ -85,8 +85,8 @@
       "rangeType": "REACH",
       "chiCost": 3,
       "baseDamage": 60,
-      "baseFaintDamage": 30,
-      "hitChance": 80,
+      "baseFaintDamage": 35,
+      "hitChance": 78,
       "video": "double_typhoon.mp4"
     },
     "D+J": {
@@ -133,7 +133,7 @@
       "name": "V3 Return Kick",
       "type": "SPECIAL",
       "chiCost": 6,
-      "baseDamage": 520,
+      "baseDamage": 560,
       "hitChance": 72,
       "video": "return_kick.mp4"
     },
@@ -204,7 +204,7 @@
       "chiCost": 3,
       "baseDamage": 52,
       "baseFaintDamage": 30,
-      "hitChance": 88,
+      "hitChance": 82,
       "video": "rope_tie.mp4",
       "debuff": {
         "id": "rope_bind",
@@ -226,7 +226,7 @@
       "type": "PHYSICAL",
       "chiCost": 0,
       "baseDamage": 85,
-      "hitChance": 82,
+      "hitChance": 80,
       "video": "kick.mp4"
     },
     "D+L": {
@@ -322,7 +322,7 @@
     "W+K": {
       "name": "Mercury Fortification",
       "type": "UTILITY",
-      "chiCost": 3,
+      "chiCost": 2,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "mercury_guard.mp4",
@@ -428,7 +428,7 @@
       "grantsAirborne": 2,
       "buff": {
         "id": "airborne_boost",
-        "label": "AIR (+15% ATK / +20% EVS)",
+        "label": "AIR (+15% ATK / +30% EVS)",
         "type": "speed",
         "duration": 2
       }
@@ -444,8 +444,8 @@
         "id": "inca_blessing",
         "label": "INCA BLESSING (+200 LP/RND)",
         "type": "heal",
-        "duration": 3,
-        "lpRegen": 100,
+        "duration": 4,
+        "lpRegen": 150,
         "cancelOnLpDamage": true
       }
     },
@@ -458,7 +458,7 @@
       "video": "gigi_focus.mp4",
       "buff": {
         "id": "gigi_focus",
-        "label": "GIGI FOCUS (+25% EVS)",
+        "label": "GIGI FOCUS (+30% EVS)",
         "type": "speed",
         "duration": 3
       }
@@ -522,7 +522,7 @@
       "name": "Jaguar Shock",
       "type": "SPECIAL",
       "chiCost": 5,
-      "baseDamage": 540,
+      "baseDamage": 560,
       "hitChance": 84,
       "video": "jaguar_shock.mp4",
       "debuff": {
@@ -538,8 +538,8 @@
       "name": "Wild Tackle",
       "type": "SPECIAL",
       "chiCost": 7,
-      "baseDamage": 850,
-      "hitChance": 82,
+      "baseDamage": 880,
+      "hitChance": 80,
       "video": "wild_tackle.mp4"
     },
     "S+I": {
