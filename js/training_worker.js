@@ -12,6 +12,14 @@ const CACHE_TAG = BUILD + "-" + PATCH;
 const EXPECTED_SCHEMA =
   "kf-state256-action17-v2-charge1-reset1";
 
+const MIXED_CPU_SEQUENCE = [
+  "easy",
+  "master",
+  "balanced",
+  "soul"
+];
+const MIXED_ROUND_SPAN = 3;
+
 importScripts(...[
   "common.js",
   "combat_core.js",
@@ -158,7 +166,11 @@ function validateJob(job) {
     throw new Error("Invalid opponent controller.");
   }
 
-  if (
+  if (Number.isFinite(job.guidePct)) {
+    if (job.guidePct < 0 || job.guidePct > 100) {
+      throw new Error("Guidance % must be from 0 to 100.");
+    }
+  } else if (
     !Number.isFinite(job.guideHoldPct) ||
     !Number.isFinite(job.guideZeroPct) ||
     job.guideHoldPct < 0 ||
@@ -389,7 +401,7 @@ async function run(job) {
       ? "RIDER with reverse-matchup active checkpoint"
       : "SOUL fallback; reverse-matchup checkpoint unavailable"
     : job.mode === "mixed"
-      ? "Uniform random legal non-idle moves"
+      ? "MIXED cycle (3 NOVICE -> 3 MASTER -> 3 BALANCED -> 3 SOUL)"
       : job.mode;
 
   function checkpoint() {
@@ -470,6 +482,9 @@ async function run(job) {
       loadedWeightsID,
 
       teacher: training ? job.teacher : null,
+      guidePct: Number.isFinite(job.guidePct)
+        ? job.guidePct
+        : null,
       guideProbability,
       imitationCoefficient: imitation,
       epsilon,
@@ -507,9 +522,28 @@ async function run(job) {
     };
   }
 
+  const fullMixedCycleLength =
+    MIXED_ROUND_SPAN * MIXED_CPU_SEQUENCE.length;
+
   for (let i = 0; i < job.matches && !cancelled; i++) {
     const pair = Math.floor(i / 2);
-    const learnerSlot = i % 2 === 0 ? "p1" : "p2";
+
+    // Flip slot parity every full 12-match mixed cycle so each CPU tier
+    // gets balanced P1 and P2 games across cycles.
+    const mixedCycleIndex =
+      training && job.mode === "mixed"
+        ? Math.floor(i / fullMixedCycleLength)
+        : 0;
+
+    const learnerSlot =
+      (i + mixedCycleIndex) % 2 === 0 ? "p1" : "p2";
+
+    const matchOpponentMode = job.mode === "mixed"
+      ? MIXED_CPU_SEQUENCE[
+          Math.floor(i / MIXED_ROUND_SPAN) %
+          MIXED_CPU_SEQUENCE.length
+        ]
+      : job.mode;
 
     const matchSeed = KF.hash(
       seed,
@@ -533,7 +567,9 @@ async function run(job) {
           initialEpsilonBase * (1 - progress / 100 * 0.8)
         );
       } else {
-        if (progress < job.guideHoldPct) {
+        if (Number.isFinite(job.guidePct)) {
+          guideProbability = job.guidePct / 100;
+        } else if (progress < job.guideHoldPct) {
           guideProbability = 1;
         } else if (
           progress < job.guideZeroPct &&
@@ -592,7 +628,7 @@ async function run(job) {
       learnerId: job.learner,
       opponent: opponentRider,
 
-      opponentMode: job.mode,
+      opponentMode: matchOpponentMode,
       opponentNet,
 
       seed: matchSeed,
@@ -697,8 +733,16 @@ async function run(job) {
 
     if (recent.length > 30) recent.shift();
 
+    const matchOpponentLabel = job.mode === "mixed"
+      ? `mixed:${
+          matchOpponentMode === "easy"
+            ? "novice"
+            : matchOpponentMode
+        }`
+      : effectiveOpponent;
+
     const label =
-      `${job.opponent} / ${effectiveOpponent} / ${learnerSlot}`;
+      `${job.opponent} / ${matchOpponentLabel} / ${learnerSlot}`;
 
     const row = breakdown[label] ||= {
       games: 0,
