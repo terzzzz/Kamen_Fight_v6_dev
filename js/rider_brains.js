@@ -347,9 +347,10 @@
   function fighterValue(player) {
     if (!player) return 0;
     const profile = profiles[player.id] || profiles.ichigo;
+    const maxLp = Math.max(1, player.maxLp || 2500);
 
     let value =
-      2000 * player.lp / player.maxLp +
+      2000 * player.lp / maxLp +
       player.chi * profile.chi -
       player.faintMeter * profile.faint;
 
@@ -358,17 +359,39 @@
     if (player.isFainted) value -= 300;
 
     for (const buff of player.activeBuffs || []) {
-      const harmful = Object.entries(buff.effects || {}).some(
-        ([key, amount]) =>
-          (key === "speed" && amount < 1) ||
-          (key === "accuracy" && amount < 0) ||
-          (key === "evasion" && amount < 0)
-      );
+      if (!(buff.roundsLeft > 0)) continue;
+
+      const effects = buff.effects || {};
+      const lpBleed = Number(buff.lpBleed ?? effects.lpBleed ?? 0);
+      const lpRegen = Number(buff.lpRegen ?? effects.lpRegen ?? 0);
+
+      const harmful =
+        lpBleed > 0 ||
+        Object.entries(effects).some(
+          ([key, amount]) =>
+            (key === "speed" && amount < 1) ||
+            (key === "accuracy" && amount < 0) ||
+            (key === "evasion" && amount < 0) ||
+            (key === "armor" && amount > 1) ||
+            ((key === "attack" || key === "dAttack" || key === "sAttack") && amount < 1)
+        );
+
+      const activeTurns = Math.min(2, buff.roundsLeft);
 
       value +=
         (harmful ? -1 : 1) *
         profile.buff *
-        Math.min(2, buff.roundsLeft);
+        activeTurns;
+
+      if (lpBleed > 0) {
+        value -= 1200 * (lpBleed * activeTurns) / maxLp;
+      }
+
+      if (lpRegen > 0) {
+        const missingLp = Math.max(0, maxLp - player.lp);
+        const effectiveHeal = Math.min(missingLp + 100, lpRegen * activeTurns);
+        value += 1000 * effectiveHeal / maxLp;
+      }
     }
 
     return value;
