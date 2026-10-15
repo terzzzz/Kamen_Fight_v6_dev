@@ -114,9 +114,9 @@
  
     const searchDifficulty = rider ? "soul" : difficulty;
 
-    // Allocate 800 ms time budget for RIDER live search (or use custom context value if provided)
+    // Allocate 100 ms time budget for RIDER live search (or use custom context value if provided)
     const timeBudgetMs = rider
-      ? (context.timeBudgetMs || context.timeLimitMs || context.maxTimeMs || 800)
+      ? (context.timeBudgetMs || context.timeLimitMs || context.maxTimeMs || 100)
       : (context.timeBudgetMs || context.timeLimitMs || context.maxTimeMs);
 
     const searchContext = {
