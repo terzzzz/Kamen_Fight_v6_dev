@@ -96,6 +96,7 @@
 
     const rider = difficulty === "rider";
     const isTeacher = Boolean(context.isTeacher);
+    const isTraining = Boolean(context.isTraining);
 
     if (rider && net) {
       spec = spec || g.SoulEnv.makeSpec();
@@ -111,13 +112,14 @@
         )
       : null;
 
- 
     const searchDifficulty = rider ? "soul" : difficulty;
 
-    // Allocate 100 ms time budget for RIDER live search (or use custom context value if provided)
-    const timeBudgetMs = rider
-      ? (context.timeBudgetMs || context.timeLimitMs || context.maxTimeMs || 100)
-      : (context.timeBudgetMs || context.timeLimitMs || context.maxTimeMs);
+    // Allocate 100 ms extended thinking budget for live/evaluated RIDER search
+    const customBudget =
+      context.timeBudgetMs ?? context.timeLimitMs ?? context.maxTimeMs;
+    const timeBudgetMs = rider && !isTraining
+      ? (Number.isFinite(customBudget) && customBudget > 0 ? customBudget : 100)
+      : (Number.isFinite(customBudget) && customBudget > 0 ? customBudget : 0);
 
     const searchContext = {
       ...context,
@@ -128,7 +130,7 @@
       evaluator,
       isRider: rider,
       isTeacher,
-      isTraining: Boolean(context.isTraining),
+      isTraining,
       timeBudgetMs,
       timeLimitMs: timeBudgetMs,
       maxTimeMs: timeBudgetMs
