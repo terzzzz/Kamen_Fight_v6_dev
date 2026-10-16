@@ -2,7 +2,7 @@
  * Kamen Fight
  * Neural-Guided Expectimax & Monte Carlo Horizon Search
  *
- * Fix: warmstart-history-loop-fix1 + rider-superset-timebudget-fix3
+ * Fix: warmstart-history-loop-fix1 + rider-superset-timebudget-fix3 + ai-vs-s-doomed-fix4
  */
 (function (g) {
   "use strict";
@@ -46,6 +46,231 @@
     ].slice(-24);
   }
 
+  function isSMove(state, slot, key) {
+    if (!key || typeof key !== "string") {
+      return false;
+    }
+    const move = state?.moves?.[slot]?.[key];
+    return move?.direction === "S" || key.startsWith("S+");
+  }
+
+  function isAGuardMove(state, slot, key) {
+    if (!key || typeof key !== "string") {
+      return false;
+    }
+    const move = state?.moves?.[slot]?.[key];
+    return move?.direction === "A" || key.startsWith("A+");
+  }
+
+  function minSChiCost(state, slot) {
+    const moves = state?.moves?.[slot];
+    if (!moves) {
+      return 4;
+    }
+
+    let minCost = Infinity;
+    for (const [key, move] of Object.entries(moves)) {
+      if (!move) continue;
+      if (move.direction === "S" || key.startsWith("S+")) {
+        const cost = Number(move.chiCost);
+        if (Number.isFinite(cost) && cost > 0 && cost < minCost) {
+          minCost = cost;
+        }
+      }
+    }
+
+    return Number.isFinite(minCost) ? minCost : 4;
+  }
+
+  function canUseMoveKey(state, slot, key) {
+    if (!state || !state[slot] || state[slot].isFainted) {
+      return false;
+    }
+    const move = state.moves?.[slot]?.[key];
+    if (!move) {
+      return false;
+    }
+    const maxChg = C.maxCharge(state[slot], move.direction);
+    if (!Number.isFinite(maxChg) || maxChg < 1) {
+      return false;
+    }
+    return C.isLegal(state, slot, { key, charge: maxChg });
+  }
+
+  function canUseSMove(state, slot) {
+    if (!state || !state[slot] || state[slot].isFainted) {
+      return false;
+    }
+    const moves = state.moves?.[slot];
+    if (!moves) {
+      return false;
+    }
+    for (const key of Object.keys(moves)) {
+      if (isSMove(state, slot, key) && canUseMoveKey(state, slot, key)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /*
+   * Evaluates "Doomed Status" (Resource Lock, Asymmetric S-Threat, and
+   * Faint-Lock Vulnerability) that exists even when LP has not changed yet.
+   */
+  function evaluateDoomedStatus(state, slot) {
+    if (!state || state.winner) {
+      return 0;
+    }
+
+    const enemySlot = C.other(slot);
+    const own = state[slot];
+    const enemy = state[enemySlot];
+
+    if (!own || !enemy) {
+      return 0;
+    }
+
+    const ownChi = Number(own.chi || 0);
+    const enemyChi = Number(enemy.chi || 0);
+    const chiDiff = ownChi - enemyChi;
+
+    const ownMinS = minSChiCost(state, slot);
+    const enemyMinS = minSChiCost(state, enemySlot);
+
+    const ownHasS = !own.isFainted && canUseSMove(state, slot);
+    const enemyHasS = !enemy.isFainted && canUseSMove(state, enemySlot);
+
+    let score = 0;
+
+    // 1. Asymmetric S-Move Capability (One fighter can threaten S while the other cannot)
+    if (ownHasS && !enemyHasS) {
+      score += 22;
+      if (enemyChi <= 2 && ownChi >= ownMinS + 2) {
+        score += 18;
+      }
+    } else if (!ownHasS && enemyHasS) {
+      score -= 22;
+      if (ownChi <= 2 && enemyChi >= enemyMinS + 2) {
+        score -= 18;
+      }
+    }
+
+    // 2. Non-linear Chi Dominance / Resource Starvation ("Doomed Status")
+    if (Math.abs(chiDiff) >= 3) {
+      const sign = chiDiff > 0 ? 1 : -1;
+      const excess = Math.min(12, Math.abs(chiDiff) - 2);
+      score += sign * (excess * 3.5 + excess * excess * 0.35);
+    }
+
+    // Severe Chi lock: one side is nearly empty (<= 1 Chi) while the other is loaded (>= 7 Chi)
+    if (ownChi <= 1 && enemyChi >= 7) {
+      score -= 28;
+    } else if (enemyChi <= 1 && ownChi >= 7) {
+      score += 28;
+    }
+
+    // 3. Faint-Doomed Setup (High faint + low Chi vs armed opponent)
+    const faintThreshold = Math.max(
+      1,
+      Number(g.COMBAT_RULES?.FAINT_THRESHOLD || 100)
+    );
+    const ownFaintRatio = Number(own.faintMeter || 0) / faintThreshold;
+    const enemyFaintRatio = Number(enemy.faintMeter || 0) / faintThreshold;
+
+    if (!own.isFainted && ownFaintRatio >= 0.65 && ownChi <= 3 && enemyChi >= 4) {
+      score -= 32 * ((ownFaintRatio - 0.50) / 0.50);
+    }
+    if (!enemy.isFainted && enemyFaintRatio >= 0.65 && enemyChi <= 3 && ownChi >= 4) {
+      score += 32 * ((enemyFaintRatio - 0.50) / 0.50);
+    }
+
+    return score;
+  }
+
+  /*
+   * Evaluates transition-level tactics between `before` and `after`,
+   * specifically capturing:
+   * - A+I (or A-guard) stuffing an opponent's S move for a guaranteed Chi win
+   * - Throwing an S move into an opponent's A+I (0 LP dealt, losing Chi)
+   * - Zero-LP turns where one player wins a decisive Chi advantage
+   */
+  function evaluateTransitionTactics(
+    before,
+    after,
+    slot,
+    ownAction,
+    opponentAction
+  ) {
+    if (!before || !after || after.winner) {
+      return 0;
+    }
+
+    const enemySlot = C.other(slot);
+    const beforeOwn = before[slot];
+    const afterOwn = after[slot];
+    const beforeEnemy = before[enemySlot];
+    const afterEnemy = after[enemySlot];
+
+    if (!beforeOwn || !afterOwn || !beforeEnemy || !afterEnemy) {
+      return 0;
+    }
+
+    const ownLpDelta = afterOwn.lp - beforeOwn.lp;
+    const enemyLpDelta = afterEnemy.lp - beforeEnemy.lp;
+    const ownChiDelta = afterOwn.chi - beforeOwn.chi;
+    const enemyChiDelta = afterEnemy.chi - beforeEnemy.chi;
+    const netChiDelta = ownChiDelta - enemyChiDelta;
+
+    const ownKey = String(ownAction?.key || "");
+    const enemyKey = String(opponentAction?.key || "");
+
+    const ownIsAI = ownKey === "A+I";
+    const enemyIsAI = enemyKey === "A+I";
+    const ownIsAGuard = isAGuardMove(before, slot, ownKey);
+    const enemyIsAGuard = isAGuardMove(before, enemySlot, enemyKey);
+    const ownIsS = isSMove(before, slot, ownKey);
+    const enemyIsS = isSMove(before, enemySlot, enemyKey);
+
+    let tacticalDelta = 0;
+
+    // Case 1: We used A+I (or A-guard) against opponent's S move and won Chi without losing LP
+    if (
+      (ownIsAI || ownIsAGuard) &&
+      enemyIsS &&
+      ownLpDelta >= 0 &&
+      netChiDelta > 0
+    ) {
+      tacticalDelta += (ownIsAI ? 44 : 28) + 12 * netChiDelta;
+
+      const enemyMinS = minSChiCost(before, enemySlot);
+      if (beforeEnemy.chi >= enemyMinS && afterEnemy.chi < enemyMinS) {
+        tacticalDelta += 26;
+      }
+    }
+
+    // Case 2: We used an S move into opponent's A+I (or A-guard), dealt 0 LP damage, and lost Chi
+    if (
+      ownIsS &&
+      (enemyIsAI || enemyIsAGuard) &&
+      enemyLpDelta >= 0 &&
+      netChiDelta < 0
+    ) {
+      tacticalDelta -= (enemyIsAI ? 50 : 32) + 14 * Math.abs(netChiDelta);
+
+      const ownMinS = minSChiCost(before, slot);
+      if (beforeOwn.chi >= ownMinS && afterOwn.chi < ownMinS) {
+        tacticalDelta -= 30;
+      }
+    }
+
+    // Case 3: General Zero-LP turn with a clear Chi winner
+    if (ownLpDelta === 0 && enemyLpDelta === 0 && Math.abs(netChiDelta) >= 1) {
+      tacticalDelta += 6.5 * netChiDelta;
+    }
+
+    return tacticalDelta;
+  }
+
   let evaluatorWarningShown = false;
 
   function evaluatePosition(
@@ -54,17 +279,19 @@
     history,
     evaluator
   ) {
+    let baseScore;
+
     if (typeof evaluator === "function") {
       try {
         const value = evaluator(state, slot, history);
 
         if (Number.isFinite(value)) {
-          return value;
+          baseScore = value;
+        } else {
+          throw new Error(
+            "Evaluator returned a non-finite score."
+          );
         }
-
-        throw new Error(
-          "Evaluator returned a non-finite score."
-        );
       } catch (error) {
         if (!evaluatorWarningShown) {
           evaluatorWarningShown = true;
@@ -77,7 +304,11 @@
       }
     }
 
-    return B.evaluate(state, slot);
+    if (baseScore === undefined) {
+      baseScore = B.evaluate(state, slot);
+    }
+
+    return baseScore + evaluateDoomedStatus(state, slot);
   }
 
   function actionId(action) {
@@ -110,7 +341,7 @@
     const chosenIds = new Set(chosen.map(row => actionId(row.action)));
     const seenKeys = new Set(chosen.map(row => row.action.key));
 
-    // First priority for extra slots: top moves advised by the Neural Matrix
+    // First priority for extra slots: top moves advised by the Neural Matrix / tactical counters
     if (Array.isArray(advisedKeys)) {
       for (const advisedKey of advisedKeys) {
         if (chosen.length >= limit) break;
@@ -188,18 +419,73 @@
       rows.length - 1
     );
 
-    return rows[safeIndex];
+    const bestRow = rows[0];
+    const candidateRow = rows[safeIndex];
+
+    // Never blunder into a significantly worse or doomed move when sampling ranks
+    if (
+      bestRow &&
+      candidateRow &&
+      Number.isFinite(bestRow.score) &&
+      Number.isFinite(candidateRow.score) &&
+      bestRow.score - candidateRow.score > 18
+    ) {
+      return bestRow;
+    }
+
+    return candidateRow;
   }
 
   /*
-   * Model move usage, attack-button habits (J/K/I/L), and A-guard habits
-   * from recent history.
+   * Model move usage, attack-button habits (J/K/I/L), direction habits (A/D/S/W),
+   * A+I usage, and A+I vs S trap habits from recent history.
    */
   function observations(history, slot) {
     const counts = {};
     const charges = [];
     const buttonCounts = { J: 0, K: 0, I: 0, L: 0 };
+    const dirCounts = { A: 0, D: 0, S: 0, W: 0 };
+    const otherSlot = C.other(slot);
+
     let guardWeight = 0;
+    let aIWeight = 0;
+    let aIVsSWeight = 0;
+    let aIConsecutive = 0;
+    let streakBroken = false;
+    let recentTurns = 0;
+    let recentAICount = 0;
+    let recentSCount = 0;
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const turn = history[i];
+
+      if (turn.fainted && turn.fainted[slot]) {
+        continue;
+      }
+
+      const action = turn[slot] || turn.actions?.[slot];
+      if (!action) {
+        continue;
+      }
+
+      const key = String(action.key || "");
+      if (!streakBroken) {
+        if (key === "A+I") {
+          aIConsecutive++;
+        } else if (key !== "DO_NOTHING") {
+          streakBroken = true;
+        }
+      }
+
+      if (recentTurns < 5) {
+        recentTurns++;
+        if (key === "A+I") {
+          recentAICount++;
+        } else if (key.startsWith("S+")) {
+          recentSCount++;
+        }
+      }
+    }
 
     for (let i = 0; i < history.length; i++) {
       const turn = history[i];
@@ -208,7 +494,8 @@
         continue;
       }
 
-      if (!turn[slot]) {
+      const action = turn[slot] || turn.actions?.[slot];
+      if (!action) {
         continue;
       }
 
@@ -217,13 +504,24 @@
         history.length - 1 - i
       );
 
-      const action = turn[slot];
       const key = String(action.key || "");
+      const otherAction = turn[otherSlot] || turn.actions?.[otherSlot];
+      const otherKey = String(otherAction?.key || "");
 
       counts[key] = (counts[key] || 0) + weight;
 
+      if (key === "A+I") {
+        aIWeight += weight;
+        if (otherKey.startsWith("S+")) {
+          aIVsSWeight += weight * 1.5;
+        }
+      }
+
       if (key.includes("+")) {
         const [dir, btn] = key.split("+");
+        if (Object.prototype.hasOwnProperty.call(dirCounts, dir)) {
+          dirCounts[dir] += weight;
+        }
         if (dir === "A") {
           guardWeight += weight;
         } else if (
@@ -247,13 +545,27 @@
       }
     }
 
-    return { counts, charges, buttonCounts, guardWeight };
+    const recentAIMoveRate = recentTurns > 0 ? recentAICount / recentTurns : 0;
+    const recentSMoveRate = recentTurns > 0 ? recentSCount / recentTurns : 0;
+
+    return {
+      counts,
+      charges,
+      buttonCounts,
+      dirCounts,
+      guardWeight,
+      aIWeight,
+      aIVsSWeight,
+      aIConsecutive,
+      recentAIMoveRate,
+      recentSMoveRate
+    };
   }
 
   /*
    * Build an action probability distribution from:
    * - RiderBrains tactical priors
-   * - Observed move, button, and guard tendencies
+   * - Observed move, button, direction, and A+I vs S tendencies
    * - Current legal actions
    */
   function policy(
@@ -266,9 +578,17 @@
   ) {
     const otherSlot = C.other(slot);
     const observed = observations(history || [], slot);
-    const otherObserved = counterRead
-      ? observations(history || [], otherSlot)
-      : null;
+    const otherObserved = observations(history || [], otherSlot);
+
+    const isSmartTier =
+      counterRead ||
+      difficulty === "master" ||
+      difficulty === "soul" ||
+      difficulty === "rider";
+
+    const ownCanUseS = canUseSMove(state, slot);
+    const otherCanUseS = canUseSMove(state, otherSlot);
+    const otherCanUseAI = canUseMoveKey(state, otherSlot, "A+I");
 
     const chargeChoices = [
       ...K.levels.master.charges
@@ -303,12 +623,16 @@
       ? tree.preferred
       : [];
 
-    const otherTree = counterRead
+    const otherTree = isSmartTier
       ? B.intent(state, otherSlot, "master") || {}
       : null;
     const otherPreferred = Array.isArray(otherTree?.preferred)
       ? otherTree.preferred
       : [];
+
+    const otherPrefersS = otherPreferred.some(prefKey =>
+      isSMove(state, otherSlot, prefKey) && canUseMoveKey(state, otherSlot, prefKey)
+    );
 
     const entries = [];
 
@@ -331,28 +655,90 @@
       }
 
       /*
-       * Evidence-based counter-read awareness for RIDER:
-       * Only boost opponent parry likelihood when the opponent has actually
-       * shown A-guard usage in history or when we have heavily spammed a single button.
+       * Tactical A+I vs S and counter-read awareness for Master / Soul / Rider:
+       * 1. Recognize when A+I is a guaranteed Chi win against an opponent capable of S.
+       * 2. Accurately model a human opponent who uses A+I when we have S available.
+       * 3. Avoid spamming S into an opponent's A+I trap during rollouts, favoring D/W mixups.
        */
-      if (counterRead && move) {
-        if (move.guardKind === "matching" && move.guardButton) {
-          const btn = move.guardButton;
-          const ourButtonHabit = otherObserved?.buttonCounts?.[btn] || 0;
-          const ourTelegraphedPreferred = otherPreferred.some(prefKey => {
-            const pm = state.moves?.[otherSlot]?.[prefKey];
-            return pm?.offensive && pm.button === btn && pm.chiCost <= state[otherSlot].chi;
-          });
+      if (isSmartTier && move) {
+        const isKeyAI = key === "A+I";
+        const isKeyS = isSMove(state, slot, key);
 
-          let parryLikelihood = 1.0 + 0.25 * Math.max(0, ourButtonHabit - 0.8) + 0.75 * observed.guardWeight;
-          if (ourTelegraphedPreferred && state[otherSlot].chi >= 5 && observed.guardWeight > 0.25) {
-            parryLikelihood += 0.35;
+        if (isKeyAI) {
+          if (otherCanUseS) {
+            // Boost A+I when the opponent can use S moves
+            const sThreatLevel =
+              1.0 +
+              (otherPrefersS ? 0.65 : 0.25) +
+              0.45 * (otherObserved.dirCounts.S || 0) +
+              1.20 * (otherObserved.recentSMoveRate || 0);
+
+            keyWeight = Math.max(keyWeight, 2.8) * (1.45 * sThreatLevel);
           }
-          keyWeight *= parryLikelihood;
-        } else if (move.offensive && move.button) {
-          const btnHabit = observed.buttonCounts[move.button] || 0;
-          if (btnHabit > 1.0) {
-            keyWeight *= 1 + 0.20 * (btnHabit - 1.0);
+
+          // When modeling the opponent (!rolloutSelf), strongly reflect observed A+I habits
+          if (!rolloutSelf && (observed.aIWeight > 0 || observed.aIConsecutive > 0)) {
+            const habitMultiplier =
+              1.0 +
+              1.8 * observed.aIWeight +
+              1.6 * observed.aIVsSWeight +
+              1.5 * observed.aIConsecutive;
+
+            const habitFloor = ownCanUseS
+              ? 3.5 * (observed.aIWeight + observed.aIConsecutive)
+              : 1.5 * observed.aIWeight;
+
+            keyWeight = Math.max(keyWeight * habitMultiplier, keyWeight + habitFloor);
+          }
+        } else if (isKeyS) {
+          // If modeling opponent who frequently uses S, reflect their S habit so AI counters with A+I
+          if (!rolloutSelf && observed.dirCounts.S > 0.5) {
+            keyWeight *= 1.0 + 0.35 * Math.min(4, observed.dirCounts.S);
+          }
+
+          // If opponent has A+I available and is showing A+I usage, dampen blind S usage
+          if (
+            otherCanUseAI &&
+            (otherObserved.aIWeight > 0.25 || otherObserved.aIConsecutive >= 1)
+          ) {
+            const trapDampener =
+              1.0 +
+              1.35 * otherObserved.aIWeight +
+              1.25 * otherObserved.aIVsSWeight +
+              1.10 * otherObserved.aIConsecutive;
+
+            keyWeight /= trapDampener;
+          }
+        } else if (
+          move.offensive &&
+          (move.direction === "D" || move.direction === "W") &&
+          ownCanUseS &&
+          otherCanUseAI &&
+          (otherObserved.aIWeight > 0.30 || otherObserved.aIConsecutive >= 1)
+        ) {
+          // Bait / punish opponent's A+I habit with D or W offensive moves instead of feeding S into A+I
+          keyWeight *= 1.25 + 0.35 * Math.min(3, otherObserved.aIWeight + otherObserved.aIConsecutive);
+        }
+
+        if (counterRead) {
+          if (move.guardKind === "matching" && move.guardButton) {
+            const btn = move.guardButton;
+            const ourButtonHabit = otherObserved?.buttonCounts?.[btn] || 0;
+            const ourTelegraphedPreferred = otherPreferred.some(prefKey => {
+              const pm = state.moves?.[otherSlot]?.[prefKey];
+              return pm?.offensive && pm.button === btn && pm.chiCost <= state[otherSlot].chi;
+            });
+
+            let parryLikelihood = 1.0 + 0.25 * Math.max(0, ourButtonHabit - 0.8) + 0.75 * observed.guardWeight;
+            if (ourTelegraphedPreferred && state[otherSlot].chi >= 5 && observed.guardWeight > 0.25) {
+              parryLikelihood += 0.35;
+            }
+            keyWeight *= parryLikelihood;
+          } else if (move.offensive && move.button) {
+            const btnHabit = observed.buttonCounts[move.button] || 0;
+            if (btnHabit > 1.0) {
+              keyWeight *= 1 + 0.20 * (btnHabit - 1.0);
+            }
           }
         }
       }
@@ -448,11 +834,20 @@
       (sum, result) =>
         sum +
         result.probability *
-        evaluatePosition(
-          result.state,
-          slot,
-          nextHistory,
-          evaluator
+        (
+          evaluatePosition(
+            result.state,
+            slot,
+            nextHistory,
+            evaluator
+          ) +
+          evaluateTransitionTactics(
+            state,
+            result.state,
+            slot,
+            ownAction,
+            opponentAction
+          )
         ),
       0
     );
@@ -500,6 +895,12 @@
       context.difficulty
     );
 
+    const isSmartDifficulty =
+      isRider ||
+      difficulty === "master" ||
+      difficulty === "soul" ||
+      difficulty === "rider";
+
     const settings = {
       ...K.levels[difficulty]
     };
@@ -544,7 +945,7 @@
     const chargeChoices = [...settings.charges];
 
     for (const turn of history) {
-      const observed = turn[opponentSlot];
+      const observed = turn[opponentSlot] || turn.actions?.[opponentSlot];
 
       if (
         observed &&
@@ -560,17 +961,23 @@
       }
     }
 
-    let ownActions = C.actions(
+    const allOwnActions = C.actions(
       state,
       slot,
       [...new Set(chargeChoices)]
     );
 
+    let ownActions = allOwnActions;
+
+    const enemyObserved = observations(history, opponentSlot);
+    const enemyCanUseS = canUseSMove(state, opponentSlot);
+    const ownCanUseS = canUseSMove(state, slot);
+
     if (
       Array.isArray(candidates) &&
       candidates.length > 0
     ) {
-      const filtered = ownActions.filter(action =>
+      const filtered = allOwnActions.filter(action =>
         candidates.includes(action.key) ||
         candidates.includes(action) ||
         candidates.some(candidate =>
@@ -582,28 +989,77 @@
 
       if (filtered.length > 0) {
         ownActions = filtered;
+
+        // Never let candidate filtering blind the AI to A+I when opponent can use S,
+        // or force only S moves when the opponent is actively trapping with A+I.
+        if (isSmartDifficulty) {
+          const existingIds = new Set(ownActions.map(actionId));
+
+          if (enemyCanUseS) {
+            for (const act of allOwnActions) {
+              if (act.key === "A+I" && !existingIds.has(actionId(act))) {
+                ownActions.push(act);
+                existingIds.add(actionId(act));
+              }
+            }
+          }
+
+          if (enemyObserved.aIWeight > 0.30 || enemyObserved.aIConsecutive >= 1) {
+            for (const act of allOwnActions) {
+              const mv = state.moves?.[slot]?.[act.key];
+              if (
+                mv?.offensive &&
+                (mv.direction === "D" || mv.direction === "W") &&
+                !existingIds.has(actionId(act))
+              ) {
+                ownActions.push(act);
+                existingIds.add(actionId(act));
+              }
+            }
+          }
+        }
       }
     }
 
-    // Model the opponent; enable evidence-based counter-reading when RIDER is active.
+    // Model the opponent; enable evidence-based counter-reading on Master, Soul, and Rider.
     const opponentPolicy = policy(
       state,
       opponentSlot,
       history,
       "master",
       false,
-      usingNeural
+      isSmartDifficulty
     );
+
+    let enemySProb = 0;
+    let enemyAIProb = 0;
+
+    for (const entry of opponentPolicy) {
+      const k = entry.action.key;
+      if (k === "A+I") {
+        enemyAIProb += entry.probability;
+      } else if (isSMove(state, opponentSlot, k)) {
+        enemySProb += entry.probability;
+      }
+    }
 
     const rootNeuralBonuses =
       usingNeural && typeof evaluator.actionBonuses === "function"
         ? evaluator.actionBonuses(state, slot, history)
         : null;
 
-    const advisedKeys =
+    const rawAdvisedKeys =
       usingNeural && typeof evaluator.advisedMoves === "function"
         ? evaluator.advisedMoves(state, slot, history)
-        : null;
+        : [];
+
+    const advisedKeys = Array.isArray(rawAdvisedKeys)
+      ? [...rawAdvisedKeys]
+      : [];
+
+    if (isSmartDifficulty && enemyCanUseS && !advisedKeys.includes("A+I")) {
+      advisedKeys.unshift("A+I");
+    }
 
     const rows = [];
 
@@ -633,6 +1089,60 @@
           ? rootNeuralBonuses[action.key]
           : 0;
 
+      let baseMoveBonus = B.bonus(
+        state,
+        slot,
+        action,
+        difficulty
+      );
+
+      let tacticalRootBonus = 0;
+
+      if (isSmartDifficulty) {
+        const ownMove = state.moves?.[slot]?.[action.key];
+
+        if (action.key === "A+I" && enemyCanUseS) {
+          // Boost A+I when opponent has S available and likely to use it
+          tacticalRootBonus +=
+            36 * enemySProb +
+            8 * Math.min(2.5, enemyObserved.dirCounts.S) +
+            (state[opponentSlot].chi >= minSChiCost(state, opponentSlot) + 2 ? 10 : 0);
+        } else if (isSMove(state, slot, action.key)) {
+          // If opponent is threatening or spamming A+I, suppress unconditional S bonus
+          if (
+            enemyAIProb >= 0.16 ||
+            enemyObserved.aIWeight >= 0.35 ||
+            enemyObserved.aIConsecutive >= 1
+          ) {
+            const trapRisk = Math.min(
+              1,
+              enemyAIProb * 1.6 +
+              0.30 * enemyObserved.aIWeight +
+              0.35 * enemyObserved.aIConsecutive
+            );
+
+            if (baseMoveBonus > 0) {
+              baseMoveBonus *= Math.max(0, 1 - trapRisk);
+            }
+
+            tacticalRootBonus -=
+              32 * enemyAIProb +
+              12 * enemyObserved.aIConsecutive +
+              10 * Math.min(3, enemyObserved.aIVsSWeight);
+          }
+        } else if (
+          ownMove?.offensive &&
+          (ownMove.direction === "D" || ownMove.direction === "W") &&
+          ownCanUseS &&
+          (enemyAIProb >= 0.20 || enemyObserved.aIConsecutive >= 1)
+        ) {
+          // Reward baiting / punishing an opponent's A+I trap with non-S attacks
+          tacticalRootBonus +=
+            16 * enemyAIProb +
+            8 * Math.min(2, enemyObserved.aIConsecutive);
+        }
+      }
+
       rows.push({
         action,
         expected,
@@ -640,12 +1150,8 @@
         score:
           (1 - settings.risk) * expected +
           settings.risk * worst +
-          B.bonus(
-            state,
-            slot,
-            action,
-            difficulty
-          ) +
+          baseMoveBonus +
+          tacticalRootBonus +
           neuralBonus
       });
     }
@@ -667,9 +1173,21 @@
       rows.length > 1 &&
       !state.winner
     ) {
-      finalists = isRider
-        ? selectDiverseFinalists(rows, settings.finalists, advisedKeys)
-        : rows.slice(0, settings.finalists).map(row => ({ ...row }));
+      if (isRider) {
+        finalists = selectDiverseFinalists(rows, settings.finalists, advisedKeys);
+      } else {
+        finalists = rows.slice(0, settings.finalists).map(row => ({ ...row }));
+        if (
+          isSmartDifficulty &&
+          enemyCanUseS &&
+          !finalists.some(r => r.action.key === "A+I")
+        ) {
+          const bestAIRow = rows.find(r => r.action.key === "A+I");
+          if (bestAIRow && finalists.length > 0) {
+            finalists[finalists.length - 1] = { ...bestAIRow };
+          }
+        }
+      }
 
       const continuationSums = new Float64Array(finalists.length);
 
@@ -731,6 +1249,8 @@
             futureHistory
           );
 
+          let rolloutTacticalDelta = 0;
+
           for (
             let depth = 1;
             depth < settings.horizon && !future.winner;
@@ -742,7 +1262,7 @@
               futureHistory,
               difficulty,
               true,
-              false
+              isSmartDifficulty
             );
 
             const enemyPolicy = policy(
@@ -751,7 +1271,7 @@
               futureHistory,
               "master",
               false,
-              usingNeural
+              isSmartDifficulty
             );
 
             const ownNext = sample(
@@ -788,6 +1308,16 @@
             );
 
             future = nextResult.state;
+
+            rolloutTacticalDelta +=
+              Math.pow(0.85, depth) *
+              evaluateTransitionTactics(
+                beforeFuture,
+                future,
+                slot,
+                ownNext,
+                enemyNext
+              );
           }
 
           continuationSums[fIdx] +=
@@ -795,7 +1325,9 @@
               future,
               slot,
               futureHistory
-            ) - firstValue;
+            ) -
+            firstValue +
+            rolloutTacticalDelta;
         }
 
         completedRollouts = sampleIndex + 1;
