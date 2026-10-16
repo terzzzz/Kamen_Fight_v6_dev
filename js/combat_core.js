@@ -45,130 +45,44 @@
   });
 
   /*
-   * Default status definitions.
-   *
-   * Explicit buff.effects values override these defaults.
-   * Explicit buff.lpRegen / buff.lpBleed values override the corresponding
-   * periodic amounts during normalization.
+   * Legacy fallback status definitions (used only if moves.json omits buff.effects).
    */
   const EFFECTS = {
-    typhoon_speed: {
-      speed: 1.25
-    },
-
-    charge_speed: {
-      speed: 1.25
-    },
-
-    focus: {
-      sAttack: 1.20
-    },
-
-    v3_focus: {
-      sAttack: 1.20
-    },
-
-    red_shutter: {
-      speed: 1.25,
-      armor: 0.85
-    },
-
-    power_focus: {
-      dAttack: 1.30
-    },
-
-    double_typhoon_speed: {
-      speed: 1.20
-    },
-
-    red_lamp_boost: {
-      dAttack: 1.15,
-      sAttack: 1.15
-    },
-
-    accuracy_focus: {
-      accuracy: 20
-    },
-
-    arm_calibration: {
-      accuracy: 20
-    },
-
-    rope_bind: {
-      speed: 0.70
-    },
-
-    mercury_atk: {
-      dAttack: 1.15,
-      sAttack: 1.15
-    },
-
-    mercury_def: {
-      armor: 0.80
-    },
-
-    airborne_evasion: {
-      evasion: 0.20
-    },
-
-    inca_blessing: {
-      lpRegen: 100
-    },
-
-    gigi_focus: {
-      evasion: 0.25
-    },
-
-    bleeding: {
-      lpBleed: 150,
-      refreshable: true
-    },
-
-    lprecover: {
-      lpRegen: 100
-    },
-
-    lpRecovery: {
-      lpRegen: 100
-    }
+    typhoon_speed: { speed: 1.25 },
+    charge_speed: { speed: 1.25 },
+    focus: { sAttack: 1.20 },
+    v3_focus: { sAttack: 1.20 },
+    red_shutter: { speed: 1.25, armor: 0.85 },
+    power_focus: { dAttack: 1.50 },
+    double_typhoon_speed: { speed: 1.20 },
+    red_lamp_boost: { dAttack: 1.20, sAttack: 1.20 },
+    accuracy_focus: { accuracy: 20 },
+    arm_calibration: { accuracy: 20 },
+    rope_bind: { speed: 0.70 },
+    mercury_atk: { dAttack: 1.18, sAttack: 1.18 },
+    mercury_def: { armor: 0.75 },
+    airborne_evasion: { evasion: 0.20 },
+    inca_blessing: { lpRegen: 200 },
+    gigi_focus: { evasion: 0.30 },
+    bleeding: { lpBleed: 150, refreshable: true },
+    lprecover: { lpRegen: 100 },
+    lpRecovery: { lpRegen: 100 }
   };
 
   /**
    * Resolves a status definition's modifiers.
-   *
-   * Some airborne modifiers depend on the rider using the move.
+   * Reads directly from moves.json `buff.effects` first.
    */
   function effectDefinition(buff, riderId) {
-    if (buff.effects) {
+    if (buff.effects && typeof buff.effects === "object") {
       return { ...buff.effects };
     }
 
     if (buff.id === "airborne_boost") {
-      if (riderId === "nigo") {
-        return {
-          attack: 1.15,
-          accuracy: 15
-        };
-      }
-
-      if (riderId === "v3") {
-        return {
-          dAttack: 1.15,
-          evasion: 0.15
-        };
-      }
-
-      if (riderId === "x") {
-        return {
-          dAttack: 1.15,
-          evasion: 0.20
-        };
-      }
-
-      return {
-        attack: 1.15,
-        evasion: 0.20
-      };
+      if (riderId === "nigo") return { attack: 1.15, accuracy: 15 };
+      if (riderId === "v3") return { dAttack: 1.15, evasion: 0.15 };
+      if (riderId === "x") return { dAttack: 1.15, evasion: 0.20 };
+      return { attack: 1.15, evasion: 0.20 };
     }
 
     if (!EFFECTS[buff.id]) {
@@ -176,7 +90,6 @@
         `[CombatCore] Missing effect definition for "${buff.id}". ` +
         "Defaulting to empty modifier."
       );
-
       return {};
     }
 
@@ -184,9 +97,76 @@
   }
 
   /**
-   * Normalizes raw buff/debuff data.
-   *
-   * Duration is measured in completed combat turns, not charging ticks.
+   * Automatically builds the UI label suffix from numeric effect modifiers
+   * so moves.json only needs to store the numbers in `effects`.
+   */
+  function formatStatusLabel(rawLabel, id, effects) {
+    const baseTitle = String(rawLabel || id || "STATUS")
+      .replace(/\s*\([^)]*\)\s*$/, "")
+      .trim()
+      .toUpperCase();
+
+    const parts = [];
+    const fmtPct = mult => {
+      const pct = Math.round((mult - 1) * 100);
+      return `${pct >= 0 ? "+" : ""}${pct}%`;
+    };
+
+    if (effects.attack !== undefined && effects.attack !== 1) {
+      parts.push(`${fmtPct(effects.attack)} ATK`);
+    }
+
+    if (
+      effects.dAttack !== undefined &&
+      effects.sAttack !== undefined &&
+      effects.dAttack === effects.sAttack &&
+      effects.dAttack !== 1
+    ) {
+      parts.push(`${fmtPct(effects.dAttack)} D/S ATK`);
+    } else {
+      if (effects.dAttack !== undefined && effects.dAttack !== 1) {
+        parts.push(`${fmtPct(effects.dAttack)} D-ATK`);
+      }
+      if (effects.sAttack !== undefined && effects.sAttack !== 1) {
+        parts.push(`${fmtPct(effects.sAttack)} S-ATK`);
+      }
+    }
+
+    if (effects.speed !== undefined && effects.speed !== 1) {
+      const label = effects.speed < 1 ? "CHG SPEED" : "SPEED";
+      parts.push(`${fmtPct(effects.speed)} ${label}`);
+    }
+
+    if (effects.armor !== undefined && effects.armor !== 1) {
+      const defPct = Math.round((1 - effects.armor) * 100);
+      parts.push(`${defPct >= 0 ? "+" : ""}${defPct}% DEF`);
+    }
+
+    if (effects.accuracy !== undefined && effects.accuracy !== 0) {
+      const acc = Math.round(effects.accuracy);
+      parts.push(`${acc >= 0 ? "+" : ""}${acc}% HIT`);
+    }
+
+    if (effects.evasion !== undefined && effects.evasion !== 0) {
+      const evs = Math.round(effects.evasion * 100);
+      parts.push(`${evs >= 0 ? "+" : ""}${evs}% EVS`);
+    }
+
+    if (effects.lpRegen !== undefined && effects.lpRegen > 0) {
+      parts.push(`+${Math.round(effects.lpRegen)} LP/RND`);
+    }
+
+    if (effects.lpBleed !== undefined && effects.lpBleed > 0) {
+      parts.push(`-${Math.round(effects.lpBleed)} LP/RND`);
+    }
+
+    return parts.length > 0
+      ? `${baseTitle} (${parts.join(" / ")})`
+      : baseTitle;
+  }
+
+  /**
+   * Normalizes raw buff/debuff data and auto-generates `label` from `effects`.
    */
   function normalizeBuff(buff, riderId) {
     if (!buff) return null;
@@ -224,6 +204,7 @@
       ...buff,
       duration,
       effects,
+      label: formatStatusLabel(buff.label, buff.id, effects),
 
       cancelOnLpDamage: Boolean(
         buff.cancelOnLpDamage ??
@@ -266,6 +247,7 @@
           type,
 
           chiCost: Number(source.chiCost ?? 0),
+          chiGain: Number(source.chiGain ?? 0),
           baseDamage: Number(source.baseDamage ?? 0),
           hitChance: Number(source.hitChance ?? 100),
 
@@ -340,9 +322,6 @@
 
   /**
    * Copies mutable fighter state.
-   *
-   * Each active status gets its own effects object so simulations do not
-   * share mutable status modifiers.
    */
   function copyFighter(player) {
     return {
@@ -425,8 +404,6 @@
 
   /**
    * Combines the fighter's active combat modifiers.
-   *
-   * LP bleeding and regeneration are resolved separately, once per turn.
    */
   function modifiers(player) {
     const result = {
@@ -470,216 +447,186 @@
     );
   }
 
-/*
- * Shared decision-clock rules.
- *
- * Inputs are applied at t = 0, 50, 100, ... while t < the deadline.
- * Charge begins at 1% when a direction is selected.
- */
-function decisionLimitMs() {
-  const seconds = Number(
-    g.GAME_CONFIG?.ROUND_TIME_LIMIT ?? 8
-  );
+  function decisionLimitMs() {
+    const seconds = Number(
+      g.GAME_CONFIG?.ROUND_TIME_LIMIT ?? 8
+    );
 
-  if (!Number.isFinite(seconds) || seconds <= 0) {
-    throw new Error("Invalid round decision time.");
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      throw new Error("Invalid round decision time.");
+    }
+
+    return Math.max(CHARGE_STEP_MS, seconds * 1000);
   }
 
-  return Math.max(CHARGE_STEP_MS, seconds * 1000);
-}
+  function cpuReadyAtMs() {
+    const reaction = Number(
+      g.GAME_CONFIG?.CPU_REACTION_MS ?? 250
+    );
 
-function cpuReadyAtMs() {
-  const reaction = Number(
-    g.GAME_CONFIG?.CPU_REACTION_MS ?? 250
-  );
+    if (!Number.isFinite(reaction) || reaction < 0) {
+      throw new Error("Invalid CPU reaction time.");
+    }
 
-  if (!Number.isFinite(reaction) || reaction < 0) {
-    throw new Error("Invalid CPU reaction time.");
+    return Math.ceil(reaction / CHARGE_STEP_MS) *
+      CHARGE_STEP_MS;
   }
 
-  return Math.ceil(reaction / CHARGE_STEP_MS) *
-    CHARGE_STEP_MS;
-}
-
-function lastInputMs() {
-  return (
-    Math.ceil(decisionLimitMs() / CHARGE_STEP_MS) - 1
-  ) * CHARGE_STEP_MS;
-}
-
-function chargePercent(player, direction, elapsedMs) {
-  if (
-    !["W", "A", "S", "D"].includes(direction) ||
-    !Number.isFinite(elapsedMs)
-  ) {
-    throw new Error("Invalid charge-clock input.");
+  function lastInputMs() {
+    return (
+      Math.ceil(decisionLimitMs() / CHARGE_STEP_MS) - 1
+    ) * CHARGE_STEP_MS;
   }
 
-  const duration = chargeMs(player, direction);
+  function chargePercent(player, direction, elapsedMs) {
+    if (
+      !["W", "A", "S", "D"].includes(direction) ||
+      !Number.isFinite(elapsedMs)
+    ) {
+      throw new Error("Invalid charge-clock input.");
+    }
 
-  if (!Number.isFinite(duration) || duration <= 0) {
-    throw new Error("Invalid full-charge duration.");
+    const duration = chargeMs(player, direction);
+
+    if (!Number.isFinite(duration) || duration <= 0) {
+      throw new Error("Invalid full-charge duration.");
+    }
+
+    return K.clamp(
+      Math.floor(
+        100 * Math.max(0, elapsedMs) / duration
+      ),
+      1,
+      100
+    );
   }
 
-  return K.clamp(
-    Math.floor(
-      100 * Math.max(0, elapsedMs) / duration
-    ),
-    1,
-    100
-  );
-}
+  function maxCharge(player, direction, availableMs) {
+    const available = availableMs ??
+      (lastInputMs() - cpuReadyAtMs());
 
-/*
- * Default: maximum charge a CPU can actually confirm using the
- * shared tick clock, after its initial reaction delay.
- *
- * availableMs can also describe a hypothetical charging interval.
- * A negative interval means there is no opportunity to start.
- * Zero milliseconds of charging still permits the initial 1%.
- */
-function maxCharge(player, direction, availableMs) {
-  const available = availableMs ??
-    (lastInputMs() - cpuReadyAtMs());
+    if (!Number.isFinite(available)) {
+      throw new Error("Invalid available charging time.");
+    }
 
-  if (!Number.isFinite(available)) {
-    throw new Error("Invalid available charging time.");
+    if (available < 0) return 0;
+
+    return chargePercent(player, direction, available);
   }
 
-  if (available < 0) return 0;
+  function isLegal(state, slot, action) {
+    if (
+      !action ||
+      typeof action.key !== "string" ||
+      !Number.isFinite(action.charge)
+    ) {
+      return false;
+    }
 
-  return chargePercent(player, direction, available);
-}
+    const player = state?.[slot];
+    const move = state?.moves?.[slot]?.[action.key];
 
-  /**
-   * Checks action legality against current combat state.
-   *
-   * Timing feasibility is handled by the charging environment/planner.
-   */
-function isLegal(state, slot, action) {
-  if (
-    !action ||
-    typeof action.key !== "string" ||
-    !Number.isFinite(action.charge)
-  ) {
-    return false;
+    if (!player || !move) return false;
+
+    if (action.key === "DO_NOTHING") {
+      return action.charge === 0;
+    }
+
+    if (state.winner || player.isFainted) {
+      return false;
+    }
+
+    return (
+      move.chiCost <= player.chi &&
+      action.charge >= 1 &&
+      action.charge <= 100
+    );
   }
 
-  const player = state?.[slot];
-  const move = state?.moves?.[slot]?.[action.key];
+  function normalizeAction(state, slot, action) {
+    if (!isLegal(state, slot, action)) {
+      return {
+        key: "DO_NOTHING",
+        charge: 0
+      };
+    }
 
-  if (!player || !move) return false;
-
-  // One explicit idle action, never sixteen zero-charge moves.
-  if (action.key === "DO_NOTHING") {
-    return action.charge === 0;
-  }
-
-  if (state.winner || player.isFainted) {
-    return false;
-  }
-
-  return (
-    move.chiCost <= player.chi &&
-    action.charge >= 1 &&
-    action.charge <= 100
-  );
-}
-
-  /**
-   * Converts an invalid action into the safe idle fallback.
-   */
-function normalizeAction(state, slot, action) {
-  if (!isLegal(state, slot, action)) {
     return {
-      key: "DO_NOTHING",
-      charge: 0
+      key: action.key,
+      charge: action.key === "DO_NOTHING"
+        ? 0
+        : K.clamp(
+            Math.floor(action.charge),
+            1,
+            100
+          )
     };
   }
 
-  return {
-    key: action.key,
-    charge: action.key === "DO_NOTHING"
-      ? 0
-      : K.clamp(
-          Math.floor(action.charge),
-          1,
-          100
-        )
-  };
-}
-
-  /**
-   * Enumerates available actions at the supplied offensive charge levels.
-   */
-function actions(
-  state,
-  slot,
-  chargeOptions = [1, 35, 60, 90, 100]
-) {
-  if (state.winner || state[slot].isFainted) {
-    return [{
-      key: "DO_NOTHING",
-      charge: 0
-    }];
-  }
-
-  if (!Array.isArray(chargeOptions)) {
-    throw new Error("Charge options must be an array.");
-  }
-
-  const positiveOptions = chargeOptions.filter(
-    value =>
-      Number.isFinite(value) &&
-      value >= 1 &&
-      value <= 100
-  );
-
-  const output = [];
-
-  for (const key of Object.keys(state.moves[slot]).sort()) {
-    const move = state.moves[slot][key];
-
-    if (key === "DO_NOTHING") {
-      output.push({ key, charge: 0 });
-      continue;
+  function actions(
+    state,
+    slot,
+    chargeOptions = [1, 35, 60, 90, 100]
+  ) {
+    if (state.winner || state[slot].isFainted) {
+      return [{
+        key: "DO_NOTHING",
+        charge: 0
+      }];
     }
 
-    if (move.chiCost > state[slot].chi) continue;
+    if (!Array.isArray(chargeOptions)) {
+      throw new Error("Charge options must be an array.");
+    }
 
-    const limit = maxCharge(
-      state[slot],
-      move.direction
+    const positiveOptions = chargeOptions.filter(
+      value =>
+        Number.isFinite(value) &&
+        value >= 1 &&
+        value <= 100
     );
 
-    if (limit < 1) continue;
+    const output = [];
 
-    const choices = move.offensive
-      ? positiveOptions
-      : [100];
+    for (const key of Object.keys(state.moves[slot]).sort()) {
+      const move = state.moves[slot][key];
 
-    const unique = new Set(
-      choices.map(value =>
-        Math.floor(Math.min(limit, value))
-      )
-    );
+      if (key === "DO_NOTHING") {
+        output.push({ key, charge: 0 });
+        continue;
+      }
 
-    for (const charge of unique) {
-      const action = { key, charge };
+      if (move.chiCost > state[slot].chi) continue;
 
-      if (isLegal(state, slot, action)) {
-        output.push(action);
+      const limit = maxCharge(
+        state[slot],
+        move.direction
+      );
+
+      if (limit < 1) continue;
+
+      const choices = move.offensive
+        ? positiveOptions
+        : [100];
+
+      const unique = new Set(
+        choices.map(value =>
+          Math.floor(Math.min(limit, value))
+        )
+      );
+
+      for (const charge of unique) {
+        const action = { key, charge };
+
+        if (isLegal(state, slot, action)) {
+          output.push(action);
+        }
       }
     }
+
+    return output;
   }
 
-  return output;
-}
-
-  /**
-   * Range priority:
-   * projectile > reach/rope/mid-range > melee.
-   */
   function rangePriority(move) {
     const range = String(
       move?.rangeType || "MELEE"
@@ -698,11 +645,6 @@ function actions(
     return 1;
   }
 
-  /**
-   * Positive result: p1 acts first.
-   * Negative result: p2 acts first.
-   * Zero: random tie-break.
-   */
   function comparePriority(state, action1, action2) {
     const m1 = state.moves.p1[action1.key];
     const m2 = state.moves.p2[action2.key];
@@ -756,16 +698,6 @@ function actions(
     return q1 < q2 ? 1 : -1;
   }
 
-  /**
-   * Applies or refreshes one status instance per status ID.
-   *
-   * appliedRound:
-   *    Prevents duration decrement on the application/refresh turn.
-   *
-   * periodicAppliedRound:
-   *    Tracks initial periodic eligibility independently of refreshes.
-   *    Refreshing cannot suppress an already-due periodic payment.
-   */
   function applyBuff(player, definition, round) {
     if (!definition || player.lp <= 0) return;
 
@@ -797,9 +729,6 @@ function actions(
     });
   }
 
-  /**
-   * Reads a nonnegative periodic LP amount.
-   */
   function statusAmount(buff, field) {
     const value = Number(
       buff[field] ??
@@ -812,9 +741,6 @@ function actions(
       : 0;
   }
 
-  /**
-   * A new periodic status first pays on the following combat turn.
-   */
   function periodicStatusIsDue(buff, round) {
     if (!(buff.roundsLeft > 0)) {
       return false;
@@ -828,11 +754,6 @@ function actions(
     return firstApplied < round;
   }
 
-  /**
-   * Removes all statuses cancelled by actual LP damage.
-   *
-   * Returns removed status IDs for optional trace events.
-   */
   function cancelDamageSensitiveStatuses(player) {
     const removed = [];
 
@@ -855,9 +776,6 @@ function actions(
     return removed;
   }
 
-  /**
-   * Shared turn resolver used by both resolve() and distribution().
-   */
   function transition(
     input,
     requested1,
@@ -909,9 +827,6 @@ function actions(
       return choose(p);
     };
 
-    /**
-     * Trace snapshots are independent of subsequent fighter mutations.
-     */
     function emit(event) {
       if (!trace) return;
 
@@ -922,11 +837,6 @@ function actions(
       });
     }
 
-    /**
-     * Applies actual LP damage and immediately cancels fragile statuses.
-     *
-     * A zero-damage block does not cancel recovery.
-     */
     function dealLpDamage(slot, requestedDamage) {
       const player = state[slot];
       const before = player.lp;
@@ -960,14 +870,7 @@ function actions(
       return actualDamage;
     }
 
-    /**
-     * Resolves all periodic LP effects exactly once per combat turn.
-     */
     function resolvePeriodicLpEffects() {
-      /*
-       * Damage taken earlier this turn also cancels a fragile status
-       * that was applied later during the same turn.
-       */
       for (const slot of SLOTS) {
         if (!tookLpDamage[slot]) continue;
 
@@ -984,9 +887,6 @@ function actions(
         }
       }
 
-      /*
-       * Snapshot both fighters' due bleeding before applying either.
-       */
       const bleeding = {
         p1: 0,
         p2: 0
@@ -1011,9 +911,6 @@ function actions(
         }
       }
 
-      /*
-       * Apply both bleeding amounts before determining the winner.
-       */
       for (const slot of SLOTS) {
         if (bleeding[slot] <= 0) continue;
 
@@ -1030,10 +927,6 @@ function actions(
         });
       }
 
-      /*
-       * Bleeding may have cancelled regeneration.
-       * Regeneration never revives a zero-LP fighter.
-       */
       for (const slot of SLOTS) {
         const player = state[slot];
 
@@ -1072,9 +965,6 @@ function actions(
       }
     }
 
-    /**
-     * Adds faint buildup, including the low-CHI vulnerability modifier.
-     */
     function addFaint(slot, amount) {
       const player = state[slot];
 
@@ -1102,9 +992,6 @@ function actions(
       }
     }
 
-    /*
-     * Prepare selected actions and pay guard costs immediately.
-     */
     for (const slot of SLOTS) {
       const action = selected[slot];
       const move = state.moves[slot][action.key];
@@ -1127,9 +1014,6 @@ function actions(
       }
     }
 
-    /*
-     * Determine action order.
-     */
     const priority = comparePriority(
       state,
       selected.p1,
@@ -1147,9 +1031,6 @@ function actions(
       other(first)
     ];
 
-    /*
-     * Resolve both selected actions.
-     */
     for (const slot of order) {
       const targetSlot = other(slot);
 
@@ -1194,7 +1075,7 @@ function actions(
       attacker.chi -= move.chiCost;
 
       /*
-       * Utility moves: buffs, airborne state, instant LP/faint recovery.
+       * Utility moves: buffs, airborne state, instant LP/faint/chi recovery.
        */
       if (!move.offensive) {
         applyBuff(
@@ -1207,6 +1088,13 @@ function actions(
           attacker.airborneTicks = move.grantsAirborne;
           attacker.airborneAppliedRound = state.round;
           attacker.airborneChargePercent = action.charge;
+        }
+
+        if (move.chiGain > 0) {
+          attacker.chi = Math.min(
+            R.MAX_CHI,
+            attacker.chi + move.chiGain
+          );
         }
 
         attacker.lp = Math.min(
@@ -1253,9 +1141,6 @@ function actions(
       let guardReward = 0;
       let outcome = "hit";
 
-      /*
-       * Guard resolution.
-       */
       if (guarding) {
         const matches =
           !move.unblockable &&
@@ -1282,19 +1167,13 @@ function actions(
             damageRatio = strongBlock ? 0.25 : 0.70;
           }
 
-/*
- * Only a zero-CHI matching gamble guard earns CHI.
- *
- * Paid A guards—including omni guards—may still block normally,
- * but never receive the counter-CHI reward.
- */
-const isFreeGambleGuard =
-  defenseMove.guardKind === "matching" &&
-  defenseMove.chiCost === 0;
+          const isFreeGambleGuard =
+            defenseMove.guardKind === "matching" &&
+            defenseMove.chiCost === 0;
 
-guardReward = isFreeGambleGuard
-  ? Math.floor(0.5 * move.chiCost) + 1
-  : 0;
+          guardReward = isFreeGambleGuard
+            ? Math.floor(0.5 * move.chiCost) + 1
+            : 0;
 
           outcome = strongBlock
             ? "block"
@@ -1306,10 +1185,6 @@ guardReward = isFreeGambleGuard
         !defender.isFainted &&
         !idleTarget
       ) {
-        /*
-         * Accuracy and evasion are checked only against active,
-         * non-guarding, non-fainted targets.
-         */
         let evasion = def.evasion;
 
         if (defender.chi < 5) {
@@ -1389,9 +1264,6 @@ guardReward = isFreeGambleGuard
         ? Math.max(1, Math.floor(damage))
         : Math.floor(damage);
 
-      /*
-       * Damage-sensitive statuses are cancelled here when LP is lost.
-       */
       dealLpDamage(targetSlot, damage);
 
       if (guarded) {
@@ -1455,15 +1327,8 @@ guardReward = isFreeGambleGuard
       });
     }
 
-    /*
-     * Periodic LP effects run once after both actions, before duration
-     * expiration and winner determination.
-     */
     resolvePeriodicLpEffects();
 
-    /*
-     * End-of-turn maintenance.
-     */
     for (const slot of SLOTS) {
       const player = state[slot];
 
@@ -1477,10 +1342,6 @@ guardReward = isFreeGambleGuard
           selected[opponentSlot].key
         ];
 
-      /*
-       * A free guard against a non-offensive move adds idle-guard faint
-       * buildup, preserving the existing combat rule.
-       */
       if (
         move.guardKind &&
         move.chiCost === 0 &&
@@ -1492,10 +1353,6 @@ guardReward = isFreeGambleGuard
         );
       }
 
-      /*
-       * A fighter who started this turn fainted finishes recovering now.
-       * A newly fainted fighter remains fainted for the next turn.
-       */
       if (startedFainted[slot]) {
         player.isFainted = false;
         player.faintMeter = 0;
@@ -1509,10 +1366,6 @@ guardReward = isFreeGambleGuard
         );
       }
 
-      /*
-       * Newly applied/refreshed statuses retain their full duration.
-       * Older statuses lose one remaining turn after any due payment.
-       */
       for (const buff of player.activeBuffs) {
         if (buff.appliedRound !== state.round) {
           buff.roundsLeft--;
@@ -1523,9 +1376,6 @@ guardReward = isFreeGambleGuard
         buff => buff.roundsLeft > 0
       );
 
-      /*
-       * Airborne duration follows the same application-turn convention.
-       */
       if (
         player.airborneTicks > 0 &&
         player.airborneAppliedRound !== state.round
@@ -1540,9 +1390,6 @@ guardReward = isFreeGambleGuard
       );
     }
 
-    /*
-     * Determine the winner after both fighters' periodic effects.
-     */
     if (
       state.p1.lp <= 0 &&
       state.p2.lp <= 0
@@ -1557,10 +1404,6 @@ guardReward = isFreeGambleGuard
     } else {
       state.round++;
 
-      /*
-       * Passive CHI is awarded when entering the next turn, unless the
-       * fighter is currently fainted.
-       */
       for (const slot of SLOTS) {
         if (!state[slot].isFainted) {
           state[slot].chi = Math.min(
@@ -1582,11 +1425,6 @@ guardReward = isFreeGambleGuard
     };
   }
 
-  /**
-   * Resolves a complete turn using an explicitly supplied RNG.
-   *
-   * rng() should return a value in [0, 1).
-   */
   function resolve(
     state,
     action1,
@@ -1609,16 +1447,6 @@ guardReward = isFreeGambleGuard
     );
   }
 
-  /**
-   * Enumerates every chance branch for an action pair.
-   *
-   * Each result includes:
-   * - probability
-   * - resulting state
-   *
-   * This uses the same turn resolver as live combat, including periodic
-   * bleeding, recovery, cancellation, faint recovery, and expiration.
-   */
   function distribution(state, action1, action2) {
     const results = [];
 
@@ -1674,11 +1502,6 @@ guardReward = isFreeGambleGuard
     return results;
   }
 
-  /*
-   * Public API.
-   *
-   * Existing exported method names are preserved.
-   */
   g.CombatCore = {
     IDLE,
     compileMoves,
@@ -1695,10 +1518,10 @@ guardReward = isFreeGambleGuard
     resolve,
     distribution,
     CHARGE_STEP_MS,
-decisionLimitMs,
-cpuReadyAtMs,
-lastInputMs,
-chargePercent,
+    decisionLimitMs,
+    cpuReadyAtMs,
+    lastInputMs,
+    chargePercent,
     other
   };
 })(globalThis);
