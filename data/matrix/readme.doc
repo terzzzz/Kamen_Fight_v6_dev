@@ -2,7 +2,7 @@ Trained Matrix:
 
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
-001	 y   n   y   y   n   n	
+001	 y   n   y   y   y   y
 002	 n   n   n   n   n   n						
 003	 n   n   n   n   n   n								
 004	 n   n   n   n   n   n								
@@ -109,6 +109,57 @@ Candidate Evaluation Report: Matchup 001_004 (Ichigo vs Riderman)Build: v5-state
 Direct Net (Easy):   [S: 34.8%] [D: 31.6%] [A: 17.0%] [IDLE: 13.8%] [W: 2.8%]
 RIDER Search (Soul): [S: 49.5%] [D: 39.9%] [IDLE: 7.7%]  [A: 2.7%]  [W: 0.2%]
 Key Differences in Decision MakingDirect Network Mobility (Standalone Dynamics):When playing standalone against Easy, the direct network uses retreat guards (A at 17.0% / 177 uses) and aerial hops (W at 2.8% / 29 uses). This proves the base network weights have learned spatial defense and jumping attacks without becoming degenerately locked into ground pokes.RIDER Search Compression (High-Tier Optimization):When facing Master and Soul, ForeseeEngine uses the $Q$-matrix to prune airborne entries (W reduced to 0.2%–0.4%) and retreat guards (A reduced to 2.2%–2.9%). Instead, search concentrates 89% to 90% of decisions into crouching pokes (S ~50%) and forward pushes (D ~40%), neutralizing Riderman's attachment weapons through frame advantage.Calibrated $Q$-Value Range:Under RIDER search, mean $Q$-values settled in a tight, realistic range (0.7354 to 0.7698), confirming that leaf state evaluation scores are well-behaved and free of artificial inflation.3. Tier-by-Tier BreakdownEASY (75.0% Win Rate — Direct Network):Runs at 406.3 matches/minute. The standalone feedforward pass beats Easy AI in 14.3 rounds average using balanced mixes of D+L forward extensions, S+K sweeps, and A+L defensive resets.BALANCED (70.0% Win Rate — RIDER Search):RIDER search shuts down Balanced AI's mid-range pressure, taking 21 of 30 games in an average of 12.0 rounds.MASTER (68.2% Win Rate — RIDER Search):A significant leap over the previous 53.8% baseline. The updated leaf values allow search to consistently out-calculate Master AI's parry traps.SOUL (61.6% Win Rate — RIDER Search):Completes 53 wins out of 86 matches. The +11.1% win-rate gain over the prior candidate confirms that 3647371530 provides a far superior evaluation matrix for multi-turn search rollouts against Soul's heuristic engine.
+
+001_005:
+
+Candidate Evaluation Report: Matchup 001_005 (Ichigo vs Kamen Rider X)
+Build: v5-state256-action17 | Schema Patch: charge1-reset1
+Checkpoint Fingerprint: 1899967595 (3,308 games / 40,699 accepted decisions)
+Status: PASSED ALL TIERS (>50% WIN RATE) — Cleared for Activation
+1. Overall Performance Summary
+Checkpoint 1899967595 successfully cleared all four evaluation tiers, completing 001_005 (Ichigo vs Kamen Rider X) with a 67.1% aggregate win rate across 207 benchmark games. The direct network delivers high-speed victories against lower tiers, while RIDER search secures strong wins against SOUL (66.7%) and narrowly edges out MASTER (51.4%).
+| Opponent Tier | Evaluator Policy | Matches Run | Record (W / L / D) | Win Rate | Mean Q | Decision Speed | Status |
+|---|---|---|---|---|---|---|---|
+| EASY / NOVICE | Direct Network | 70 | 57 / 13 / 0 | 81.4% | 0.9355 | 369.2 matches/min | PASS |
+| BALANCED | RIDER Search | 25 | 18 / 7 / 0 | 72.0% | 0.6289 | 26.3 matches/min | PASS |
+| MASTER | RIDER Search | 70 | 36 / 34 / 0 | 51.4% | 0.5323 | 18.1 matches/min | PASS |
+| SOUL | RIDER Search | 42 | 28 / 14 / 0 | 66.7% | 0.5905 | 21.0 matches/min | PASS |
+| TOTAL / COMBINED | All Tiers | 207 | 139 / 68 / 0 | 67.1% | 0.6718 | — | PASSED |
+> MEMORY ALERT: The trainer UI output noted Persistent save failed. Models remain in RAM; export them before closing. Click EXPORT SELECTED CANDIDATE to download checkpoint 1899967595.json before ending your training session.
+> 
+2. Combat Tactics & Behavioral Dynamics (001 vs 005)
+Against Kamen Rider X's mid-distance poking and Ridol weapon extensions, Ichigo adopts a tightly disciplined ground-offense profile.
+                  ACTION USAGE BREAKDOWN (001_005 vs Kamen Rider X)
+  Forward / Push (D)  [####################################### ] 44.2% - 50.9%
+  Ground / Crouch (S) [#####################################   ] 41.2% - 50.9%
+  Idle / Recover      [###                                     ] 3.1% - 5.3%
+  Retreat / Guard (A) [##                                      ] 1.8% - 3.0%
+  Jump / Aerial (W)   [                                        ] 0.0% - 0.1%
+
+Key Tactical Discoveries
+ * Ground Control Dominance (S + D = 91%–95%):
+   Offense is divided cleanly between crouching pokes (S+J low jabs and S+L sweeps) and forward advances (D+L and D+K). Low pokes duck under X's high Ridol thrusts, while forward pushes lock X against the screen boundary.
+ * Strict Aerial Prohibition (W = 0.0%–0.1%):
+   Airborne entries were virtually non-existent (only 1 jump across 2,535 total decisions evaluated). RIDER search recognizes that jumping against X resets charge to 1% while exposing Ichigo to anti-air Ridol whips.
+ * Slot Parity & Symmetry:
+   * SOUL Tier: P1 (13W / 8L — 61.9%) | P2 (15W / 6L — 71.4%)
+   * BALANCED Tier: P1 (7W / 6L — 53.8%) | P2 (11W / 1L — 91.7%)
+   * Insight: Starting on the P2 side consistently yields higher initial win rates against X due to favorable frame spacing on opening engagements.
+3. Current Row Status (Ichigo [001] Matrix)
+With 001_005 officially passed, 5 out of 6 matchups in Ichigo's row are benchmark-verified and cleared under the v5-state256-action17 / charge1-reset1 standard:
+| Matchup | Opponent | Status | Fingerprint | Key Benchmark |
+|---|---|---|---|---|
+| 001_001 | Ichigo (Mirror) | PASSED | 923922145 | 70.8% vs SOUL |
+| 001_002 | Nigo | 🔄 RETRAINING IN PROGRESS | — | Active Session |
+| 001_003 | V3 | PASSED | 3187825497 | 65.2% vs SOUL |
+| 001_004 | Riderman | PASSED | 3647371530 | 61.6% vs SOUL |
+| 001_005 | Kamen Rider X | PASSED | 1899967595 | 66.7% vs SOUL / 81.4% EASY |
+| 001_006 | Amazon | PASSED | 3748292569 | 66.8% Overall (1,200 Matches) |
+4. Immediate Deployment Action
+ * Click EXPORT SELECTED CANDIDATE to download checkpoint 1899967595.json to local disk.
+ * Confirm 1899967595 as the active repo model for matchup 001_005.
+ * Once the 001_002 (vs Nigo) retraining run completes, drop its log data here to finalize Ichigo's complete 6x6 matrix row!
+
 
 
 001_006:
