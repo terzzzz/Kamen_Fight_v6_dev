@@ -1,8 +1,51 @@
 {
   "ichigo": {
-    "W+I": { "name": "Rider High Jump", "type": "UTILITY", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "jump.mp4", "grantsAirborne": 2, "buff": { "id": "airborne_boost", "label": "AIR (+15% ATK / +20% EVS)", "type": "speed", "duration": 2 } },
-    "W+J": { "name": "Typhoon Charge", "type": "UTILITY", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "charge_up.mp4", "buff": { "id": "typhoon_speed", "label": "CHARGE (+25% SPEED)", "type": "speed", "duration": 3 } },
-    "W+K": { "name": "Typhoon Focus", "type": "UTILITY", "chiCost": 2, "baseDamage": 0, "hitChance": 100, "video": "charge_up.mp4", "buff": { "id": "focus", "label": "FOCUS (+20% S-ATK)", "type": "attack", "duration": 2 } },
+    "W+I": {
+      "name": "Rider High Jump",
+      "type": "UTILITY",
+      "chiCost": 1,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "jump.mp4",
+      "grantsAirborne": 2,
+      "buff": {
+        "id": "airborne_boost",
+        "label": "AIR",
+        "type": "speed",
+        "duration": 2,
+        "effects": { "attack": 1.25, "evasion": 0.25 }
+      }
+    },
+    "W+J": {
+      "name": "Typhoon Charge",
+      "type": "UTILITY",
+      "chiCost": 3,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "charge_up.mp4",
+      "buff": {
+        "id": "typhoon_speed",
+        "label": "CHARGE",
+        "type": "speed",
+        "duration": 3,
+        "effects": { "speed": 1.25 }
+      }
+    },
+    "W+K": {
+      "name": "Typhoon Focus",
+      "type": "UTILITY",
+      "chiCost": 2,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "charge_up.mp4",
+      "buff": {
+        "id": "focus",
+        "label": "FOCUS",
+        "type": "attack",
+        "duration": 2,
+        "effects": { "sAttack": 1.20 }
+      }
+    },
     "W+L": { "name": "Typhoon Bless", "type": "UTILITY", "chiCost": 1, "baseDamage": 0, "hitChance": 100, "video": "mind.mp4", "faintRecovery": 15 },
     "D+J": { "name": "Standard Punch", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 66, "hitChance": 78, "video": "punch.mp4", "sourceFacing": "right" },
     "D+K": { "name": "Standard Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 86, "hitChance": 78, "video": "kick.mp4" },
@@ -12,15 +55,58 @@
     "S+K": { "name": "Rider Head Crusher", "type": "SPECIAL", "chiCost": 4, "baseDamage": 480, "hitChance": 75, "video": "head_crusher.mp4" },
     "S+L": { "name": "Rider Kick", "type": "SPECIAL", "chiCost": 6, "baseDamage": 860, "hitChance": 70, "video": "rider_kick.mp4" },
     "S+I": { "name": "Kirimomi Kick", "type": "SPECIAL", "chiCost": 9, "baseDamage": 1100, "hitChance": 76, "video": "kirimomi_kick.mp4", "sourceFacing": "right" },
-    "A+I": { "name": "Windmill Guard", "type": "DEFENSE", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "windmill_guard.mp4" },
+    "A+I": { "name": "Windmill Guard", "type": "DEFENSE", "guardKind": "omni", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "windmill_guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+L": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" }
   },
   "nigo": {
-    "W+I": { "name": "Rider Power Jump", "type": "UTILITY", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "jump.mp4", "grantsAirborne": 2, "buff": { "id": "airborne_boost", "label": "AIR (+15% ATK / +15% HIT)", "type": "speed", "duration": 2 } },
-    "W+J": { "name": "Typhoon Red Shutter", "type": "UTILITY", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "charge_up.mp4", "buff": { "id": "red_shutter", "label": "SHUTTER (+25% SPEED / +15% DEF)", "type": "speed", "duration": 2 } },
-    "W+K": { "name": "Power Focus", "type": "UTILITY", "chiCost": 1, "baseDamage": 0, "hitChance": 100, "video": "charge_up.mp4", "buff": { "id": "power_focus", "label": "POWER FOCUS (+50% D-ATK)", "type": "attack", "duration": 2 } },
+    "W+I": {
+      "name": "Rider Power Jump",
+      "type": "UTILITY",
+      "chiCost": 3,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "jump.mp4",
+      "grantsAirborne": 2,
+      "buff": {
+        "id": "airborne_boost",
+        "label": "AIR",
+        "type": "speed",
+        "duration": 2,
+        "effects": { "attack": 1.15, "accuracy": 15 }
+      }
+    },
+    "W+J": {
+      "name": "Typhoon Red Shutter",
+      "type": "UTILITY",
+      "chiCost": 3,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "charge_up.mp4",
+      "buff": {
+        "id": "red_shutter",
+        "label": "SHUTTER",
+        "type": "speed",
+        "duration": 2,
+        "effects": { "speed": 1.25, "armor": 0.85 }
+      }
+    },
+    "W+K": {
+      "name": "Power Focus",
+      "type": "UTILITY",
+      "chiCost": 1,
+      "baseDamage": 0,
+      "hitChance": 100,
+      "video": "charge_up.mp4",
+      "buff": {
+        "id": "power_focus",
+        "label": "POWER FOCUS",
+        "type": "attack",
+        "duration": 2,
+        "effects": { "dAttack": 1.50 }
+      }
+    },
     "W+L": { "name": "Battle Cry", "type": "UTILITY", "chiCost": 2, "baseDamage": 0, "hitChance": 100, "video": "battle_cry.mp4", "faintRecovery": 25 },
     "D+J": { "name": "Standard Punch", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 75, "hitChance": 79, "video": "punch.mp4" },
     "D+K": { "name": "Standing Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 85, "hitChance": 82, "video": "kick.mp4" },
@@ -30,7 +116,7 @@
     "S+K": { "name": "Rider Flying Knee", "type": "SPECIAL", "chiCost": 5, "baseDamage": 480, "hitChance": 70, "video": "flying_knee.mp4" },
     "S+L": { "name": "Rider Power Kick", "type": "SPECIAL", "chiCost": 7, "baseDamage": 820, "hitChance": 67, "video": "rider_kick.mp4" },
     "S+I": { "name": "Typhoon Power Break", "type": "SPECIAL", "chiCost": 10, "baseDamage": 1065, "hitChance": 64, "video": "typhoon_power_break.mp4" },
-    "A+I": { "name": "Windmill Guard", "type": "DEFENSE", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "windmill_guard.mp4" },
+    "A+I": { "name": "Windmill Guard", "type": "DEFENSE", "guardKind": "omni", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "windmill_guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+L": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" }
@@ -46,9 +132,10 @@
       "grantsAirborne": 2,
       "buff": {
         "id": "airborne_boost",
-        "label": "AIR (+15% D ATK / +15% EVS)",
+        "label": "AIR",
         "type": "speed",
-        "duration": 2
+        "duration": 2,
+        "effects": { "dAttack": 1.15, "evasion": 0.15 }
       }
     },
     "W+J": {
@@ -60,9 +147,10 @@
       "video": "accel.mp4",
       "buff": {
         "id": "double_typhoon_speed",
-        "label": "DOUBLE TYPHOON (+20% SPEED)",
+        "label": "DOUBLE TYPHOON",
         "type": "speed",
-        "duration": 3
+        "duration": 3,
+        "effects": { "speed": 1.20 }
       }
     },
     "W+K": {
@@ -74,9 +162,10 @@
       "video": "red_lamp.mp4",
       "buff": {
         "id": "red_lamp_boost",
-        "label": "RED LAMP (+20% D/S ATK)",
+        "label": "RED LAMP",
         "type": "attack",
-        "duration": 3
+        "duration": 3,
+        "effects": { "dAttack": 1.20, "sAttack": 1.20 }
       }
     },
     "W+L": {
@@ -89,70 +178,14 @@
       "hitChance": 78,
       "video": "double_typhoon.mp4"
     },
-    "D+J": {
-      "name": "Chop",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 70,
-      "hitChance": 79,
-      "video": "chop.mp4"
-    },
-    "D+K": {
-      "name": "High Kick",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 85,
-      "hitChance": 80,
-      "video": "kick.mp4"
-    },
-    "D+L": {
-      "name": "Chop Combo",
-      "type": "PHYSICAL",
-      "chiCost": 1,
-      "baseDamage": 136,
-      "hitChance": 79,
-      "video": "chop_comb.mp4"
-    },
-    "D+I": {
-      "name": "Mixed Hits",
-      "type": "PHYSICAL",
-      "chiCost": 1,
-      "baseDamage": 126,
-      "hitChance": 80,
-      "video": "mixed_comb.mp4"
-    },
-    "S+J": {
-      "name": "V3 Kick",
-      "type": "SPECIAL",
-      "chiCost": 4,
-      "baseDamage": 430,
-      "hitChance": 78,
-      "video": "v3_kick.mp4"
-    },
-    "S+K": {
-      "name": "V3 Return Kick",
-      "type": "SPECIAL",
-      "chiCost": 6,
-      "baseDamage": 560,
-      "hitChance": 72,
-      "video": "return_kick.mp4"
-    },
-    "S+L": {
-      "name": "V3 Screw Kick",
-      "type": "SPECIAL",
-      "chiCost": 8,
-      "baseDamage": 940,
-      "hitChance": 71,
-      "video": "screw_kick.mp4"
-    },
-    "S+I": {
-      "name": "V3 Triple Kick",
-      "type": "SPECIAL",
-      "chiCost": 11,
-      "baseDamage": 1160,
-      "hitChance": 74,
-      "video": "triple_kick.mp4"
-    },
+    "D+J": { "name": "Chop", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 70, "hitChance": 79, "video": "chop.mp4" },
+    "D+K": { "name": "High Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 85, "hitChance": 80, "video": "kick.mp4" },
+    "D+L": { "name": "Chop Combo", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 136, "hitChance": 79, "video": "chop_comb.mp4" },
+    "D+I": { "name": "Mixed Hits", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 126, "hitChance": 80, "video": "mixed_comb.mp4" },
+    "S+J": { "name": "V3 Kick", "type": "SPECIAL", "chiCost": 4, "baseDamage": 430, "hitChance": 78, "video": "v3_kick.mp4" },
+    "S+K": { "name": "V3 Return Kick", "type": "SPECIAL", "chiCost": 6, "baseDamage": 560, "hitChance": 72, "video": "return_kick.mp4" },
+    "S+L": { "name": "V3 Screw Kick", "type": "SPECIAL", "chiCost": 8, "baseDamage": 940, "hitChance": 71, "video": "screw_kick.mp4" },
+    "S+I": { "name": "V3 Triple Kick", "type": "SPECIAL", "chiCost": 11, "baseDamage": 1160, "hitChance": 74, "video": "triple_kick.mp4" },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
@@ -169,9 +202,10 @@
       "grantsAirborne": 2,
       "buff": {
         "id": "airborne_evasion",
-        "label": "AIR (+20% EVS)",
+        "label": "AIR",
         "type": "speed",
-        "duration": 2
+        "duration": 2,
+        "effects": { "evasion": 0.20 }
       }
     },
     "W+J": {
@@ -183,9 +217,10 @@
       "video": "target_lock.mp4",
       "buff": {
         "id": "accuracy_focus",
-        "label": "FOCUS (+20% HIT)",
+        "label": "FOCUS",
         "type": "accuracy",
-        "duration": 3
+        "duration": 3,
+        "effects": { "accuracy": 20 }
       }
     },
     "W+K": {
@@ -208,82 +243,20 @@
       "video": "rope_tie.mp4",
       "debuff": {
         "id": "rope_bind",
-        "label": "BIND (-30% CHG SPEED)",
+        "label": "BIND",
         "type": "speed",
-        "duration": 3
+        "duration": 3,
+        "effects": { "speed": 0.70 }
       }
     },
-    "D+J": {
-      "name": "Standard Punch",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 70,
-      "hitChance": 82,
-      "video": "punch.mp4"
-    },
-    "D+K": {
-      "name": "Standard Kick",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 85,
-      "hitChance": 80,
-      "video": "kick.mp4"
-    },
-    "D+L": {
-      "name": "Cassette Combo",
-      "type": "PHYSICAL",
-      "chiCost": 1,
-      "baseDamage": 145,
-      "hitChance": 80,
-      "video": "combo_attack.mp4"
-    },
-    "D+I": {
-      "name": "Rope Arm Hook",
-      "type": "PHYSICAL",
-      "rangeType": "REACH",
-      "chiCost": 2,
-      "baseDamage": 70,
-      "baseFaintDamage": 25,
-      "hitChance": 72,
-      "video": "hook_arm.mp4",
-      "chiRefundOnHit": 3
-    },
-    "S+J": {
-      "name": "Riderman Kick",
-      "type": "SPECIAL",
-      "chiCost": 4,
-      "baseDamage": 440,
-      "hitChance": 80,
-      "video": "rider_kick.mp4"
-    },
-    "S+K": {
-      "name": "Drill Arm Break",
-      "type": "SPECIAL",
-      "rangeType": "REACH",
-      "chiCost": 6,
-      "baseDamage": 626,
-      "baseFaintDamage": 35,
-      "hitChance": 75,
-      "video": "drill_arm.mp4"
-    },
-    "S+L": {
-      "name": "Power Arm Strike",
-      "type": "SPECIAL",
-      "rangeType": "REACH",
-      "chiCost": 7,
-      "baseDamage": 708,
-      "hitChance": 70,
-      "video": "power_arm.mp4"
-    },
-    "S+I": {
-      "name": "Hook Finisher",
-      "type": "SPECIAL",
-      "rangeType": "REACH",
-      "chiCost": 10,
-      "baseDamage": 1020,
-      "hitChance": 73,
-      "video": "hook.mp4"
-    },
+    "D+J": { "name": "Standard Punch", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 70, "hitChance": 82, "video": "punch.mp4" },
+    "D+K": { "name": "Standard Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 85, "hitChance": 80, "video": "kick.mp4" },
+    "D+L": { "name": "Cassette Combo", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 145, "hitChance": 80, "video": "combo_attack.mp4" },
+    "D+I": { "name": "Rope Arm Hook", "type": "PHYSICAL", "rangeType": "REACH", "chiCost": 2, "baseDamage": 70, "baseFaintDamage": 25, "hitChance": 72, "video": "hook_arm.mp4", "chiRefundOnHit": 3 },
+    "S+J": { "name": "Riderman Kick", "type": "SPECIAL", "chiCost": 4, "baseDamage": 440, "hitChance": 80, "video": "rider_kick.mp4" },
+    "S+K": { "name": "Drill Arm Break", "type": "SPECIAL", "rangeType": "REACH", "chiCost": 6, "baseDamage": 626, "baseFaintDamage": 35, "hitChance": 75, "video": "drill_arm.mp4" },
+    "S+L": { "name": "Power Arm Strike", "type": "SPECIAL", "rangeType": "REACH", "chiCost": 7, "baseDamage": 708, "hitChance": 70, "video": "power_arm.mp4" },
+    "S+I": { "name": "Hook Finisher", "type": "SPECIAL", "rangeType": "REACH", "chiCost": 10, "baseDamage": 1020, "hitChance": 73, "video": "hook.mp4" },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
@@ -300,9 +273,10 @@
       "grantsAirborne": 2,
       "buff": {
         "id": "airborne_boost",
-        "label": "AIR (+15% D-ATK / +20% EVS)",
+        "label": "AIR",
         "type": "speed",
-        "duration": 2
+        "duration": 2,
+        "effects": { "dAttack": 1.15, "evasion": 0.20 }
       }
     },
     "W+J": {
@@ -314,9 +288,10 @@
       "video": "mercury_boost.mp4",
       "buff": {
         "id": "mercury_atk",
-        "label": "MERCURY ATK (+18% D/S ATK)",
+        "label": "MERCURY ATK",
         "type": "attack",
-        "duration": 3
+        "duration": 3,
+        "effects": { "dAttack": 1.18, "sAttack": 1.18 }
       }
     },
     "W+K": {
@@ -328,9 +303,10 @@
       "video": "mercury_guard.mp4",
       "buff": {
         "id": "mercury_def",
-        "label": "MERCURY DEF (-25% DMG TAKEN)",
+        "label": "MERCURY DEF",
         "type": "defense",
-        "duration": 2
+        "duration": 2,
+        "effects": { "armor": 0.75 }
       }
     },
     "W+L": {
@@ -343,75 +319,14 @@
       "faintRecovery": 10,
       "lpRecovery": 250
     },
-    "D+J": {
-      "name": "Standard Punch",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 60,
-      "hitChance": 80,
-      "video": "punch.mp4"
-    },
-    "D+K": {
-      "name": "Standard Kick",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 70,
-      "hitChance": 80,
-      "video": "kick.mp4"
-    },
-    "D+L": {
-      "name": "Ridol Rod Strike",
-      "type": "PHYSICAL",
-      "chiCost": 1,
-      "baseDamage": 142,
-      "hitChance": 80,
-      "video": "rod_strike.mp4",
-      "chiRefundOnHit": 3
-    },
-    "D+I": {
-      "name": "Ridol Whip Lash",
-      "type": "PHYSICAL",
-      "chiCost": 1,
-      "baseDamage": 130,
-      "baseFaintDamage": 25,
-      "hitChance": 84,
-      "video": "whip_lash.mp4",
-      "chiRefundOnHit": 3
-    },
-    "S+J": {
-      "name": "Rider Kick",
-      "type": "SPECIAL",
-      "chiCost": 4,
-      "baseDamage": 440,
-      "hitChance": 80,
-      "video": "rider_kick.mp4"
-    },
-    "S+K": {
-      "name": "X-Kick",
-      "type": "SPECIAL",
-      "chiCost": 6,
-      "baseDamage": 700,
-      "hitChance": 72,
-      "video": "x_kick.mp4"
-    },
-    "S+L": {
-      "name": "Ridol Crown Split",
-      "type": "SPECIAL",
-      "rangeType": "REACH",
-      "chiCost": 7,
-      "baseDamage": 900,
-      "baseFaintDamage": 35,
-      "hitChance": 70,
-      "video": "crown_split.mp4"
-    },
-    "S+I": {
-      "name": "Vacuum Hell Wheel",
-      "type": "SPECIAL",
-      "chiCost": 10,
-      "baseDamage": 1111,
-      "hitChance": 75,
-      "video": "vacuum_hell_wheel.mp4"
-    },
+    "D+J": { "name": "Standard Punch", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 60, "hitChance": 80, "video": "punch.mp4" },
+    "D+K": { "name": "Standard Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 70, "hitChance": 80, "video": "kick.mp4" },
+    "D+L": { "name": "Ridol Rod Strike", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 142, "hitChance": 80, "video": "rod_strike.mp4", "chiRefundOnHit": 3 },
+    "D+I": { "name": "Ridol Whip Lash", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 130, "baseFaintDamage": 25, "hitChance": 84, "video": "whip_lash.mp4", "chiRefundOnHit": 3 },
+    "S+J": { "name": "Rider Kick", "type": "SPECIAL", "chiCost": 4, "baseDamage": 440, "hitChance": 80, "video": "rider_kick.mp4" },
+    "S+K": { "name": "X-Kick", "type": "SPECIAL", "chiCost": 6, "baseDamage": 700, "hitChance": 72, "video": "x_kick.mp4" },
+    "S+L": { "name": "Ridol Crown Split", "type": "SPECIAL", "rangeType": "REACH", "chiCost": 7, "baseDamage": 900, "baseFaintDamage": 35, "hitChance": 70, "video": "crown_split.mp4" },
+    "S+I": { "name": "Vacuum Hell Wheel", "type": "SPECIAL", "chiCost": 10, "baseDamage": 1111, "hitChance": 75, "video": "vacuum_hell_wheel.mp4" },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
@@ -428,9 +343,10 @@
       "grantsAirborne": 2,
       "buff": {
         "id": "airborne_boost",
-        "label": "AIR (+15% ATK / +30% EVS)",
+        "label": "AIR",
         "type": "speed",
-        "duration": 2
+        "duration": 2,
+        "effects": { "attack": 1.15, "evasion": 0.30 }
       }
     },
     "W+J": {
@@ -442,11 +358,11 @@
       "video": "inca_blessing.mp4",
       "buff": {
         "id": "inca_blessing",
-        "label": "INCA BLESSING (+200 LP/RND)",
+        "label": "INCA BLESSING",
         "type": "heal",
         "duration": 4,
-        "lpRegen": 150,
-        "cancelOnLpDamage": true
+        "cancelOnLpDamage": true,
+        "effects": { "lpRegen": 200 }
       }
     },
     "W+K": {
@@ -458,9 +374,10 @@
       "video": "gigi_focus.mp4",
       "buff": {
         "id": "gigi_focus",
-        "label": "GIGI FOCUS (+30% EVS)",
+        "label": "GIGI FOCUS",
         "type": "speed",
-        "duration": 3
+        "duration": 3,
+        "effects": { "evasion": 0.30 }
       }
     },
     "W+L": {
@@ -472,52 +389,11 @@
       "video": "wild_instinct.mp4",
       "faintRecovery": 20
     },
-    "D+J": {
-      "name": "Mystic Kick",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 77,
-      "hitChance": 80,
-      "video": "kick_myst.mp4",
-      "chiRefundOnHit": 2,
-      "sourceFacing": "right"
-    },
-    "D+K": {
-      "name": "Claw Attack",
-      "type": "PHYSICAL",
-      "chiCost": 1,
-      "baseDamage": 130,
-      "hitChance": 80,
-      "video": "claw.mp4",
-      "chiRefundOnHit": 3
-    },
-    "D+L": {
-      "name": "Claw Combo",
-      "type": "PHYSICAL",
-      "chiCost": 1,
-      "baseDamage": 142,
-      "hitChance": 78,
-      "video": "combo_claw.mp4",
-      "chiRefundOnHit": 3
-    },
-    "D+I": {
-      "name": "Standard Kick",
-      "type": "PHYSICAL",
-      "chiCost": 0,
-      "baseDamage": 84,
-      "hitChance": 80,
-      "video": "kick2.mp4",
-      "chiRefundOnHit": 2,
-      "sourceFacing": "right"
-    },
-    "S+J": {
-      "name": "Amazon Kick",
-      "type": "SPECIAL",
-      "chiCost": 4,
-      "baseDamage": 420,
-      "hitChance": 80,
-      "video": "amazon_kick.mp4"
-    },
+    "D+J": { "name": "Mystic Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 77, "hitChance": 80, "video": "kick_myst.mp4", "chiRefundOnHit": 2, "sourceFacing": "right" },
+    "D+K": { "name": "Claw Attack", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 130, "hitChance": 80, "video": "claw.mp4", "chiRefundOnHit": 3 },
+    "D+L": { "name": "Claw Combo", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 142, "hitChance": 78, "video": "combo_claw.mp4", "chiRefundOnHit": 3 },
+    "D+I": { "name": "Standard Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 84, "hitChance": 80, "video": "kick2.mp4", "chiRefundOnHit": 2, "sourceFacing": "right" },
+    "S+J": { "name": "Amazon Kick", "type": "SPECIAL", "chiCost": 4, "baseDamage": 420, "hitChance": 80, "video": "amazon_kick.mp4" },
     "S+K": {
       "name": "Jaguar Shock",
       "type": "SPECIAL",
@@ -527,30 +403,15 @@
       "video": "jaguar_shock.mp4",
       "debuff": {
         "id": "bleeding",
-        "label": "BLEEDING (-150 LP/RND)",
+        "label": "BLEEDING",
         "type": "dot",
         "duration": 3,
-        "lpBleed": 150,
-        "refreshable": true
+        "refreshable": true,
+        "effects": { "lpBleed": 150 }
       }
     },
-    "S+L": {
-      "name": "Wild Tackle",
-      "type": "SPECIAL",
-      "chiCost": 7,
-      "baseDamage": 880,
-      "hitChance": 80,
-      "video": "wild_tackle.mp4"
-    },
-    "S+I": {
-      "name": "Daisetsudan",
-      "type": "SPECIAL",
-      "chiCost": 9,
-      "baseDamage": 1120,
-      "hitChance": 77,
-      "video": "dai_slash.mp4",
-      "sourceFacing": "right"
-    },
+    "S+L": { "name": "Wild Tackle", "type": "SPECIAL", "chiCost": 7, "baseDamage": 880, "hitChance": 80, "video": "wild_tackle.mp4" },
+    "S+I": { "name": "Daisetsudan", "type": "SPECIAL", "chiCost": 9, "baseDamage": 1120, "hitChance": 77, "video": "dai_slash.mp4", "sourceFacing": "right" },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
