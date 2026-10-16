@@ -50,8 +50,78 @@ Key Tactical Findings
  * MASTER (65.9% Win Rate — RIDER Search): Out-calculates Master AI's parry mechanics by splitting offense evenly between D (46.8%) and S (46.2%).
  * SOUL (70.8% Win Rate — RIDER Search): Demonstrates that the neural leaf evaluator allows ForeseeEngine to out-plan pure heuristic search on equal character terms.
 
+001_002:
+
+# Consolidated Evaluation Report: Matchup `001_002` (Ichigo vs Nigo)
+
+**Build:** `v5-state256-action17` | **Schema Patch:** `charge1-reset1`
+
+**Checkpoint Fingerprint:** `1483163636` (20,427 games / 218,928 accepted decisions)
+
+**Status:** **PASSED ALL TIERS (>50% WIN RATE)** — Retraining Schema Upgrade Complete
+
+---
+
+## 1. Overall Performance Summary
+
+Across 332 total evaluation matches under the new `charge1-reset1` schema, candidate checkpoint `1483163636` achieved an **aggregate win rate of 66.0%**. The standalone direct neural network handles lower-tier AI at **76.6%**, while the **RIDER Live Search Policy** secures clean win rates against **BALANCED** (67.6%), **SOUL** (55.9%), and **MASTER** (54.4%).
+
+| Opponent Tier | Evaluator Policy | Matches Run | Record (W / L / D) | Win Rate | Mean $Q$ | Decision Speed | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **EASY / NOVICE** | Direct Network | 128 | 98 / 30 / 0 | **76.6%** | 0.6392 | 471.6 matches/min | **PASS** |
+| **BALANCED** | RIDER Search | 68 | 46 / 22 / 0 | **67.6%** | 0.3224 | 22.3 matches/min | **PASS** |
+| **MASTER** | RIDER Search | 68 | 37 / 31 / 0 | **54.4%** | 0.3033 | 29.0 matches/min | **PASS** |
+| **SOUL** | RIDER Search | 68 | 38 / 30 / 0 | **55.9%** | 0.2986 | 27.3 matches/min | **PASS** |
+| **TOTAL / COMBINED** | **All Tiers** | **332** | **219 / 113 / 0** | **66.0%** | **0.3909** | — | **PASSED** |
+
+> **MEMORY ALERT:** The trainer UI logged `Persistent save failed. Models remain in RAM; export them before closing.` Click **`EXPORT SELECTED CANDIDATE`** to download checkpoint `1483163636.json` locally before ending the session.
+
+---
+
+## 2. Matchup Tactics & Behavioral Dynamics (`001` vs `002`)
+
+In the Double Rider showdown, identical weight classes and overlapping range parameters force tight positional discipline.
+
+```
+                   ACTION USAGE COMPARISON ACROSS EVALUATION POLICIES
+Direct Net (Easy):   [S: 49.6%] [D: 46.4%] [IDLE: 3.0%] [A: 1.0%] [W: 0.0%]
+RIDER Search (Soul): [D: 50.5%] [S: 43.0%] [IDLE: 4.1%] [A: 2.1%] [W: 0.3%]
+
+```
+
+### Key Tactical Findings
+
+* **Ground Offense Dominance (`S` + `D` = 93%–96%):**
+Combat remains almost entirely grounded. `D+L` forward push attacks (500 uses on Easy, 231 on Balanced, 226 on Master, 184 on Soul) combined with `S+J` low pokes (597 on Easy, 237 on Soul) account for over 93% of all decisions across all tiers.
+* **Strict Aerial Suppression (`W` = 0.0%–0.3%):**
+Across 4,771 total recorded round decisions, jump moves were selected only 6 times total. RIDER search recognizes that going airborne against Nigo triggers direction-change charge resets to 1%, leaving Ichigo open to heavy counter-punishes.
+* **Tight $Q$-Value Calibration:**
+Mean selected $Q$-values under RIDER search remain highly consistent across higher search tiers (**0.2986 to 0.3224**), reflecting realistic, uninflated positional scoring against Nigo's heavy defensive stance.
+* **High Slot Parity (Balanced Tier):**
+* **P1 Slot:** 24W / 10L (**70.6%**)
+* **P2 Slot:** 22W / 12L (**64.7%**)
 
 
+
+---
+
+# 🏆 MILESTONE REACHED: Full Ichigo [001] Matrix Row 100% Complete!
+
+With `001_002` fully benchmarked and verified, **all 6 matchups for Kamen Rider Ichigo (`001`)** have officially passed under the `v5-state256-action17` / `charge1-reset1` standard!
+
+### Completed 001 Row Summary Table
+
+| Matchup | Opponent | Status | Active Fingerprint | Key Benchmark Highlights |
+| --- | --- | --- | --- | --- |
+| **`001_001`** | Ichigo (Mirror) | **PASSED** | `923922145` | **70.8%** vs SOUL / **72.5%** vs BALANCED |
+| **`001_002`** | Nigo | **PASSED** | `1483163636` | **66.0%** Aggregate (55.9% SOUL / 76.6% EASY) |
+| **`001_003`** | V3 | **PASSED** | `3187825497` | **65.2%** vs SOUL / **70.0%** vs MASTER |
+| **`001_004`** | Riderman | **PASSED** | `3647371530` | **61.6%** vs SOUL / **68.2%** vs MASTER |
+| **`001_005`** | Kamen Rider X | **PASSED** | `1899967595` | **66.7%** vs SOUL / **81.4%** vs EASY |
+| **`001_006`** | Amazon | **PASSED** | `3748292569` | **66.8%** Aggregate (1,200 Matches) |
+
+---
+ 
 001_003:
 
 Consolidated Evaluation Report: Matchup 001_003 (Ichigo vs V3)
