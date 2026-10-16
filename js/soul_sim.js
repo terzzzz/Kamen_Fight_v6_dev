@@ -162,6 +162,123 @@
     };
   }
 
+  function isSMoveKey(state, slot, key) {
+    if (!key || typeof key !== "string") {
+      return false;
+    }
+    const move = state?.moves?.[slot]?.[key];
+    return move?.direction === "S" || key.startsWith("S+");
+  }
+
+  function isAGuardKey(state, slot, key) {
+    if (!key || typeof key !== "string") {
+      return false;
+    }
+    const move = state?.moves?.[slot]?.[key];
+    return move?.direction === "A" || key.startsWith("A+");
+  }
+
+  function getMinSChiCost(state, slot) {
+    const moves = state?.moves?.[slot];
+    if (!moves) {
+      return 4;
+    }
+
+    let minCost = Infinity;
+    for (const [key, move] of Object.entries(moves)) {
+      if (!move) continue;
+      if (move.direction === "S" || key.startsWith("S+")) {
+        const cost = Number(move.chiCost);
+        if (Number.isFinite(cost) && cost > 0 && cost < minCost) {
+          minCost = cost;
+        }
+      }
+    }
+
+    return Number.isFinite(minCost) ? minCost : 4;
+  }
+
+  function canSlotUseSMove(state, slot) {
+    if (!state || !state[slot] || state[slot].isFainted) {
+      return false;
+    }
+    const moves = state.moves?.[slot];
+    if (!moves) {
+      return false;
+    }
+    for (const [key, move] of Object.entries(moves)) {
+      if (!move) continue;
+      if (move.direction === "S" || key.startsWith("S+")) {
+        const chg = C.maxCharge(state[slot], move.direction);
+        if (Number.isFinite(chg) && chg >= 1 && C.isLegal(state, slot, { key, charge: chg })) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /*
+   * Normalized [-1, +1] potential measuring Doomed Status / Resource Lock:
+   * - Asymmetric S-move capability
+   * - Severe Chi starvation vs armed opponent
+   * - High faint + low Chi vulnerability
+   */
+  function doomedPotential(state, slot) {
+    if (!state || state.winner) {
+      return 0;
+    }
+
+    const enemySlot = C.other(slot);
+    const own = state[slot];
+    const enemy = state[enemySlot];
+    if (!own || !enemy) {
+      return 0;
+    }
+
+    const maxChi = Math.max(1, Number(own.maxChi || enemy.maxChi || 16));
+    const ownChi = Number(own.chi || 0);
+    const enemyChi = Number(enemy.chi || 0);
+
+    const ownHasS = canSlotUseSMove(state, slot);
+    const enemyHasS = canSlotUseSMove(state, enemySlot);
+
+    let potential = 0;
+
+    if (ownHasS && !enemyHasS) {
+      potential += 0.35;
+      if (enemyChi <= 2 && ownChi >= 6) {
+        potential += 0.25;
+      }
+    } else if (!ownHasS && enemyHasS) {
+      potential -= 0.35;
+      if (ownChi <= 2 && enemyChi >= 6) {
+        potential -= 0.25;
+      }
+    }
+
+    const chiGap = (ownChi - enemyChi) / maxChi;
+    if (Math.abs(chiGap) >= 0.25) {
+      potential += 0.45 * chiGap;
+    }
+
+    const faintThreshold = Math.max(
+      1,
+      Number(g.COMBAT_RULES?.FAINT_THRESHOLD || 100)
+    );
+    const ownFaintRatio = Number(own.faintMeter || 0) / faintThreshold;
+    const enemyFaintRatio = Number(enemy.faintMeter || 0) / faintThreshold;
+
+    if (!own.isFainted && ownFaintRatio >= 0.65 && ownChi <= 3 && enemyChi >= 4) {
+      potential -= 0.35 * ((ownFaintRatio - 0.50) / 0.50);
+    }
+    if (!enemy.isFainted && enemyFaintRatio >= 0.65 && enemyChi <= 3 && ownChi >= 4) {
+      potential += 0.35 * ((enemyFaintRatio - 0.50) / 0.50);
+    }
+
+    return K.clamp(potential, -1, 1);
+  }
+
   function resolveExecutionCharge(key, state, slot) {
     assertSlot(slot);
 
@@ -339,15 +456,16 @@
         if (!m[i]) continue;
         const key = E.ACTION_MAP[i];
         const advantage = K.clamp((q[i] - mean) / spread, -1, 1);
-        bonuses[key] = advantage * 18;
+        bonuses[key] = advantage * 24;
       }
 
       return bonuses;
     };
 
     /*
-     * Returns the top 3 legal move keys favored by the Matrix at the root
-     * so ForeseeEngine can include them in RIDER's extra finalist slots.
+     * Returns the top legal move keys favored by the Matrix at the root
+     * (plus A+I when opponent threatens S) so ForeseeEngine includes them
+     * in RIDER's extra finalist slots.
      */
     evaluateLeaf.advisedMoves = function (state, perspective, history = rootHistory) {
       if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
@@ -363,7 +481,20 @@
       }
 
       ranked.sort((a, b) => b.q - a.q);
-      return ranked.slice(0, 3).map(item => item.key);
+      const advised = ranked.slice(0, 3).map(item => item.key);
+
+      const enemySlot = C.other(learnerSlot);
+      const aiIndex = E.getActionIndexByKey("A+I");
+      if (
+        Number.isInteger(aiIndex) &&
+        m[aiIndex] &&
+        canSlotUseSMove(state, enemySlot) &&
+        !advised.includes("A+I")
+      ) {
+        advised.unshift("A+I");
+      }
+
+      return advised.slice(0, 4);
     };
 
     return evaluateLeaf;
@@ -531,7 +662,7 @@
     };
   }
 
-  function calculateReward(before, after, slot, mode = "standard") {
+  function calculateReward(before, after, slot, mode = "standard", actions = null) {
     assertSlot(slot);
 
     const enemySlot = C.other(slot);
@@ -556,15 +687,57 @@
        * - Penalizes throwing expensive moves into an enemy A-guard
        *   (self loses Chi, enemy gains guardReward Chi).
        */
-      const ownChiDelta =
-        (after[slot].chi - before[slot].chi) /
-        Math.max(1, before[slot].maxChi || 16);
+      const maxChi = Math.max(1, before[slot].maxChi || 16);
+      const enemyMaxChi = Math.max(1, before[enemySlot].maxChi || 16);
 
-      const enemyChiDelta =
-        (after[enemySlot].chi - before[enemySlot].chi) /
-        Math.max(1, before[enemySlot].maxChi || 16);
+      const ownChiDeltaRaw = after[slot].chi - before[slot].chi;
+      const enemyChiDeltaRaw = after[enemySlot].chi - before[enemySlot].chi;
+      const netChiDeltaRaw = ownChiDeltaRaw - enemyChiDeltaRaw;
 
-      reward += 0.25 * (ownChiDelta - enemyChiDelta);
+      const ownChiDelta = ownChiDeltaRaw / maxChi;
+      const enemyChiDelta = enemyChiDeltaRaw / enemyMaxChi;
+
+      reward += 0.35 * (ownChiDelta - enemyChiDelta);
+
+      /*
+       * Zero-LP Chi-Trap / A+I vs S Dominance Shaping:
+       * Teaches the network that stuffing S with A+I (or winning a big Chi trade
+       * without losing LP) is a major victory, and getting S stuffed by A+I
+       * for 0 LP damage is a major blunder.
+       */
+      const ownKey = String(actions?.[slot]?.key || "");
+      const enemyKey = String(actions?.[enemySlot]?.key || "");
+
+      const ownUsedAGuard = isAGuardKey(before, slot, ownKey);
+      const enemyUsedAGuard = isAGuardKey(before, enemySlot, enemyKey);
+      const ownUsedS = isSMoveKey(before, slot, ownKey);
+      const enemyUsedS = isSMoveKey(before, enemySlot, enemyKey);
+
+      if (ownLpChange <= 0 && netChiDeltaRaw > 0) {
+        if ((ownKey === "A+I" || ownUsedAGuard) && enemyUsedS) {
+          reward += (ownKey === "A+I" ? 0.22 : 0.14) + 0.03 * Math.min(8, netChiDeltaRaw);
+        } else if (enemyLpChange <= 0 && netChiDeltaRaw >= 3) {
+          reward += 0.12 + 0.02 * Math.min(8, netChiDeltaRaw);
+        }
+      }
+
+      if (enemyLpChange <= 0 && netChiDeltaRaw < 0) {
+        if (ownUsedS && (enemyKey === "A+I" || enemyUsedAGuard)) {
+          reward -= (enemyKey === "A+I" ? 0.25 : 0.16) + 0.035 * Math.min(8, Math.abs(netChiDeltaRaw));
+        } else if (ownLpChange <= 0 && netChiDeltaRaw <= -3) {
+          reward -= 0.12 + 0.02 * Math.min(8, Math.abs(netChiDeltaRaw));
+        }
+      }
+
+      /*
+       * Doomed Status Potential Shaping:
+       * Immediately rewards pushing the opponent into Chi-starved / Faint-doomed
+       * status and penalizes entering Doomed Status even on 0-LP turns.
+       */
+      const doomedDelta =
+        doomedPotential(after, slot) - doomedPotential(before, slot);
+
+      reward += 0.22 * doomedDelta;
 
       /*
        * Faint Differential:
@@ -934,6 +1107,7 @@
       }
 
       const resolvedAction = result.actions[learnerSlot];
+      const resolvedEnemyAction = result.actions[enemySlot];
 
       if (typeof resolvedAction?.key !== "string") {
         throw new Error(
@@ -944,6 +1118,17 @@
       const coreAdjustedAction =
         decision.action.key !== resolvedAction.key ||
         decision.action.charge !== resolvedAction.charge;
+
+      const netChiSwing =
+        (state[learnerSlot].chi - before[learnerSlot].chi) -
+        (state[enemySlot].chi - before[enemySlot].chi);
+
+      const isChiTrapTurn =
+        (isAGuardKey(before, learnerSlot, resolvedAction.key) &&
+          isSMoveKey(before, enemySlot, resolvedEnemyAction?.key)) ||
+        (isSMoveKey(before, learnerSlot, resolvedAction.key) &&
+          isAGuardKey(before, enemySlot, resolvedEnemyAction?.key)) ||
+        Math.abs(netChiSwing) >= 4;
 
       yield {
         type: "transition",
@@ -957,12 +1142,13 @@
             before,
             state,
             learnerSlot,
-            rewardMode
+            rewardMode,
+            result.actions
           ),
           discount: done ? 0 : E.GAMMA,
           done,
           demo: decision.demo,
-          weightScale: 1,
+          weightScale: isChiTrapTurn ? 1.75 : 1,
           rewardCategory: category,
           isFinalRoundResolution: true,
 
