@@ -125,23 +125,23 @@
     "W+I": {
       "name": "Leap",
       "type": "UTILITY",
-      "chiCost": 3,
+      "chiCost": 0,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "jump.mp4",
-      "grantsAirborne": 2,
+      "grantsAirborne": 3,
       "buff": {
         "id": "airborne_boost",
         "label": "AIR",
         "type": "speed",
-        "duration": 2,
-        "effects": { "dAttack": 1.15, "evasion": 0.15 }
+        "duration": 3,
+        "effects": { "dAttack": 2.0, "evasion": 0.25 }
       }
     },
     "W+J": {
       "name": "Accelerator",
       "type": "UTILITY",
-      "chiCost": 3,
+      "chiCost": 0,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "accel.mp4",
@@ -150,13 +150,13 @@
         "label": "DOUBLE TYPHOON",
         "type": "speed",
         "duration": 3,
-        "effects": { "speed": 1.20 }
+        "effects": { "speed": 1.8 }
       }
     },
     "W+K": {
       "name": "Red Lamp Focus",
       "type": "UTILITY",
-      "chiCost": 3,
+      "chiCost": 1,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "red_lamp.mp4",
@@ -165,25 +165,25 @@
         "label": "RED LAMP",
         "type": "attack",
         "duration": 3,
-        "effects": { "dAttack": 1.20, "sAttack": 1.20 }
+        "effects": { "dAttack": 1.6, "sAttack": 1.6 }
       }
     },
     "W+L": {
       "name": "Double Typhoon Blow",
       "type": "SPECIAL",
       "rangeType": "REACH",
-      "chiCost": 3,
-      "baseDamage": 60,
-      "baseFaintDamage": 35,
-      "hitChance": 78,
+      "chiCost": 2,
+      "baseDamage": 160,
+      "baseFaintDamage": 45,
+      "hitChance": 75,
       "video": "double_typhoon.mp4"
     },
-    "D+J": { "name": "Chop", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 70, "hitChance": 79, "video": "chop.mp4" },
-    "D+K": { "name": "High Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 85, "hitChance": 80, "video": "kick.mp4" },
+    "D+J": { "name": "Chop", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 60, "hitChance": 79, "video": "chop.mp4" },
+    "D+K": { "name": "High Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 63, "hitChance": 80, "video": "kick.mp4" },
     "D+L": { "name": "Chop Combo", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 136, "hitChance": 79, "video": "chop_comb.mp4" },
-    "D+I": { "name": "Mixed Hits", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 126, "hitChance": 80, "video": "mixed_comb.mp4" },
+    "D+I": { "name": "Mixed Hits", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 106, "hitChance": 80, "video": "mixed_comb.mp4" },
     "S+J": { "name": "V3 Kick", "type": "SPECIAL", "chiCost": 4, "baseDamage": 430, "hitChance": 78, "video": "v3_kick.mp4" },
-    "S+K": { "name": "V3 Return Kick", "type": "SPECIAL", "chiCost": 6, "baseDamage": 560, "hitChance": 72, "video": "return_kick.mp4" },
+    "S+K": { "name": "V3 Return Kick", "type": "SPECIAL", "chiCost": 5, "baseDamage": 560, "hitChance": 72, "video": "return_kick.mp4" },
     "S+L": { "name": "V3 Screw Kick", "type": "SPECIAL", "chiCost": 8, "baseDamage": 940, "hitChance": 71, "video": "screw_kick.mp4" },
     "S+I": { "name": "V3 Triple Kick", "type": "SPECIAL", "chiCost": 11, "baseDamage": 1160, "hitChance": 74, "video": "triple_kick.mp4" },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
