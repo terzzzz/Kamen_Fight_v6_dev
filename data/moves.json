@@ -55,7 +55,7 @@
     "S+K": { "name": "Rider Head Crusher", "type": "SPECIAL", "chiCost": 4, "baseDamage": 480, "hitChance": 75, "video": "head_crusher.mp4" },
     "S+L": { "name": "Rider Kick", "type": "SPECIAL", "chiCost": 6, "baseDamage": 860, "hitChance": 70, "video": "rider_kick.mp4" },
     "S+I": { "name": "Kirimomi Kick", "type": "SPECIAL", "chiCost": 9, "baseDamage": 1100, "hitChance": 76, "video": "kirimomi_kick.mp4", "sourceFacing": "right" },
-    "A+I": { "name": "Windmill Guard", "type": "DEFENSE", "guardKind": "omni", "chiCost": 3, "baseDamage": 0, "hitChance": 100, "video": "windmill_guard.mp4" },
+    "A+I": { "name": "Windmill Guard", "type": "DEFENSE", "guardKind": "omni", "chiCost": 4, "baseDamage": 0, "hitChance": 100, "video": "windmill_guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+L": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" }
