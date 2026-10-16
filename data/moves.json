@@ -3,7 +3,7 @@
     "W+I": {
       "name": "Rider High Jump",
       "type": "UTILITY",
-      "chiCost": 1,
+      "chiCost": 0,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "jump.mp4",
@@ -13,13 +13,13 @@
         "label": "AIR",
         "type": "speed",
         "duration": 2,
-        "effects": { "attack": 1.25, "evasion": 0.25 }
+        "effects": { "attack": 1.3, "evasion": 0.25 }
       }
     },
     "W+J": {
       "name": "Typhoon Charge",
       "type": "UTILITY",
-      "chiCost": 3,
+      "chiCost": 1,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "charge_up.mp4",
@@ -28,13 +28,13 @@
         "label": "CHARGE",
         "type": "speed",
         "duration": 3,
-        "effects": { "speed": 1.25 }
+        "effects": { "speed": 1.4 }
       }
     },
     "W+K": {
       "name": "Typhoon Focus",
       "type": "UTILITY",
-      "chiCost": 2,
+      "chiCost": 1,
       "baseDamage": 0,
       "hitChance": 100,
       "video": "charge_up.mp4",
@@ -42,16 +42,16 @@
         "id": "focus",
         "label": "FOCUS",
         "type": "attack",
-        "duration": 2,
-        "effects": { "sAttack": 1.20 }
+        "duration": 3,
+        "effects": { "sAttack": 1.5 }
       }
     },
-    "W+L": { "name": "Typhoon Bless", "type": "UTILITY", "chiCost": 1, "baseDamage": 0, "hitChance": 100, "video": "mind.mp4", "faintRecovery": 15 },
-    "D+J": { "name": "Standard Punch", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 66, "hitChance": 78, "video": "punch.mp4", "sourceFacing": "right" },
-    "D+K": { "name": "Standard Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 86, "hitChance": 78, "video": "kick.mp4" },
-    "D+L": { "name": "Combo Punch", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 132, "hitChance": 76, "video": "combo_punch.mp4" },
-    "D+I": { "name": "Combo Kick", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 121, "hitChance": 76, "video": "combo_kick.mp4", "sourceFacing": "right" },
-    "S+J": { "name": "Rider Power Chop", "type": "SPECIAL", "chiCost": 3, "baseDamage": 400, "hitChance": 80, "video": "power_chop.mp4" },
+    "W+L": { "name": "Typhoon Bless", "type": "UTILITY", "chiCost": 1, "baseDamage": 0, "hitChance": 100, "video": "mind.mp4", "faintRecovery": 40 },
+    "D+J": { "name": "Standard Punch", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 52, "hitChance": 75, "video": "punch.mp4", "sourceFacing": "right" },
+    "D+K": { "name": "Standard Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 52, "hitChance": 75, "video": "kick.mp4" },
+    "D+L": { "name": "Combo Punch", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 90, "hitChance": 76, "video": "combo_punch.mp4" },
+    "D+I": { "name": "Combo Kick", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 87, "hitChance": 78, "video": "combo_kick.mp4", "sourceFacing": "right" },
+    "S+J": { "name": "Rider Power Chop", "type": "SPECIAL", "chiCost": 3, "baseDamage": 400, "hitChance": 77, "video": "power_chop.mp4" },
     "S+K": { "name": "Rider Head Crusher", "type": "SPECIAL", "chiCost": 4, "baseDamage": 480, "hitChance": 75, "video": "head_crusher.mp4" },
     "S+L": { "name": "Rider Kick", "type": "SPECIAL", "chiCost": 6, "baseDamage": 860, "hitChance": 70, "video": "rider_kick.mp4" },
     "S+I": { "name": "Kirimomi Kick", "type": "SPECIAL", "chiCost": 9, "baseDamage": 1100, "hitChance": 76, "video": "kirimomi_kick.mp4", "sourceFacing": "right" },
