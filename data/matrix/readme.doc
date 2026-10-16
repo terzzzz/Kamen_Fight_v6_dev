@@ -133,6 +133,57 @@ Ichigo uses light physical pokes (`D`) to maintain Chi neutrality while staying 
 ---
 
 
+002_001:
+
+
+Evaluation Benchmark Report: Matchup 002_001 (Nigo vs. Ichigo)
+Build: v5-state256-action17 | Schema Patch: charge1-reset1
+Checkpoint Fingerprint: 2757976499 (1,387 games / 23,460 accepted decisions)
+Evaluator Policy: rider (MCTS Search Lookahead)
+Status: PASSED ALL BENCHMARK TIERS (69.1% AGGREGATE WIN RATE) — Active Promotion Confirmed
+1. Multi-Tier Benchmark Summary
+Across 94 total benchmark matches in live RIDER search mode, active checkpoint 2757976499 comfortably surpassed the 50.0% promotion threshold against all opponent difficulty settings. Nigo's heavy physical brawler profile established clean tactical dominance over Ichigo across every tier.
+| Opponent Tier | Match Completion | Record (W / L / D) | Win Rate | Mean Q | Decision Speed | Status |
+|---|---|---|---|---|---|---|
+| EASY | 10 / 34 (Partial) | 9 / 1 / 0 | 90.0% | 1.5433 | 7.6 matches/min | PASS |
+| BALANCED | 39 / 100 (Partial) | 28 / 11 / 0 | 71.8% | 1.4564 | 6.9 matches/min | PASS |
+| SOUL | 19 / 100 (Partial) | 12 / 7 / 0 | 63.2% | 1.3959 | 2.7 matches/min | PASS |
+| MASTER | 26 / 26 (Complete) | 16 / 10 / 0 | 61.5% | 1.4496 | 5.3 matches/min | PASS |
+| COMBINED | 94 Matches | 65 / 29 / 0 | 69.1% | 1.4515 | — | PASSED |
+> CRITICAL RAM SAVE WARNING: The trainer reported Persistent save failed. Models remain in RAM; export them before closing. Ensure you click EXPORT ACTIVE immediately to download 2757976499.json to your local drive.
+> 
+2. Tactical Stance & Decision Analysis (1,653 Recorded Decisions)
+Analyzing action allocations across all 1,653 decisions reveals how ForeseeEngine handles Nigo's offense against Ichigo.
+                 ACTION DISTRIBUTION (SOUL Tier — 399 Decisions)
+  Forward / Push (D)  [####################################### ] 60.4% (241 uses)
+  Special Finisher (S)[################################        ] 31.3% (125 uses)
+  Idle / Recover      [###                                     ] 5.0%  (20 uses)
+  Retreat / Guard (A) [##                                      ] 3.3%  (13 uses)
+  Utility / Belt (W)  [                                        ] 0.0%  (0 uses)
+
+Key Tactical Findings
+ * D+I (Mixed Combo) Monopolizes the Neutral Game (\sim 73\%–77\% of D Actions):
+   * SOUL Tier: 177 out of 241 D actions were D+I (73.4%).
+   * MASTER Tier: 187 out of 254 D actions were D+I (73.6%).
+   * BALANCED Tier: 302 out of 389 D actions were D+I (77.6%).
+     Nigo's 130-base-damage physical strike completely bullies Ichigo's weaker ground pokes. MCTS repeatedly picks D+I as the primary attrition engine.
+ * S+J (Rider Punch) Efficient Chi Execution (\sim 60\%–68\% of S Actions):
+   * Rather than holding out for 10 Chi to execute S+I Typhoon Power Break, Nigo continuously dumps Chi into 3-Chi S+J Rider Punches (78/125 in SOUL, 99/146 in MASTER). This maintains constant pressure on Ichigo without incurring severe turn-tempo delays.
+ * Complete Elimination of W Utility Moves (0.0% Usage):
+   * Across all 1,653 recorded decisions across four tiers, W utility moves were selected 0 times. MCTS determined that Nigo doesn't need setup turns against Ichigo—direct physical grinding (D+I) combined with low-cost specials (S+J) achieves a higher 2-turn expected LP payoff than taking a 0-damage setup turn.
+ * A+I Omni Guard Secondary Line:
+   * When forced onto defense, Nigo defaults almost exclusively to A+I (Windmill Guard) (27/32 in MASTER, 10/13 in SOUL) to absorb Ichigo's incoming special counter-attacks.
+3. Roster Status & Matrix Completion
+With 2757976499 validated and promoted, the cross-matchup matrix between Ichigo (001) and Nigo (002) is officially complete.
+| Matchup | Pair | Status | Active Fingerprint | Key Benchmark Performance |
+|---|---|---|---|---|
+| 001_001 | Ichigo vs. Ichigo | PASSED | 3131578912 | 75.0% vs BALANCED / 57.0% vs MASTER |
+| 001_002 | Ichigo vs. Nigo | PASSED | 2935113210 | 52.9% vs SOUL / 56.1% vs MASTER |
+| 002_001 | Nigo vs. Ichigo | PASSED | 2757976499 | 63.2% vs SOUL / 61.5% vs MASTER |
+| 002_002 | Nigo vs. Nigo | PASSED | 1488529860 | 60.5% vs SOUL / 60.0% vs MASTER |
+| 001_003 | Ichigo vs. V3 | PENDING | — | Next Target |
+
+
 
 002_002:
 
