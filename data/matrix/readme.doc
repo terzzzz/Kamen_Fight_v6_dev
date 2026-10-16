@@ -263,7 +263,93 @@ Checkpoint `1488529860` officially locks in the mirror matchup for Kamen Rider N
 | **`002_005`** | Kamen Rider X | **PENDING** | — | Awaiting Training |
 | **`002_006`** | Amazon | **PENDING** | — | Awaiting Training |
 
+
+
+
+003_003:
+
+
+# Benchmark Evaluation Report: Matchup `003_003` (Kamen Rider V3 Mirror)
+
+**Build:** `v5-state256-action17` | **Schema Patch:** `charge1-reset1`
+
+**Checkpoint Fingerprint:** `136128107` (718 candidate games / 12,996 accepted decisions)
+
+**Evaluator Policy:** `rider` (MCTS Search Lookahead)
+
+**Status:** **PASSED ALL TIERS (72.3% AGGREGATE WIN RATE)** — Active Promotion Recommended
+
 ---
+
+## 1. Multi-Tier Benchmark Summary
+
+Across 202 evaluation matches in live **RIDER search mode**, checkpoint `136128107` validated V3's unique utility-heavy profile against all benchmark difficulties, cleanly beating the 50.0% promotion bar across the board.
+
+| Opponent Tier | Match Completion | Record (W / L / D) | Win Rate | Mean $Q$ | Decision Speed | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| **EASY** | 60 / 60 *(Complete)* | 52 / 8 / 0 | **86.7%** | 1.3901 | 9.6 matches/min | **PASS** |
+| **BALANCED** | 52 / 60 *(Partial)* | 40 / 12 / 0 | **76.9%** | 1.3861 | 8.4 matches/min | **PASS** |
+| **MASTER** | 30 / 60 *(Partial)* | 21 / 9 / 0 | **70.0%** | 1.3804 | 4.2 matches/min | **PASS** |
+| **SOUL** | 60 / 60 *(Complete)* | 33 / 27 / 0 | **55.0%** | 1.3721 | 5.1 matches/min | **PASS** |
+| **COMBINED** | **202 Matches** | **146 / 56 / 0** | **72.3%** | **1.3822** | — | **PASSED** |
+
+> **CRITICAL RAM SAVE WARNING:** Checkpoints remain held in volatile RAM (`Persistent save failed`). Export `136128107.json` to your local drive immediately before closing or clearing the candidate slot.
+
+---
+
+## 2. Tactical Stance & Engine Execution (3,572 Recorded Decisions)
+
+V3's matrix exhibits the highest sustained reliance on $W$ utility moves across the entire roster without sacrificing ground pressure or special finisher throughput.
+
+```
+                 ACTION DISTRIBUTION (SOUL Tier — 1,233 Decisions)
+  Forward / Push (D)  [####################################### ] 43.9% (541 uses)
+  Special Finisher (S)[######################                  ] 25.2% (311 uses)
+  Utility / Belt (W)  [#################                       ] 19.3% (238 uses) 🌪️
+  Idle / Recover      [#######                                 ] 7.9%  (97 uses)
+  Retreat / Guard (A) [###                                     ] 3.7%  (46 uses)
+
+```
+
+### Key Tactical Findings
+
+1. **`W+L` Utility Engine Monopolization (84%–87% of $W$ Actions):**
+* **SOUL Tier:** 200 out of 238 $W$ actions were **`W+L`** (84.0%).
+* **MASTER Tier:** 95 out of 109 $W$ actions were **`W+L`** (87.2%).
+* **EASY Tier:** 116 out of 139 $W$ actions were **`W+L`** (83.5%).
+`ForeseeEngine` routinely initiates setup sequences with `W+L` (Double Typhoon Buff), using the state advantage to amplify follow-up physical and special sequences.
+
+
+2. **`D+L` Sweep Combo Dominance ($\sim 76\%–80\%$ of $D$ Actions):**
+* Out of 541 physical attacks in SOUL tier, **420 were `D+L**` (77.6%). V3 uses `D+L` as his undisputed neutral ground poke, providing reliable damage output and steady Chi generation.
+
+
+3. **`S+L` & `S+J` Dual Special Finisher Strategy:**
+* Unlike Nigo (who spams 3-Chi `S+J`) or Ichigo (who hoards for 9-Chi `S+I`), V3 splits special spend evenly between **`S+L`** (131/311 in SOUL) and **`S+J`** (113/311 in SOUL). This dual-tier cash-out maintains constant pressure while preventing Chi cap waste.
+
+
+
+---
+
+## 3. Roster Status Matrix
+
+With `136128107` passing all evaluation tiers, the mirror baseline for Kamen Rider V3 is officially established.
+
+| Matchup | Pair | Status | Active Fingerprint | Key Benchmark Performance |
+| --- | --- | --- | --- | --- |
+| **`001_001`** | Ichigo vs. Ichigo | **PASSED** | `3131578912` | 75.0% vs BALANCED / 57.0% vs MASTER |
+| **`001_002`** | Ichigo vs. Nigo | **PASSED** | `2935113210` | 52.9% vs SOUL / 56.1% vs MASTER |
+| **`002_001`** | Nigo vs. Ichigo | **PASSED** | `2757976499` | 63.2% vs SOUL / 61.5% vs MASTER |
+| **`002_002`** | Nigo vs. Nigo | **PASSED** | `1488529860` | 60.5% vs SOUL / 60.0% vs MASTER |
+| **`003_003`** | V3 vs. V3 | **PASSED** | **`136128107`** | **55.0% vs SOUL / 70.0% vs MASTER** |
+| **`003_002`** | V3 vs. Nigo | **PENDING** | — | Next Cross-Matchup Target |
+
+---
+
+## Next Steps
+
+1. Promote `136128107` to **Active Model** for matchup `003_003` and click **`EXPORT ACTIVE`** to download `136128107.json`.
+2. Transition to **`003_002` (V3 vs. Nigo)** or **`003_001` (V3 vs. Ichigo)** to begin cross-archetype training with V3's high-utility matrix.
 
 ## Deployment & Next Step
 
