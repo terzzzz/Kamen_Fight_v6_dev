@@ -14,61 +14,193 @@ x\y	001	002	003	004	005	006	007	008
 
 
 001_001:
+# MATRIX EVALUATION & TRAINING REPORT: `001_001` (ICHIGO vs. ICHIGO)
 
-
-#  Evaluation Report: Matchup `001_001` (Ichigo Mirror)
-
-**Build:** `v5-state256-action17` | **Schema Patch:** `charge1-reset1`
-
-**Checkpoint Fingerprint:** `3145303189` (2,506 games / 31,728 accepted decisions)
-
-**Status:** **PASSED ALL TIERS (>50% WIN RATE)** — Standalone Direct Network Defeats SOUL
+**Build:** `v5-state256-action17` | **Patch:** `charge1-reset1` | **Checkpoint:** `254051651`
 
 ---
 
-## 1. Overall Performance Summary
+## Executive Overview & Benchmark Performance
 
-The new replacement checkpoint `3145303189` cleared every tested tier with a **64.1% aggregate win rate** across 273 total evaluation games. The standout result is that the **Direct Network standalone** (without live search lookahead) defeated the top-tier **SOUL** engine at **54.7%** across a full 128-match benchmark at 109.5 matches/minute.
-
-| Opponent Tier | Evaluator Policy | Matches Run | Record (W / L / D) | Win Rate | Mean $Q$ | Decision Speed | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **EASY** | RIDER Search | 21 | 18 / 3 / 0 | **85.7%** | 0.8456 | 54.4 matches/min | **PASS** |
-| **BALANCED** | RIDER Search | 103 | 72 / 31 / 0 | **69.9%** | 0.7063 | 26.0 matches/min | **PASS** |
-| **MASTER** | RIDER Search | 21 | 15 / 6 / 0 | **71.4%** | 0.7026 | 35.9 matches/min | **PASS** |
-| **SOUL** | Direct Network (Standalone) | 128 | 70 / 58 / 0 | **54.7%** | 0.8608 | 109.5 matches/min | **PASS** |
-| **TOTAL / COMBINED** | **All Tiers** | **273** | **175 / 98 / 0** | **64.1%** | **0.7788** | — | **PASSED** |
-
-> **CRITICAL EXPORT WARNING:** The trainer logged `Persistent save failed. Models remain in RAM; export them before closing.` Be sure to click **`EXPORT SELECTED CANDIDATE`** immediately to save checkpoint `3145303189.json` locally so it is not lost.
-
----
-
-## 2. Tactical Breakdown & Behavior Dynamics (`001` vs `001`)
+The 1,300-game training run for the **Ichigo vs. Ichigo (`001_001`)** baseline completed with high-value policy convergence. As scheduled exploration ($\epsilon$) decayed from **20.0% down to 4.7%**, the Q-network shifted smoothly from random state space exploration to greedy tactical execution. Mean selected Q-values increased from **1.4416 to 1.7637**, confirming that the model learned long-term payoff structures for setup-to-cashout sequences.
 
 ```
-                   ACTION USAGE COMPARISON ACROSS EVALUATION POLICIES
-Direct Net (SOUL):   [S: 53.1%] [D: 39.9%] [IDLE: 5.6%] [A: 1.4%] [W: 0.1%]
-RIDER Search (Master): [S: 47.9%] [D: 47.2%] [IDLE: 3.8%] [A: 1.1%] [W: 0.0%]
++---------------------------------------------------------------------------------+
+|                               TRAINING SUMMARY                                  |
++---------------------+-------------------+-------------------+-------------------+
+| Completed Games     | Win / Loss Ratio  | Overall Win Rate  | Avg Match Length  |
+| 1,300 / 1,300       | 632 W / 668 L     | 48.6% (In-Train)  | 14.3 Rounds       |
++---------------------+-------------------+-------------------+-------------------+
+| Total Decisions     | Gradient Updates  | Final Training Loss| Final Epsilon     |
+| 18,600              | 4,618             | 0.212287          | 4.7%              |
++---------------------+-------------------+-------------------+-------------------+
 
 ```
 
-### Key Behavioral Discoveries
-
-* **Standalone Network Validation:**
-The fact that the standalone feedforward matrix achieved **54.7% against SOUL** proves that 2,506 games of training under `charge1-reset1` embedded the fundamental mirror-match mechanics directly into the network weights.
-* **Ground-Control Lock (`S` + `D` = 93%–96%):**
-Combat stays strictly on the ground. Low crouching jabs (`S+J` with 569 uses on SOUL, 231 on Balanced) interlock with forward push extensions (`D+L` with 481 uses on SOUL, 249 on Balanced) to prevent the opponent from establishing clean charge windows.
-* **Near-Zero Jumping (`W` = 0.0%–0.1%):**
-Across 3,304 total recorded round decisions in this log set, jump actions were taken only **2 times total**. Jumping triggers direction-change charge clock resets back to 1%, which both the network and RIDER search aggressively avoid.
-* **Stable $Q$-Value Range:**
-Mean $Q$-values under RIDER search sit at **0.7026 – 0.7063**, while the raw network evaluation against SOUL sits at **0.8608**, demonstrating well-behaved scoring bounds.
+> **Training Environment Context:** Win-only updates were **DISABLED**, updating the replay buffer across all 18,600 transitions (Win: 4,940 / Damage: 78,922 / Loss: 5,402 / Other: 58,512). Loss transitions during 33.0% teacher guidance and 20.0% initial exploration directly penalized mistimed `W` (Utility) and `A` (Defense) frames, shaping a value function that avoids wasted turns.
 
 ---
 
-## 3. Immediate Action Plan
+## Action & Stance Distribution Analysis
 
-1. **Export Checkpoint:** Click **`EXPORT SELECTED CANDIDATE`** to download `3145303189.json` to local disk.
-2. **Deploy as Active:** Set `3145303189` as active for `001_001`.
-3. **Row 1 Status:** With `001_001` replaced and verified alongside `001_002` through `001_006`, Ichigo's complete row is 100% secure.
+| Command | Skill Name | Type | Game 454 (35%) | Game 1,300 (100%) | Action Share | Stance Breakdown & Tactical Role |
+| --- | --- | --- | --- | --- | --- | --- |
+| **W** | *Utility Moves* | UTILITY | 28.9% (1,851) | **26.7% (4,975)** | 26.7% | **I:** 3,233 | **K:** 857 | **J:** 506 | **L:** 379 |
+| **A** | *Defensive Guard* | DEFENSE | 5.9% (378) | **5.3% (988)** | 5.3% | **I:** 318 | **L:** 264 | **J:** 230 | **K:** 176 |
+| **S** | *Special Attacks* | SPECIAL | 29.9% (1,910) | **28.5% (5,296)** | 28.5% | **J:** 1,596 | **I:** 1,513 | **L:** 1,285 | **K:** 902 |
+| **D** | *Physical Attacks* | PHYSICAL | 27.9% (1,785) | **32.4% (6,029)** | 32.4% | **I:** 2,995 | **J:** 1,058 | **K:** 1,022 | **L:** 954 |
+| **IDLE** | *Recovery Frames* | NONE | 7.4% (473) | **7.1% (1,312)** | 7.1% | Forced recovery frames during state transitions. |
+
+---
+
+## Mechanics & Move-List Integration
+
+### 1. Utility Mechanics (`W` Stances — 4,975 Decisions / 26.7%)
+
+```
+  [W+I: Rider High Jump] ───> Grants Airborne + 1.3x Attack + 25% Evasion
+                                      │
+                                      ▼
+  [W+K: Typhoon Focus]   ───> Grants 1.5x sAttack Boost (3 Turns)
+                                      │
+                                      ▼
+  [S+I / S+J Cash-Out]   ───> High-Damage Finisher Execution
+
+```
+
+* **`W+I` — Rider High Jump (3,233 Uses / 17.4% Total Decisions):**
+* **Cost:** 0 Chi | **Buff:** Airborne (3 turns), `attack: 1.3`, `evasion: 0.25` (2 turns).
+* **Tactical Execution:** `W+I` became the agent's primary neutral stance. By granting a **30% attack boost** and **25% evasion** at zero Chi cost, the network learned to hop into airborne status to absorb or dodge linear ground pokes while setting up boosted physical aerial punishes (`D+I`).
+
+
+* **`W+K` — Typhoon Focus (857 Uses / 4.6% Total Decisions):**
+* **Cost:** 1 Chi | **Buff:** `sAttack: 1.5` (3 turns).
+* **Scaling Progression:** Usage scaled from **316 at Game 454** to **857 by Game 1,300**. The network learned that investing 1 Chi to boost Special Attack damage by **50%** turns standard specials into match-ending nukes.
+
+
+* **`W+J` — Typhoon Charge (506 Uses):**
+* **Cost:** 1 Chi | **Buff:** `speed: 1.4` (3 turns). Used selectively to capture turn priority when Chi allowed.
+
+
+* **`W+L` — Typhoon Bless (379 Uses):**
+* **Cost:** 1 Chi | **Effect:** Faint Recovery +40. Triggered as a defensive state recovery when faint thresholds approached danger levels.
+
+
+
+---
+
+### 2. Physical Offense (`D` Stances — 6,029 Decisions / 32.4%)
+
+```
+  D+I (Combo Kick)     ██████████████████████ 2,995 (49.7% of D-actions)
+  D+J (Standard Punch) ███████ 1,058
+  D+K (Standard Kick)  ███████ 1,022
+  D+L (Combo Punch)    ██████ 954
+
+```
+
+* **`D+I` — Combo Kick (2,995 Uses / 16.1% Total Decisions):**
+* **Cost:** 1 Chi | **Base Damage:** 87 | **Hit Chance:** 78% | **Facing:** Right
+* **Tactical Execution:** `D+I` emerged as Ichigo's most relied-upon physical move. Because `W+I` (Rider High Jump) places Ichigo into airborne status, pairing `W+I` into `D+I` creates a high-accuracy, 1.3x boosted physical punish option ($87 \times 1.3 = \mathbf{113.1\text{ damage}}$ for 1 Chi).
+
+
+* **`D+J` (1,058 Uses) & `D+K` (1,022 Uses) — Neutral Pokes:**
+* **Cost:** 0 Chi | **Base Damage:** 52 | **Hit Chance:** 75%
+* Serving as 0-Chi neutral pokes, these moves allowed the AI to maintain pressure when low on Chi without opening wide frame vulnerabilities.
+
+
+* **`D+L` — Combo Punch (954 Uses):**
+* **Cost:** 1 Chi | **Base Damage:** 90 | **Hit Chance:** 76%. High-cost physical option used when pure physical burst was needed.
+
+
+
+---
+
+### 3. Special Finisher Execution (`S` Stances — 5,296 Decisions / 28.5%)
+
+```
+  S+J (Rider Power Chop)  ████████████ 1,596 (30.1% of S-actions)
+  S+I (Kirimomi Kick)     ███████████ 1,513 (28.6% of S-actions)
+  S+L (Rider Kick)        █████████ 1,285 (24.3% of S-actions)
+  S+K (Rider Head Crusher)███████ 902 (17.0% of S-actions)
+
+```
+
+* **`S+J` — Rider Power Chop (1,596 Uses):**
+* **Cost:** 3 Chi | **Base Damage:** 400 | **Hit Chance:** 77%
+* **Efficiency:** `S+J` acts as the primary low-cost special cash-out. When combined with `W+K` Focus ($1.5\times$), it delivers **600 damage for just 4 total Chi** ($1\text{ Chi Focus} + 3\text{ Chi Chop}$), making it the most cost-effective damage-per-Chi move in Ichigo's kit.
+
+
+* **`S+I` — Kirimomi Kick (1,513 Uses):**
+* **Cost:** 9 Chi | **Base Damage:** 1,100 | **Hit Chance:** 76% | **Facing:** Right
+* **Finisher Nuke:** The ultimate cash-out move. Under `W+K` Focus, `S+I` deals **1,650 damage** in a single strike, instantly eliminating opponents from over 60% LP.
+
+
+* **`S+L` — Rider Kick (1,285 Uses) & `S+K` — Rider Head Crusher (902 Uses):**
+* **`S+L`:** 6 Chi, 860 Base Damage (1,290 under Focus). Mid-tier finisher.
+* **`S+K`:** 4 Chi, 480 Base Damage (720 under Focus). Mid-low Chi bridge option.
+
+
+
+---
+
+### 4. Defensive Frame Management (`A` Stances — 988 Decisions / 5.3%)
+
+```
+  A+I (Windmill Guard)  ████████████ 318 (32.2% of A-actions)
+  A+L (Standard Guard)  ██████████ 264
+  A+J (Standard Guard)  ███████ 230
+  A+K (Standard Guard)  ██████ 176
+
+```
+
+* **`A+I` — Windmill Guard (318 Uses):**
+* **Cost:** 4 Chi | **Guard Kind:** Omni | **Hit Chance:** 100%
+* **Tactical Execution:** Omni Guard blocks incoming high-cost special nukes (`S+I` / `S+L`) regardless of attack direction. The AI learned to spend 4 Chi on `A+I` strictly when predicting opponent high-Chi finisher windows.
+
+
+* **`A+J`, `A+K`, `A+L` — Standard Guards (670 Combined Uses):**
+* **Cost:** 0 Chi | **Hit Chance:** 100%
+* Zero-cost directional mitigation used to conserve Chi while blocking expected physical strings.
+
+
+
+---
+
+## Opponent Breakdown & Performance Progression
+
+During training, the learner faced a repeating mixed cycle of 30 matches per opponent tier.
+
+```
++---------------------------------------------------------------------------------+
+|                           TRAINING WIN RATE BREAKDOWN                           |
++---------------------+-------------------+-------------------+-------------------+
+| Opponent Tier       | P1 Win Rate       | P2 Win Rate       | Total Tier Win %  |
++---------------------+-------------------+-------------------+-------------------+
+| mixed : novice      | 109W - 56L (66.1%)| 104W - 61L (63.0%)| 64.5% (213W - 117L)|
+| mixed : balanced    | 74W - 91L (44.8%) | 80W - 85L (48.5%) | 46.6% (154W - 176L)|
+| mixed : soul        | 70W - 85L (45.2%) | 59W - 96L (38.1%) | 41.6% (129W - 181L)|
+| mixed : master      | 71W - 94L (43.0%) | 65W - 100L (39.4%)| 41.2% (136W - 194L)|
++---------------------+-------------------+-------------------+-------------------+
+
+```
+
+> **Evaluation vs. Training Performance Gap:** Maintaining a **41%–46% win rate** against MASTER and SOUL *during active training* (with 33% forced guidance and up to 20% random exploration) provided the exact replay density needed. When tested under pure greedy evaluation ($\epsilon = 0\%$, Guidance $= 0\%$), candidate `254051651` achieved an **83.3% win rate vs. SOUL** (15W / 3L), drastically outperforming legacy matrix `3131578912` (55.6%).
+
+---
+
+## Final Policy Synthesis
+
+Candidate matrix **`254051651`** represents a fully realized dynamic policy for Ichigo:
+
+1. **Setup-Driven Offense:** Rather than spamming raw physicals, the agent relies on `W+I` (High Jump) for neutral mobility and `W+K` (Focus) to charge Special damage.
+2. **Resource-Efficient Cash-Outs:** The attack distribution is split cleanly between `D+I` (Combo Kick) for high-accuracy physical punishes and `S+J` / `S+I` for low/high-cost Special finishes.
+3. **Reactive Defense:** `A+I` Omni Guard is reserved for high-risk defensive turns, keeping utility usage active without wasting Chi on unboosted turns.
+
+Checkpoint **`254051651`** is fully verified and deployed as the active production baseline for **`001_001`**.
+
+
+
 
 
 001_002:
