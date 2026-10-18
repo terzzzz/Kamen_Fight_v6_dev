@@ -5,6 +5,8 @@
  *   - One v5 implementation; no legacy sub-tick simulation.
  *   - Environment-owned observations and legal-action masks.
  *   - One replay transition per resolved round.
+ *   - Multi-turn proportional credit assignment for W buffs, stackable evasion,
+ *     attack multipliers, and periodic LP regen/bleed payoffs.
  *   - Core-owned execution-charge limits.
  *   - Deterministic seeded action selection.
  *   - Evaluation without guidance or training exploration.
@@ -178,6 +180,14 @@
     return move?.direction === "A" || key.startsWith("A+");
   }
 
+  function isWKey(state, slot, key) {
+    if (!key || typeof key !== "string") {
+      return false;
+    }
+    const move = state?.moves?.[slot]?.[key];
+    return move?.direction === "W" || key.startsWith("W+");
+  }
+
   function getMinSChiCost(state, slot) {
     const moves = state?.moves?.[slot];
     if (!moves) {
@@ -216,6 +226,101 @@
       }
     }
     return false;
+  }
+
+  /*
+   * Evaluates a single fighter's active status/buff/regen/airborne value in [-1, +1].
+   * Positive for beneficial buffs (Evasion, LP Regen, ATK/DEF/SPD/ACC, Airborne);
+   * negative for harmful statuses (Bleeding, Rope Bind slow).
+   */
+  function fighterStatusValue(player) {
+    if (!player || player.lp <= 0) {
+      return 0;
+    }
+
+    const maxLp = Math.max(1, Number(player.maxLp || 1600));
+    const missingLp = Math.max(0, maxLp - Number(player.lp || 0));
+    const missingRatio = K.clamp(missingLp / maxLp, 0, 1);
+
+    let score = 0;
+
+    for (const buff of player.activeBuffs || []) {
+      const rounds = Math.max(0, Math.min(4, Number(buff.roundsLeft || 0)));
+      if (rounds <= 0) continue;
+
+      const eff = buff.effects || {};
+      const durationWeight = 0.55 + 0.25 * rounds;
+
+      // Evasion buff (e.g., Amazon Gigi Focus +30% EVS, Airborne Evasion +20% EVS)
+      if (Number(eff.evasion) > 0) {
+        score += Number(eff.evasion) * 1.15 * durationWeight;
+      }
+
+      // Periodic LP Regeneration (e.g., Inca Blessing +200 LP/rnd)
+      const lpRegen = Number(buff.lpRegen ?? eff.lpRegen ?? 0);
+      if (lpRegen > 0) {
+        const expectedHeal = Math.min(
+          missingLp + 120,
+          lpRegen * rounds
+        );
+        const healScale = 0.35 + 0.65 * missingRatio;
+        score += (expectedHeal / maxLp) * 1.35 * healScale;
+      }
+
+      // Periodic LP Bleeding (e.g., Amazon / X bleed debuff -150 LP/rnd)
+      const lpBleed = Number(buff.lpBleed ?? eff.lpBleed ?? 0);
+      if (lpBleed > 0) {
+        const expectedBleed = lpBleed * rounds;
+        score -= (expectedBleed / maxLp) * 1.35;
+      }
+
+      // Attack / Stance Attack buffs (Ichigo +S-Atk, Nigo +200% D-Atk, etc.)
+      if (Number(eff.attack) > 1) {
+        score += (Number(eff.attack) - 1) * 0.75 * durationWeight;
+      }
+      if (Number(eff.dAttack) > 1) {
+        score += (Number(eff.dAttack) - 1) * 0.65 * durationWeight;
+      }
+      if (Number(eff.sAttack) > 1) {
+        score += (Number(eff.sAttack) - 1) * 0.65 * durationWeight;
+      }
+
+      // Armor / Defense buffs (armor < 1 means reduced incoming damage)
+      if (eff.armor !== undefined && Number(eff.armor) < 1) {
+        score += (1 - Number(eff.armor)) * 0.85 * durationWeight;
+      }
+
+      // Charge speed buffs / debuffs (Rope Bind < 1)
+      if (eff.speed !== undefined && Number(eff.speed) !== 1) {
+        score += (Number(eff.speed) - 1) * 0.60 * durationWeight;
+      }
+
+      // Accuracy buffs
+      if (Number(eff.accuracy) > 0) {
+        score += (Number(eff.accuracy) / 100) * 0.55 * durationWeight;
+      }
+    }
+
+    if (Number(player.airborneTicks) > 0) {
+      score += 0.14 * Math.min(2, Number(player.airborneTicks));
+    }
+
+    return K.clamp(score, -1, 1);
+  }
+
+  /*
+   * Net status potential from `slot`'s perspective in [-1, +1].
+   */
+  function statusPotential(state, slot) {
+    if (!state || state.winner) {
+      return 0;
+    }
+    const enemySlot = C.other(slot);
+    return K.clamp(
+      fighterStatusValue(state[slot]) - fighterStatusValue(state[enemySlot]),
+      -1,
+      1
+    );
   }
 
   /*
@@ -277,6 +382,453 @@
     }
 
     return K.clamp(potential, -1, 1);
+  }
+
+  /*
+   * Estimates periodic LP change (regen - bleed) that occurred at the end of a turn
+   * so direct combat damage can be separated from end-of-round periodic ticks.
+   */
+  function estimatePeriodicLpDelta(beforePlayer, afterPlayer) {
+    if (!beforePlayer || !afterPlayer || afterPlayer.lp <= 0) {
+      return 0;
+    }
+
+    // Periodic statuses tick in CombatCore when their roundsLeft decrements on an active buff
+    let periodicDelta = 0;
+
+    for (const afterBuff of afterPlayer.activeBuffs || []) {
+      const regen = Number(afterBuff.lpRegen ?? afterBuff.effects?.lpRegen ?? 0);
+      const bleed = Number(afterBuff.lpBleed ?? afterBuff.effects?.lpBleed ?? 0);
+      if (regen <= 0 && bleed <= 0) continue;
+
+      // Buffs with appliedRound < current resolved round ticked at the end of this round
+      const matchedBefore = (beforePlayer.activeBuffs || []).find(
+        b => b.id === afterBuff.id && Number(b.roundsLeft) > Number(afterBuff.roundsLeft)
+      );
+      if (matchedBefore) {
+        periodicDelta += regen - bleed;
+      }
+    }
+
+    // Also check buffs that were at roundsLeft === 1 in `beforePlayer` and expired after ticking
+    for (const beforeBuff of beforePlayer.activeBuffs || []) {
+      if (Number(beforeBuff.roundsLeft) !== 1) continue;
+      const regen = Number(beforeBuff.lpRegen ?? beforeBuff.effects?.lpRegen ?? 0);
+      const bleed = Number(beforeBuff.lpBleed ?? beforeBuff.effects?.lpBleed ?? 0);
+      if (regen <= 0 && bleed <= 0) continue;
+
+      const stillPresent = (afterPlayer.activeBuffs || []).some(
+        b => b.id === beforeBuff.id
+      );
+      if (!stillPresent) {
+        periodicDelta += regen - bleed;
+      }
+    }
+
+    return periodicDelta;
+  }
+
+  /*
+   * Detects if `evaderSlot` cleanly evaded an opponent's offensive attack this turn.
+   * Returns a normalized avoided-damage score > 0 when an unblocked enemy attack missed.
+   */
+  function detectEvadedAttack(before, after, evaderSlot, actions) {
+    if (!before || !after || !actions) {
+      return 0;
+    }
+
+    const attackerSlot = C.other(evaderSlot);
+    const evaderAction = actions[evaderSlot];
+    const attackerAction = actions[attackerSlot];
+
+    if (!evaderAction || !attackerAction) {
+      return 0;
+    }
+
+    const evaderBefore = before[evaderSlot];
+    const attackerBefore = before[attackerSlot];
+
+    // Fainted or idle targets cannot evade in CombatCore
+    if (
+      !evaderBefore ||
+      !attackerBefore ||
+      evaderBefore.isFainted ||
+      attackerBefore.isFainted ||
+      evaderAction.key === "DO_NOTHING"
+    ) {
+      return 0;
+    }
+
+    const attackerMove = before.moves?.[attackerSlot]?.[attackerAction.key];
+    const evaderMove = before.moves?.[evaderSlot]?.[evaderAction.key];
+
+    if (!attackerMove || !attackerMove.offensive) {
+      return 0;
+    }
+
+    // If the evader used a guard, a 0-damage turn is a block, not an evasion
+    if (evaderMove?.guardKind) {
+      return 0;
+    }
+
+    // Estimate direct combat damage taken by each side (excluding periodic regen/bleed ticks)
+    const attackerPeriodic = estimatePeriodicLpDelta(attackerBefore, after[attackerSlot]);
+    const evaderPeriodic = estimatePeriodicLpDelta(evaderBefore, after[evaderSlot]);
+
+    const directDamageToAttacker = Math.max(
+      0,
+      (attackerBefore.lp + attackerPeriodic) - after[attackerSlot].lp
+    );
+    const directDamageToEvader = Math.max(
+      0,
+      (evaderBefore.lp + evaderPeriodic) - after[evaderSlot].lp
+    );
+
+    if (directDamageToEvader > 1) {
+      return 0;
+    }
+
+    // Check if the attacker was interrupted before swinging by a higher-priority hit from evader
+    const priorityCmp =
+      C.comparePriority(
+        before,
+        evaderSlot === "p1" ? evaderAction : attackerAction,
+        evaderSlot === "p1" ? attackerAction : evaderAction
+      ) * (evaderSlot === "p1" ? 1 : -1);
+
+    const evaderInterruptedAttacker =
+      Boolean(evaderMove?.offensive) &&
+      directDamageToAttacker > 1 &&
+      priorityCmp > 0;
+
+    if (evaderInterruptedAttacker) {
+      return 0;
+    }
+
+    // Check if evader took 0 faint buildup from the attack
+    const evaderFaintIncreased =
+      after[evaderSlot].faintMeter > before[evaderSlot].faintMeter ||
+      (after[evaderSlot].isFainted && !before[evaderSlot].isFainted);
+
+    if (evaderFaintIncreased) {
+      return 0;
+    }
+
+    const maxLp = Math.max(1, Number(evaderBefore.maxLp || 1600));
+    const avoidedDamageRatio = K.clamp(
+      Number(attackerMove.baseDamage || 180) / maxLp,
+      0.08,
+      0.45
+    );
+
+    const activeEvasion = C.modifiers(after[evaderSlot]).evasion;
+    const evasionMultiplier = activeEvasion > 0.05 ? 1.35 : 1.0;
+
+    return avoidedDamageRatio * evasionMultiplier;
+  }
+
+  /*
+   * Extracts active buff contributions cast by `learnerSlot` on `round` so that
+   * subsequent rounds (t+1, t+2, t+3) can attribute exact proportional payoffs back
+   * to the turn that activated the buff (including stackable evasion & attack buffs).
+   */
+  function extractCastBuffContributions(before, after, learnerSlot, resolvedActionKey) {
+    const move = before.moves?.[learnerSlot]?.[resolvedActionKey];
+    if (!move) {
+      return null;
+    }
+
+    const enemySlot = C.other(learnerSlot);
+    const ownAfter = after[learnerSlot];
+    const enemyAfter = after[enemySlot];
+    const ownBefore = before[learnerSlot];
+
+    // Check if our own buff was immediately cancelled by taking LP damage on the cast turn
+    const ownPeriodic = estimatePeriodicLpDelta(ownBefore, ownAfter);
+    const tookDirectDamage = (ownBefore.lp + ownPeriodic) - ownAfter.lp > 1;
+    if (tookDirectDamage && move.buff?.cancelOnLpDamage) {
+      return null;
+    }
+
+    const eff = move.buff?.effects || {};
+    const evasionBoost = Number(eff.evasion || 0);
+    const attackMult = Number(eff.attack || 1);
+    const dAttackMult = Number(eff.dAttack || 1);
+    const sAttackMult = Number(eff.sAttack || 1);
+    const armorMult = eff.armor !== undefined ? Number(eff.armor) : 1;
+    const lpRegen = Number(move.buff?.lpRegen ?? eff.lpRegen ?? 0);
+    const lpBleed = Number(
+      move.targetDebuff?.lpBleed ??
+      move.targetDebuff?.effects?.lpBleed ??
+      0
+    );
+    const grantsAirborne = Boolean(move.grantsAirborne || Number(ownAfter.airborneTicks) > Number(ownBefore.airborneTicks));
+
+    const hasBuffEffect =
+      evasionBoost > 0 ||
+      attackMult > 1 ||
+      dAttackMult > 1 ||
+      sAttackMult > 1 ||
+      armorMult < 1 ||
+      lpRegen > 0 ||
+      lpBleed > 0 ||
+      grantsAirborne;
+
+    if (!hasBuffEffect) {
+      return null;
+    }
+
+    const duration = Math.max(
+      1,
+      Number(
+        move.buff?.duration ??
+        move.targetDebuff?.duration ??
+        (grantsAirborne ? 1 : 0)
+      )
+    );
+
+    // Verify the buff or debuff is actually present in `after` state
+    const buffId = move.buff?.id || resolvedActionKey;
+    const debuffId = move.targetDebuff?.id || resolvedActionKey;
+
+    const ownBuffActive =
+      grantsAirborne ||
+      (ownAfter.activeBuffs || []).some(b => b.id === buffId && b.roundsLeft > 0);
+    const enemyDebuffActive =
+      lpBleed > 0 &&
+      (enemyAfter.activeBuffs || []).some(b => b.id === debuffId && b.roundsLeft > 0);
+
+    if (!ownBuffActive && !enemyDebuffActive) {
+      return null;
+    }
+
+    return {
+      actionKey: resolvedActionKey,
+      buffId,
+      debuffId,
+      roundsRemaining: duration,
+      evasionBoost: ownBuffActive ? evasionBoost + (grantsAirborne && evasionBoost === 0 ? 0.12 : 0) : 0,
+      attackBonus: ownBuffActive && attackMult > 1 ? attackMult - 1 : 0,
+      dAttackBonus: ownBuffActive && dAttackMult > 1 ? dAttackMult - 1 : 0,
+      sAttackBonus: ownBuffActive && sAttackMult > 1 ? sAttackMult - 1 : 0,
+      armorReduction: ownBuffActive && armorMult < 1 ? 1 - armorMult : 0,
+      lpRegen: ownBuffActive ? lpRegen : 0,
+      lpBleed: enemyDebuffActive ? lpBleed : 0
+    };
+  }
+
+  /*
+   * Multi-Turn Proportional Buff Credit Assignment:
+   * Distributes actual realized payoffs on the current turn (bonus attack damage,
+   * evaded enemy attacks across stackable evasion buffs, armor damage reduction,
+   * LP regeneration ticks, and enemy bleed ticks) back to the recent pending
+   * transition(s) that cast those buffs.
+   */
+  function attributeRealizedBuffPayoffs(
+    pendingWindow,
+    before,
+    after,
+    learnerSlot,
+    actions
+  ) {
+    if (!pendingWindow || pendingWindow.length === 0) {
+      return;
+    }
+
+    const enemySlot = C.other(learnerSlot);
+    const ownBefore = before[learnerSlot];
+    const ownAfter = after[learnerSlot];
+    const enemyBefore = before[enemySlot];
+    const enemyAfter = after[enemySlot];
+
+    const ownMaxLp = Math.max(1, Number(ownBefore.maxLp || 1600));
+    const enemyMaxLp = Math.max(1, Number(enemyBefore.maxLp || 1600));
+
+    const ownPeriodic = estimatePeriodicLpDelta(ownBefore, ownAfter);
+    const enemyPeriodic = estimatePeriodicLpDelta(enemyBefore, enemyAfter);
+
+    const directDamageDealt = Math.max(
+      0,
+      (enemyBefore.lp + enemyPeriodic) - enemyAfter.lp
+    );
+    const directDamageTaken = Math.max(
+      0,
+      (ownBefore.lp + ownPeriodic) - ownAfter.lp
+    );
+
+    const ownActionKey = actions?.[learnerSlot]?.key || "";
+    const ownMove = before.moves?.[learnerSlot]?.[ownActionKey];
+    const ownMoveDir = ownMove?.direction || "";
+
+    const evadedScore = detectEvadedAttack(before, after, learnerSlot, actions);
+
+    // Filter pending entries that still have active buff contributions on this turn
+    const activeEntries = [];
+    for (const entry of pendingWindow) {
+      if (!entry.buffMeta || entry.buffMeta.roundsRemaining <= 0) {
+        continue;
+      }
+
+      // Check if the buff is still present on `before` (was active entering this round)
+      const meta = entry.buffMeta;
+      const stillHasOwnBuff =
+        (ownBefore.activeBuffs || []).some(b => b.id === meta.buffId && b.roundsLeft > 0) ||
+        (Number(ownBefore.airborneTicks) > 0 && meta.evasionBoost > 0);
+      const stillHasEnemyDebuff =
+        meta.lpBleed > 0 &&
+        (enemyBefore.activeBuffs || []).some(b => b.id === meta.debuffId && b.roundsLeft > 0);
+
+      if (stillHasOwnBuff || stillHasEnemyDebuff) {
+        activeEntries.push(entry);
+      }
+    }
+
+    if (activeEntries.length === 0) {
+      return;
+    }
+
+    // 1. Proportional Attack Buff Payoff (+Attack, +D-Attack, +S-Attack)
+    if (directDamageDealt > 1 && ownMove?.offensive) {
+      let totalAttackBonus = 0;
+      const entryWeights = [];
+
+      for (const entry of activeEntries) {
+        const m = entry.buffMeta;
+        let bonus = m.attackBonus;
+        if (ownMoveDir === "D") bonus += m.dAttackBonus;
+        if (ownMoveDir === "S") bonus += m.sAttackBonus;
+        entryWeights.push(bonus);
+        totalAttackBonus += bonus;
+      }
+
+      if (totalAttackBonus > 0) {
+        // Fraction of total damage dealt that came from the buff multiplier(s)
+        const totalMult = 1 + totalAttackBonus;
+        const bonusDamageRatio =
+          (directDamageDealt * (totalAttackBonus / totalMult)) / enemyMaxLp;
+
+        for (let i = 0; i < activeEntries.length; i++) {
+          if (entryWeights[i] <= 0) continue;
+          const share = entryWeights[i] / totalAttackBonus;
+          const credit = 1.35 * bonusDamageRatio * share;
+          activeEntries[i].transition.r += credit;
+          activeEntries[i].transition.rewardCategory = "Dmg";
+          activeEntries[i].transition.weightScale = Math.max(
+            activeEntries[i].transition.weightScale || 1,
+            1.75
+          );
+        }
+      }
+    }
+
+    // 2. Proportional Stackable Evasion Payoff (e.g. Amazon W+K Gigi Focus + W+I Jungle Jump)
+    if (evadedScore > 0) {
+      const baseEvasion = Math.max(0.02, Number(ownBefore.baseEvasion || 0.06));
+      let totalBuffEvasion = 0;
+
+      for (const entry of activeEntries) {
+        totalBuffEvasion += Math.max(0, entry.buffMeta.evasionBoost);
+      }
+
+      if (totalBuffEvasion > 0) {
+        const totalEffectiveEvasion = baseEvasion + totalBuffEvasion;
+
+        for (const entry of activeEntries) {
+          const boost = Math.max(0, entry.buffMeta.evasionBoost);
+          if (boost <= 0) continue;
+
+          // Marginal contribution of this specific evasion skill to the total evasion pool
+          const marginalShare = boost / totalEffectiveEvasion;
+          const dodgeCredit = 0.75 * evadedScore * marginalShare;
+
+          entry.transition.r += dodgeCredit;
+          entry.transition.rewardCategory = "Dmg";
+          entry.transition.weightScale = Math.max(
+            entry.transition.weightScale || 1,
+            1.80
+          );
+        }
+      }
+    }
+
+    // 3. Proportional Armor / Damage-Reduction Payoff
+    if (directDamageTaken > 1) {
+      let totalArmorReduction = 0;
+      for (const entry of activeEntries) {
+        totalArmorReduction += Math.max(0, entry.buffMeta.armorReduction);
+      }
+      if (totalArmorReduction > 0 && totalArmorReduction < 0.95) {
+        const mitigatedDamageRatio =
+          (directDamageTaken * (totalArmorReduction / (1 - totalArmorReduction))) /
+          ownMaxLp;
+
+        for (const entry of activeEntries) {
+          const red = Math.max(0, entry.buffMeta.armorReduction);
+          if (red <= 0) continue;
+          const share = red / totalArmorReduction;
+          entry.transition.r += 0.95 * mitigatedDamageRatio * share;
+        }
+      }
+    }
+
+    // 4. Realized Periodic LP Regeneration Payoff (e.g. Amazon Inca Blessing +200 LP/rnd)
+    if (ownPeriodic > 0 && ownAfter.lp > ownBefore.lp - directDamageTaken) {
+      const actualLpHealed = Math.max(
+        0,
+        (ownAfter.lp - ownBefore.lp) + directDamageTaken
+      );
+      if (actualLpHealed > 0) {
+        let totalRegen = 0;
+        for (const entry of activeEntries) {
+          totalRegen += Math.max(0, entry.buffMeta.lpRegen);
+        }
+        if (totalRegen > 0) {
+          const healedRatio = actualLpHealed / ownMaxLp;
+          for (const entry of activeEntries) {
+            const reg = Math.max(0, entry.buffMeta.lpRegen);
+            if (reg <= 0) continue;
+            const share = reg / totalRegen;
+            entry.transition.r += 1.25 * healedRatio * share;
+            entry.transition.rewardCategory = "Dmg";
+            entry.transition.weightScale = Math.max(
+              entry.transition.weightScale || 1,
+              1.75
+            );
+          }
+        }
+      }
+    }
+
+    // 5. Realized Periodic Enemy Bleed Payoff (e.g. Amazon / X Bleeding -150 LP/rnd)
+    if (enemyPeriodic < 0) {
+      const bleedDamage = Math.abs(enemyPeriodic);
+      let totalBleed = 0;
+      for (const entry of activeEntries) {
+        totalBleed += Math.max(0, entry.buffMeta.lpBleed);
+      }
+      if (totalBleed > 0) {
+        const bleedRatio = bleedDamage / enemyMaxLp;
+        for (const entry of activeEntries) {
+          const bld = Math.max(0, entry.buffMeta.lpBleed);
+          if (bld <= 0) continue;
+          const share = bld / totalBleed;
+          entry.transition.r += 1.35 * bleedRatio * share;
+          entry.transition.rewardCategory = "Dmg";
+          entry.transition.weightScale = Math.max(
+            entry.transition.weightScale || 1,
+            1.75
+          );
+        }
+      }
+    }
+
+    // Decrement remaining attribution window on active buff entries
+    for (const entry of activeEntries) {
+      entry.buffMeta.roundsRemaining = Math.max(
+        0,
+        entry.buffMeta.roundsRemaining - 1
+      );
+    }
   }
 
   function resolveExecutionCharge(key, state, slot) {
@@ -678,7 +1230,9 @@
         (before[slot].lp - after[slot].lp) /
         Math.max(1, before[slot].maxLp);
 
-      reward = 1.5 * enemyLpChange - ownLpChange;
+      // When own LP increases via Regeneration, ownLpChange is negative,
+      // so `-1.15 * ownLpChange` automatically grants positive reward for every LP healed.
+      reward = 1.5 * enemyLpChange - 1.15 * ownLpChange;
 
       /*
        * Net Chi Differential:
@@ -728,6 +1282,27 @@
           reward -= 0.12 + 0.02 * Math.min(8, Math.abs(netChiDeltaRaw));
         }
       }
+
+      /*
+       * Status & Active Regen Potential Shaping:
+       * Immediately rewards landing Evasion (Gigi Focus / Jungle Jump),
+       * LP Regen (Inca Blessing), ATK/DEF/SPD buffs (Ichigo +S-Atk, Nigo +200% D-Atk),
+       * or Bleeding debuffs on the opponent.
+       */
+      const statusDelta =
+        statusPotential(after, slot) - statusPotential(before, slot);
+
+      reward += 0.30 * statusDelta;
+
+      /*
+       * Direct Evasion / Dodge Reward:
+       * Immediately rewards evading an opponent's offensive move without taking
+       * LP or faint damage (especially when Evasion or Airborne is active).
+       */
+      const ownEvadedScore = detectEvadedAttack(before, after, slot, actions);
+      const enemyEvadedScore = detectEvadedAttack(before, after, enemySlot, actions);
+
+      reward += 0.65 * ownEvadedScore - 0.35 * enemyEvadedScore;
 
       /*
        * Doomed Status Potential Shaping:
@@ -894,6 +1469,11 @@
     let rounds = 0;
     let qSum = 0;
     let qCount = 0;
+
+    // 3-turn sliding window so W-buffs/evasion/regen receive exact realized payoffs
+    // from subsequent rounds before their transition is yielded to the replay buffer.
+    const BUFF_CREDIT_WINDOW = 3;
+    const pendingWindow = [];
 
     while (!state.winner) {
       if (rounds > maxRounds + 1) {
@@ -1096,16 +1676,6 @@
 
       const next = readState(nextEnv, learnerSlot, spec, done);
 
-      let category = "Neu";
-
-      if (state.winner === learnerSlot) {
-        category = "Win";
-      } else if (state.winner && state.winner !== "draw") {
-        category = "Loss";
-      } else if (state[enemySlot].lp < before[enemySlot].lp) {
-        category = "Dmg";
-      }
-
       const resolvedAction = result.actions[learnerSlot];
       const resolvedEnemyAction = result.actions[enemySlot];
 
@@ -1113,6 +1683,49 @@
         throw new Error(
           "Resolved learner action is missing its key."
         );
+      }
+
+      // 1. Attribute realized bonus damage, dodges, and regen/bleed ticks from THIS round
+      //    back to any active buff-cast turns sitting in `pendingWindow`.
+      if (rewardMode === "standard") {
+        attributeRealizedBuffPayoffs(
+          pendingWindow,
+          before,
+          state,
+          learnerSlot,
+          result.actions
+        );
+      }
+
+      const evadedEnemyAttack =
+        detectEvadedAttack(before, state, learnerSlot, result.actions) > 0;
+
+      const healedLpThisTurn =
+        state[learnerSlot].lp > before[learnerSlot].lp;
+
+      const buffMeta =
+        rewardMode === "standard"
+          ? extractCastBuffContributions(
+              before,
+              state,
+              learnerSlot,
+              resolvedAction.key
+            )
+          : null;
+
+      let category = "Neu";
+
+      if (state.winner === learnerSlot) {
+        category = "Win";
+      } else if (state.winner && state.winner !== "draw") {
+        category = "Loss";
+      } else if (
+        state[enemySlot].lp < before[enemySlot].lp ||
+        healedLpThisTurn ||
+        evadedEnemyAttack ||
+        Boolean(buffMeta)
+      ) {
+        category = "Dmg";
       }
 
       const coreAdjustedAction =
@@ -1130,43 +1743,71 @@
           isAGuardKey(before, enemySlot, resolvedEnemyAction?.key)) ||
         Math.abs(netChiSwing) >= 4;
 
-      yield {
-        type: "transition",
-        transition: {
-          s: decision.s,
-          a: decision.a,
-          m: decision.m,
-          s1: next.s,
-          m1: next.m,
-          r: calculateReward(
-            before,
-            state,
-            learnerSlot,
-            rewardMode,
-            result.actions
-          ),
-          discount: done ? 0 : E.GAMMA,
-          done,
-          demo: decision.demo,
-          weightScale: isChiTrapTurn ? 1.75 : 1,
-          rewardCategory: category,
-          isFinalRoundResolution: true,
+      const isTacticalHighlightTurn =
+        isChiTrapTurn ||
+        evadedEnemyAttack ||
+        healedLpThisTurn ||
+        Boolean(buffMeta);
 
-          actionKey: decision.action.key,
-          selectedActionKey: decision.action.key,
-          selectedCharge: decision.action.charge,
+      const transitionObj = {
+        s: decision.s,
+        a: decision.a,
+        m: decision.m,
+        s1: next.s,
+        m1: next.m,
+        r: calculateReward(
+          before,
+          state,
+          learnerSlot,
+          rewardMode,
+          result.actions
+        ),
+        discount: done ? 0 : E.GAMMA,
+        done,
+        demo: decision.demo,
+        weightScale: isTacticalHighlightTurn ? 1.75 : 1,
+        rewardCategory: category,
+        isFinalRoundResolution: true,
 
-          plannerActionKey: decision.proposedAction.key,
-          plannerCharge: decision.proposedAction.charge,
+        actionKey: decision.action.key,
+        selectedActionKey: decision.action.key,
+        selectedCharge: decision.action.charge,
 
-          resolvedActionKey: resolvedAction.key,
-          resolvedCharge: resolvedAction.charge,
-          charge: decision.action.charge,
-          coreAdjustedAction,
+        plannerActionKey: decision.proposedAction.key,
+        plannerCharge: decision.proposedAction.charge,
 
-          forcedRecovery: Boolean(before[learnerSlot].isFainted)
-        }
+        resolvedActionKey: resolvedAction.key,
+        resolvedCharge: resolvedAction.charge,
+        charge: decision.action.charge,
+        coreAdjustedAction,
+
+        forcedRecovery: Boolean(before[learnerSlot].isFainted)
       };
+
+      pendingWindow.push({
+        transition: transitionObj,
+        buffMeta
+      });
+
+      // Flush oldest transition once the 3-turn credit window is full
+      while (pendingWindow.length > BUFF_CREDIT_WINDOW) {
+        const ready = pendingWindow.shift();
+        yield {
+          type: "transition",
+          transition: ready.transition
+        };
+      }
+
+      // If the match ended, flush all remaining buffered transitions in chronological order
+      if (done) {
+        while (pendingWindow.length > 0) {
+          const ready = pendingWindow.shift();
+          yield {
+            type: "transition",
+            transition: ready.transition
+          };
+        }
+      }
 
       yield {
         type: "round",
@@ -1174,6 +1815,14 @@
         avgQ: qSum / qCount,
         qSumDelta: decision.q,
         qCountDelta: 1
+      };
+    }
+
+    while (pendingWindow.length > 0) {
+      const ready = pendingWindow.shift();
+      yield {
+        type: "transition",
+        transition: ready.transition
       };
     }
 
