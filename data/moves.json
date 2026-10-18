@@ -360,7 +360,7 @@
         "id": "inca_blessing",
         "label": "INCA BLESSING",
         "type": "heal",
-        "duration": 4,
+        "duration": 3,
         "cancelOnLpDamage": true,
         "effects": { "lpRegen": 250 }
       }
@@ -398,8 +398,8 @@
       "name": "Jaguar Shock",
       "type": "SPECIAL",
       "chiCost": 5,
-      "baseDamage": 500,
-      "hitChance": 84,
+      "baseDamage": 350,
+      "hitChance": 78,
       "video": "jaguar_shock.mp4",
       "debuff": {
         "id": "bleeding",
@@ -407,7 +407,7 @@
         "type": "dot",
         "duration": 3,
         "refreshable": true,
-        "effects": { "lpBleed": 220 }
+        "effects": { "lpBleed": 85 }
       }
     },
     "S+L": { "name": "Wild Tackle", "type": "SPECIAL", "chiCost": 7, "baseDamage": 780, "hitChance": 80, "video": "wild_tackle.mp4" },
