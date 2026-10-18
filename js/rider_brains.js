@@ -1,898 +1,946 @@
-/* js/rider_brains.js
- * Kamen Fight — Tactical Priorities & Posture Heuristics Engine
- * Supports:
- *   - "enhanced" mode (default): Full W-skill buff/evasion/regen setups & effect-aware evaluation
- *   - "classic" mode: Exact legacy NOVICE/BALANCE/MASTER/SOUL heuristic behavior for historical parity
- */
-(function (g) {
-  "use strict";
+(function () {
+  const Game = (window.KamenFight = window.KamenFight || {});
 
-  const C = g.CombatCore;
-
-  const profiles = {
-    ichigo: { chi: 20, faint: 1.8, buff: 18 },
-    nigo: { chi: 20, faint: 1.8, buff: 20 },
-    v3: { chi: 24, faint: 2.5, buff: 22 },
-    riderman: { chi: 19, faint: 2.5, buff: 20 },
-    x: { chi: 23, faint: 2.0, buff: 22 },
-    amazon: { chi: 22, faint: 2.2, buff: 18 }
+  const DIFFICULTY_PRESETS = {
+    easy: {
+      id: "easy",
+      label: "Easy",
+      temperature: 1.05,
+      randomness: 0.34,
+      priorScale: 0.72,
+      counterWeight: 0.45,
+      lookaheadWeight: 0.55,
+       topChoices: 5,
+    },
+    normal: {
+      id: "normal",
+      label: "Normal",
+      temperature: 0.62,
+      randomness: 0.16,
+      priorScale: 1.0,
+      counterWeight: 0.85,
+      lookaheadWeight: 0.9,
+      topChoices: 4,
+    },
+    hard: {
+      id: "hard",
+      label: "Hard",
+      temperature: 0.28,
+      randomness: 0.05,
+      priorScale: 1.22,
+      counterWeight: 1.18,
+      lookaheadWeight: 1.2,
+      topChoices: 3,
+    },
+    expert: {
+      id: "expert",
+      label: "Expert",
+      temperature: 0.14,
+      randomness: 0.01,
+      priorScale: 1.38,
+      counterWeight: 1.35,
+      lookaheadWeight: 1.38,
+      topChoices: 2,
+    },
   };
 
-  function getMode() {
-    const raw = String(g.KF_BRAIN_MODE || "enhanced").toLowerCase();
-    return raw === "classic" ? "classic" : "enhanced";
+  const DEFAULT_WEIGHTS = {
+    lp: 1.0,
+    chi: 15.5,
+    dizzy: 0.48,
+    stunned: 118,
+    buffPower: 78,
+    buffEvade: 58,
+    buffGuard: 48,
+    buffUtility: 46,
+    debuff: 48,
+    tempo: 20,
+    execute: 48,
+  };
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
   }
 
-  function setMode(mode) {
-    g.KF_BRAIN_MODE = String(mode || "enhanced").toLowerCase() === "classic"
-      ? "classic"
-      : "enhanced";
-    return g.KF_BRAIN_MODE;
-  }
-
-  function has(player, id) {
-    if (!player || !Array.isArray(player.activeBuffs)) return false;
-    return player.activeBuffs.some(
-      buff => buff.id === id && buff.roundsLeft > 0
+  function hasStatus(fighter, id) {
+    return Boolean(
+      fighter &&
+        Array.isArray(fighter.statuses) &&
+        fighter.statuses.some((status) => status.id === id)
     );
   }
 
-  function hasAny(player, ids) {
-    if (!player || !Array.isArray(ids)) return false;
-    return ids.some(id => has(player, id));
+  function countPositiveStatuses(fighter) {
+    if (!fighter || !Array.isArray(fighter.statuses)) return 0;
+    return fighter.statuses.filter(
+      (status) =>
+        status.attackMultiplier > 1 ||
+        status.nextAttackBonus > 0 ||
+        status.evadeBonus > 0 ||
+        status.guardBonus > 0 ||
+        status.chiGainBonus > 0 ||
+        status.accuracyBonus > 0
+    ).length;
   }
 
-  function hasPositiveEffect(player, effectKey) {
-    if (!player || !Array.isArray(player.activeBuffs)) return false;
-    return player.activeBuffs.some(buff => {
-      if (!(buff && buff.roundsLeft > 0)) return false;
-      const eff = buff.effects || {};
-      const val = Number(eff[effectKey]);
-      if (!Number.isFinite(val)) return false;
-      if (effectKey === "armor") return val > 0 && val < 1;
-      if (
-        effectKey === "attack" ||
-        effectKey === "dAttack" ||
-        effectKey === "sAttack" ||
-        effectKey === "speed"
-      ) {
-        return val > 1;
+  // Checks if a move provides an INSTANT survival benefit (e.g. direct LP heal or immediate guard/shield)
+  // rather than a purely delayed buff that needs future turns to pay off.
+  function isInstantSurvivalW(move) {
+    if (!move || move.dir !== "W") return false;
+    return Boolean(
+      (move.heal && move.heal > 0) ||
+      (move.selfHeal && move.selfHeal > 0) ||
+      (move.shield && move.shield > 0) ||
+      (move.recoverLp && move.recoverLp > 0)
+    );
+  }
+
+  // Checks how much self-dizzy relief a move gives (either via move property or status clear)
+  function getSelfDizzyRelief(move) {
+    if (!move) return 0;
+    if (typeof move.selfDizzy === "number" && move.selfDizzy < 0) {
+      return Math.abs(move.selfDizzy);
+    }
+    if (typeof move.dizzyHeal === "number" && move.dizzyHeal > 0) {
+      return move.dizzyHeal;
+    }
+    if (typeof move.recoverDizzy === "number" && move.recoverDizzy > 0) {
+      return move.recoverDizzy;
+    }
+    // Many W+L / A+L recovery moves reduce dizzy by ~30-40 in engine resolution
+    if (move.code === "A+L") return 28;
+    if (move.code === "W+L") return 35;
+    return 0;
+  }
+
+  // Checks how much dizzy a move inflicts on the opponent
+  function getInflictedDizzy(move) {
+    if (!move) return 0;
+    if (typeof move.dizzy === "number" && move.dizzy > 0) return move.dizzy;
+    if (typeof move.enemyDizzy === "number" && move.enemyDizzy > 0) return move.enemyDizzy;
+    if (move.dir === "S") return Math.round((move.damage || 300) * 0.055);
+    if (move.dir === "D") return Math.round((move.damage || 160) * 0.045);
+    return 0;
+  }
+
+  function statusSummaryValue(fighter, weights) {
+    if (!fighter || !Array.isArray(fighter.statuses)) {
+      return { power: 0, evade: 0, guard: 0, utility: 0, debuff: 0 };
+    }
+    let power = 0;
+    let evade = 0;
+    let guard = 0;
+    let utility = 0;
+    let debuff = 0;
+
+    for (const status of fighter.statuses) {
+      const turns = Math.max(1, status.turns || 1);
+      const turnFactor = Math.min(1.65, 0.78 + turns * 0.26);
+
+      if (status.attackMultiplier && status.attackMultiplier > 1) {
+        power += (status.attackMultiplier - 1) * 235 * turnFactor;
       }
-      return val > 0;
-    });
+      if (status.nextAttackBonus && status.nextAttackBonus > 0) {
+        power += status.nextAttackBonus * 210 * turnFactor;
+      }
+      if (status.evadeBonus && status.evadeBonus > 0) {
+        evade += status.evadeBonus * 175 * turnFactor;
+      }
+      if (status.guardBonus && status.guardBonus > 0) {
+        guard += status.guardBonus * 165 * turnFactor;
+      }
+      if (status.chiGainBonus && status.chiGainBonus > 0) {
+        utility += status.chiGainBonus * 30 * turnFactor;
+      }
+      if (status.accuracyBonus && status.accuracyBonus > 0) {
+        utility += status.accuracyBonus * 145 * turnFactor;
+      }
+
+      if (status.attackMultiplier && status.attackMultiplier < 1) {
+        debuff += (1 - status.attackMultiplier) * 190 * turnFactor;
+      }
+      if (status.evadeBonus && status.evadeBonus < 0) {
+        debuff += Math.abs(status.evadeBonus) * 160 * turnFactor;
+      }
+      if (status.guardBonus && status.guardBonus < 0) {
+        debuff += Math.abs(status.guardBonus) * 160 * turnFactor;
+      }
+      if (status.accuracyBonus && status.accuracyBonus < 0) {
+        debuff += Math.abs(status.accuracyBonus) * 145 * turnFactor;
+      }
+    }
+
+    return {
+      power: (power * (weights.buffPower || DEFAULT_WEIGHTS.buffPower)) / 78,
+      evade: (evade * (weights.buffEvade || DEFAULT_WEIGHTS.buffEvade)) / 58,
+      guard: (guard * (weights.buffGuard || DEFAULT_WEIGHTS.buffGuard)) / 48,
+      utility: (utility * (weights.buffUtility || DEFAULT_WEIGHTS.buffUtility)) / 46,
+      debuff: (debuff * (weights.debuff || DEFAULT_WEIGHTS.debuff)) / 48,
+    };
   }
 
-  /* ============================================================================
-   * CLASSIC INTENT (100% preserved for historical benchmark parity if needed)
-   * ========================================================================== */
-  function intentClassic(state, slot, difficulty) {
-    const self = state[slot];
-    const opponent = state[C.other(slot)];
-    const rawDiff = String(difficulty || "").toLowerCase();
-    const level = g.KF.difficulty(difficulty);
-    const master = level === "master" || level === "soul" || rawDiff === "soul";
+  function fighterValue(player, opponent, customWeights) {
+    const weights = Object.assign({}, DEFAULT_WEIGHTS, customWeights || {});
+    const status = statusSummaryValue(player, weights);
 
-    const result = (name, preferred) => ({ name, preferred });
+    // 1. CHI READINESS FACTOR: Delayed buffs need leftover Chi to cash out next turn.
+    const chiReadyFactor =
+      player.chi >= 5 ? 1.0 : player.chi >= 3 ? 0.52 : 0.20;
 
-    if (self.isFainted) {
-      return result("Forced faint recovery", ["DO_NOTHING"]);
+    // 2. TIME HORIZON FACTOR: Delayed buffs take time (future turns) to pay off!
+    // If either fighter is at critical LP (e.g. <= 450 LP, 1 hit from match end),
+    // delayed offensive/utility buffs have almost no time left to be cashed out.
+    const minLp = Math.min(player.lp, opponent ? opponent.lp : player.lp);
+    const timeHorizonFactor =
+      minLp <= 260
+        ? 0.08
+        : minLp <= 450
+        ? 0.25
+        : minLp <= 700
+        ? 0.62
+        : 1.0;
+
+    const delayedBuffMultiplier = chiReadyFactor * timeHorizonFactor;
+
+    let score = 0;
+    score += player.lp * weights.lp;
+    score += player.chi * weights.chi;
+
+    // 3. NON-LINEAR DIZZY / FAINT DANGER CURVE:
+    // Moving from 60 -> 20 dizzy (-40 pts) is much more valuable than 30 -> 0,
+    // because 100 dizzy = STUNNED (free finisher for opponent!).
+    score -= player.dizzy * weights.dizzy;
+    if (player.dizzy >= 50) {
+      const over50 = player.dizzy - 50;
+      // Quadratic urgency surge as dizzy approaches 100
+      score -= (over50 * over50) * 0.032;
+    }
+    if (player.dizzy >= 80) {
+      score -= 32; // Critical faint threshold penalty
     }
 
-    if (opponent.isFainted) {
-      return result("Convert stun into damage", [
-        "S+I", "S+L", "S+K", "S+J", "D+L", "D+I"
-      ]);
+    if (player.stunned > 0) {
+      score -= weights.stunned * player.stunned;
     }
 
-    switch (self.id) {
-      case "ichigo":
-        if (master && self.faintMeter >= 75 && opponent.chi < 4) {
-          return result("Safe faint recovery", ["W+L", "A+I"]);
+    // Delayed buffs (power + utility) are scaled by both Chi readiness AND Time Horizon!
+    score += status.power * delayedBuffMultiplier;
+    score += status.utility * delayedBuffMultiplier;
+    // Evasion/Guard buffs help survive the current turn, but still decay if opponent is 1 hit from dying
+    const oppTimeFactor =
+      opponent && opponent.lp <= 320 ? 0.25 : opponent && opponent.lp <= 520 ? 0.6 : 1.0;
+    score += status.evade * oppTimeFactor;
+    score += status.guard * oppTimeFactor;
+    score -= status.debuff;
+
+    // Synergy bonus: having an active offensive buff AND enough Chi + Time to fire S move
+    if (status.power > 15 && player.chi >= 5 && timeHorizonFactor >= 0.6) {
+      score += 40 * timeHorizonFactor;
+    }
+    if (player.chi >= 8) {
+      score += 24;
+    }
+    if (player.chi >= 11) {
+      score += 28;
+    }
+
+    if (opponent) {
+      // Execute urgency: strongly reward pushing opponent into 1-hit kill range
+      // so the search tree prefers dealing damage now over casting W buffs!
+      if (opponent.lp <= 750) {
+        score += ((750 - opponent.lp) / 750) * weights.execute * 1.45;
+      }
+      if (opponent.lp <= 380) {
+        score += 55; // Immediate kill-range pressure bonus
+      }
+      if (opponent.stunned > 0 && player.chi >= 4) {
+        score += 48;
+      }
+    }
+
+    return score;
+  }
+
+  function evaluateState(state, slot, customWeights) {
+    if (!state || !state.players) return 0;
+    const player = state.players[slot];
+    const opponent = state.players[slot === 0 ? 1 : 0];
+    if (!player || !opponent) return 0;
+
+    if (state.winner === slot) {
+      return 100000 + player.lp * 2 - (state.turn || 0) * 10;
+    }
+    if (state.winner === (slot === 0 ? 1 : 0)) {
+      return -100000 - opponent.lp * 2 + (state.turn || 0) * 10;
+    }
+
+    const myScore = fighterValue(player, opponent, customWeights);
+    const oppScore = fighterValue(opponent, player, customWeights);
+    return myScore - oppScore;
+  }
+
+  function hasActivePowerBuff(fighter) {
+    if (!fighter || !Array.isArray(fighter.statuses)) return false;
+    return fighter.statuses.some(
+      (s) =>
+        (s.attackMultiplier && s.attackMultiplier > 1.05) ||
+        (s.nextAttackBonus && s.nextAttackBonus > 0.05)
+    );
+  }
+
+  function hasActiveEvadeOrGuard(fighter) {
+    if (!fighter || !Array.isArray(fighter.statuses)) return false;
+    return fighter.statuses.some(
+      (s) =>
+        (s.evadeBonus && s.evadeBonus > 0.08) ||
+        (s.guardBonus && s.guardBonus > 0.08)
+    );
+  }
+
+  // Universal tactical prior for W/A/S/D + Dizzy/Faint management + Time-Horizon discipline
+  function baseTacticalPrior(move, ctx) {
+    const { player, opponent } = ctx;
+    let score = 0;
+    const cost = move.cost || 0;
+    const damage = move.damage || 0;
+    const postChi = player.chi - cost + (move.chiGain || 0);
+    const powerBuffed = hasActivePowerBuff(player);
+    const defenseBuffed = hasActiveEvadeOrGuard(player);
+    const activeBuffCount = countPositiveStatuses(player);
+    const instantHealW = isInstantSurvivalW(move);
+
+    // Are we in Sudden Death / Kill-Confirm range where delayed buffs run out of time?
+    const suddenDeathSelf = player.lp <= 420;
+    const suddenDeathOpp = opponent.lp <= 420;
+    const lowTimeHorizon = suddenDeathSelf || suddenDeathOpp;
+
+    // 1. LETHAL / KILL-CONFIRM CHECK:
+    // If this attack can finish or nearly finish the opponent right now, strongly prioritize it!
+    if (damage > 0 && opponent.lp <= damage * (powerBuffed ? 1.32 : 1.05)) {
+      score += 95 + (move.hitChance || 0.78) * 45 + (move.speed || 2) * 8;
+    } else if (damage > 0 && suddenDeathOpp) {
+      // Opponent is very low LP: prefer any reliable attack over passive setup!
+      score += 38 + (move.hitChance || 0.78) * 28 + (move.speed || 2) * 6;
+    }
+
+    // 2. FAINT / DIZZY TACTICS (Inflicting Faint on Opponent & Reducing Self-Faint):
+    const inflictedDizzy = getInflictedDizzy(move);
+    if (inflictedDizzy > 0 && opponent.stunned <= 0) {
+      // Base reward for building opponent dizzy
+      score += inflictedDizzy * 0.35;
+      // High urgency if opponent is getting close to 100 dizzy!
+      if (opponent.dizzy >= 55) {
+        score += inflictedDizzy * 0.65;
+      }
+      // Huge bonus if this hit can push opponent to >= 100 dizzy (STUN!)
+      if (opponent.dizzy + inflictedDizzy >= 100) {
+        score += 48;
+      }
+    }
+
+    const dizzyRelief = getSelfDizzyRelief(move);
+    if (dizzyRelief > 0 && player.dizzy >= 40) {
+      // Reward reducing self-dizzy (-40 pts matters a lot when approaching 100!)
+      score += dizzyRelief * 0.42;
+      if (player.dizzy >= 60) {
+        score += dizzyRelief * 0.65; // Strong urgency at 60+ dizzy
+      }
+      if (player.dizzy >= 78) {
+        score += dizzyRelief * 0.85 + 22; // Emergency faint prevention at 78+ dizzy!
+      }
+    }
+
+    // 3. STUNNED OPPONENT PUNISH: Never waste a turn on non-heal W/A when opponent is stunned!
+    if (opponent.stunned > 0) {
+      if (move.dir === "S") {
+        score += 78 + damage * 0.08;
+      } else if (move.dir === "D") {
+        score += 28 + damage * 0.05;
+      } else if (move.dir === "W" || move.dir === "A") {
+        score -= 65;
+      }
+    }
+
+    // 4. DIRECTION-SPECIFIC TACTICAL BALANCE (W / A / S / D)
+    if (move.dir === "W") {
+      // CRITICAL RULE: Delayed W buffs take time!
+      // If either fighter is at low LP (no turns left!), penalize W UNLESS it's an instant heal/shield
+      // or an emergency dizzy clear when we are about to faint!
+      if (lowTimeHorizon && !instantHealW) {
+        score -= 75;
+      } else if (instantHealW && player.lp <= 950) {
+        // Instant heal W move when low on LP is smart!
+        score += 46 + ((950 - player.lp) / 950) * 35;
+      } else if (activeBuffCount >= 2) {
+        // Don't stack 3 buffs in a row; time to attack!
+        score -= 55;
+      } else if (powerBuffed && (move.code === "W+K" || move.code === "W+J" || move.code === "W+L")) {
+        score -= 52;
+      } else if (defenseBuffed && move.code === "W+I") {
+        score -= 55;
+      } else {
+        // Offensive setup (W+K / W+J / W+L): only use when we have BOTH Time (LP) and Chi!
+        if (move.code === "W+K" || move.code === "W+J" || move.code === "W+L") {
+          if (player.chi >= cost + 5 && player.lp >= 900 && opponent.lp >= 700) {
+            score += 24;
+          } else if (player.chi >= cost + 3 && player.lp >= 700 && opponent.lp >= 550) {
+            score += 8;
+          } else if (!instantHealW && dizzyRelief < 25) {
+            score -= 36;
+          }
         }
-
-        if (self.chi < 5) {
-          return result("Rebuild with physical pressure", [
-            "D+L", "D+I", "D+K", "D+J"
-          ]);
-        }
-
-        if (
-          master &&
-          self.chi >= 8 &&
-          opponent.chi < 4 &&
-          !has(self, "focus")
-        ) {
-          return result("Focus into special conversion", [
-            "W+K", "S+L", "S+J"
-          ]);
-        }
-
-        if (has(self, "focus")) {
-          return result("Spend the focus window", [
-            "S+L", "S+I", "S+J"
-          ]);
-        }
-
-        return result(
-          master ? "Flexible punish and resource control" : "Special pressure",
-          ["S+L", "S+J", "D+L", "A+I"]
-        );
-
-      case "nigo":
-        if (master && self.faintMeter >= 75 && opponent.chi < 4) {
-          return result("Recover before committing", ["W+L", "A+I"]);
-        }
-
-        if (self.chi < 5) {
-          return result("Heavy physical Chi generation", [
-            "D+I", "D+L", "D+K"
-          ]);
-        }
-
-        if (
-          !has(self, "power_focus") &&
-          (opponent.chi < 4 || (master && self.chi >= 12))
-        ) {
-          return result("Power Focus into physical chain", [
-            "W+K", "D+I", "D+L"
-          ]);
-        }
-
-        if (has(self, "power_focus")) {
-          return result("Exploit physical amplification", [
-            "D+I", "D+L", "D+K"
-          ]);
-        }
-
-        if (
-          master &&
-          self.chi >= 9 &&
-          self.lp < self.maxLp * 0.55 &&
-          !has(self, "red_shutter")
-        ) {
-          return result("Shutter protection and initiative", [
-            "W+J", "A+I", "S+J"
-          ]);
-        }
-
-        return result(
-          master ? "Reliable punches before risky finishers" : "Heavy pressure",
-          ["S+J", "D+I", "S+L"]
-        );
-
-      case "v3":
-        if (self.chi < 5) {
-          return result("Refill the special reserve", [
-            "D+I", "D+L", "D+K"
-          ]);
-        }
-
-        if (opponent.faintMeter >= (master ? 45 : 65)) {
-          return result("Reach attack into faint conversion", [
-            "W+L", "S+J", "D+I"
-          ]);
-        }
-
-        if (
-          master &&
-          self.chi >= 10 &&
-          opponent.chi < 5 &&
-          !has(self, "double_typhoon_speed")
-        ) {
-          return result("Accelerator initiative setup", [
-            "W+J", "W+L", "S+J"
-          ]);
-        }
-
-        if (
-          self.chi >= 9 &&
-          opponent.chi < 4 &&
-          !has(self, "red_lamp_boost")
-        ) {
-          return result("Red Lamp damage cycle", [
-            "W+K", "S+J", "D+I"
-          ]);
-        }
-
-        return result(
-          master ? "Initiative, faint pressure, then conversion" : "V3 pressure",
-          ["W+L", "S+J", "S+L", "D+I"]
-        );
-
-      case "riderman":
-        if (self.chi < 6) {
-          return result("Reach refund engine", ["D+I", "D+L", "D+K"]);
-        }
-
-        if (
-          master &&
-          self.chi >= 10 &&
-          opponent.chi < 5 &&
-          !has(self, "accuracy_focus")
-        ) {
-          return result("Target Lock before weapon conversion", [
-            "W+J", "S+L", "S+K"
-          ]);
-        }
-
-        if (!has(opponent, "rope_bind")) {
-          return result("Bind to control initiative", [
-            "W+L", "D+I", "S+K"
-          ]);
-        }
-
-        if (opponent.faintMeter >= 60) {
-          return result("Drill Arm faint conversion", [
-            "S+K", "W+L", "D+I"
-          ]);
-        }
-
-        return result(
-          master ? "Bound-target weapon conversion" : "Reach weapon pressure",
-          ["S+L", "S+K", "D+I", "S+I"]
-        );
-
-      case "amazon": {
-        const selfHpRatio = (self.lp || 0) / (self.maxLp || 2300);
-        const lowHp = selfHpRatio <= 0.35;
-        const lowChi = (self.chi || 0) < 5;
-        const canFinisher = (self.chi || 0) >= 10;
-        const oppLikelyToAttack = !opponent.isFainted && ((opponent.chi || 0) >= 4);
-
-        if (lowChi) {
-          return result("Rebuild chi with low-cost pressure", [
-            "D+K", "D+I", "D+J"
-          ]);
-        }
-
-        if (lowHp) {
-          if (!oppLikelyToAttack) {
-            return result("Prioritize regen when safe", ["W+J", "A+J", "D+J"]);
+        // High Jump / Evasive W (W+I): ONLY use when opponent truly threatens an S finisher (chi >= 9)
+        // AND we aren't in sudden-death execute range!
+        if (move.code === "W+I") {
+          if (opponent.chi >= 9 && !defenseBuffed && player.lp >= 500 && opponent.lp >= 500) {
+            score += 22;
           } else {
-            return result("Defend and build chi under pressure", ["A+I", "D+J", "D+K"]);
+            // Prevents the "81 W+I High Jump spam" that drains Chi and loses tempo!
+            score -= 32;
           }
         }
-
-        if (has(self, "gigi_focus") || canFinisher) {
-          if (canFinisher && (opponent.lp || 0) <= Math.max(900, (opponent.maxLp || 2300) * 0.35)) {
-            return result("Commit to finisher", ["S+I", "S+L", "S+K"]);
-          }
-          return result("Exploit buff / high chi with specials", ["S+L", "S+K", "S+J"]);
-        }
-
-        if ((opponent.lp || 0) > 1000 && (self.chi || 0) >= 5) {
-          return result("Apply bleeding or heavy special", ["S+K", "S+L", "D+L"]);
-        }
-
-        if ((self.chi || 0) >= 7) {
-          return result("Aggressive pressure — build then strike", [
-            "D+L", "D+K", "S+L"
-          ]);
-        }
-
-        return result("Standard rushdown pressure", ["D+K", "D+I", "D+J"]);
       }
-
-      case "x":
-        if (
-          master &&
-          self.maxLp - self.lp >= 250 &&
-          self.chi >= 8 &&
-          opponent.chi < 5
-        ) {
-          return result("Safe vitality recovery", ["W+L", "D+I", "D+L"]);
-        }
-
-        if (self.chi < 6) {
-          return result("Ridol refund engine", ["D+I", "D+L", "D+K"]);
-        }
-
-        if (
-          master &&
-          self.lp < self.maxLp * 0.6 &&
-          self.chi >= 9 &&
-          !has(self, "mercury_def")
-        ) {
-          return result("Fortify before the next exchange", [
-            "W+K", "S+L", "D+I"
-          ]);
-        }
-
-        if (
-          self.chi >= 10 &&
-          opponent.chi < 4 &&
-          !has(self, "mercury_atk")
-        ) {
-          return result("Mercury attack cycle", [
-            "W+J", "S+L", "D+I"
-          ]);
-        }
-
-        return result(
-          master ? "Ridol reach, reserve, and recovery" : "Ridol pressure",
-          ["S+L", "D+I", "D+L", "S+K"]
-        );
-
-      default:
-        return result("General combat", ["S+J", "D+L", "D+K"]);
+    } else if (move.dir === "A") {
+      if (opponent.chi >= 8 && player.lp < opponent.lp) {
+        score += 18;
+      }
+      if (move.code === "A+L" && player.chi <= 4 && opponent.chi < 7 && !lowTimeHorizon) {
+        score += 22;
+      }
+      if (move.code === "A+I" && opponent.chi >= 9) {
+        score += 24;
+      }
+      if (move.code === "A+K" && opponent.chi >= 6) {
+        score += 16;
+      }
+    } else if (move.dir === "D") {
+      score += 14 + (move.chiGain || 0) * 6.5;
+      if (player.chi <= 4) {
+        score += 16;
+      }
+      if (powerBuffed && player.chi < 5) {
+        score += 22;
+      }
+    } else if (move.dir === "S") {
+      score += damage * 0.042;
+      if (powerBuffed) {
+        // CASH OUT THE BUFF! When Focus/Power Charge is active, S moves get top priority!
+        score += 48 + damage * 0.035;
+      }
+      if (postChi <= 1 && opponent.lp > damage * 1.35 && !powerBuffed) {
+        score -= 18;
+      }
     }
+
+    return score;
   }
 
-  /* ============================================================================
-   * ENHANCED INTENT (Smarter W-skill setups, evasion timing, and buff cash-outs)
-   * Note: Keeps NOVICE & BALANCE behavior close to classic while making
-   * MASTER / SOUL / RIDER tiers much smarter with W skills.
-   * ========================================================================== */
-  function intentEnhanced(state, slot, difficulty) {
-    const self = state[slot];
-    const opponent = state[C.other(slot)];
-    const rawDiff = String(difficulty || "").toLowerCase();
-    const level = g.KF.difficulty(difficulty);
-    const master =
-      level === "master" ||
-      level === "soul" ||
-      rawDiff === "soul" ||
-      rawDiff === "rider";
+  function createProfile(config) {
+    const weights = Object.assign({}, DEFAULT_WEIGHTS, config.weights || {});
+    return {
+      id: config.id,
+      name: config.name,
+      subtitle: config.subtitle,
+      style: config.style,
+      weights,
+      prior(move, ctx) {
+        const base = baseTacticalPrior(move, ctx);
+        const custom = config.prior ? config.prior(move, ctx) : 0;
+        return base + custom;
+      },
+      intent(ctx) {
+        return config.intent ? config.intent(ctx) : {};
+      },
+      bonus(move, nextState, ctx) {
+        let extra = 0;
+        const meBefore = ctx.player;
+        const oppBefore = ctx.opponent;
+        const meAfter = nextState.players[ctx.slot];
+        const oppAfter = nextState.players[ctx.slot === 0 ? 1 : 0];
 
-    // Keep Novice and Balance on the classic intent tree so lower difficulties stay familiar
-    if (!master) {
-      return intentClassic(state, slot, difficulty);
-    }
+        if (meBefore && oppBefore && meAfter && oppAfter) {
+          const dealt = Math.max(0, oppBefore.lp - oppAfter.lp);
+          const taken = Math.max(0, meBefore.lp - meAfter.lp);
 
-    const result = (name, preferred) => ({ name, preferred });
-
-    if (self.isFainted) {
-      return result("Forced faint recovery", ["DO_NOTHING"]);
-    }
-
-    if (opponent.isFainted) {
-      // If we already have plenty of Chi or an attack buff, cash out immediately;
-      // if we have massive Chi and a 1-turn setup buff will guarantee a lethal next hit, still prioritize big S/D cash-out.
-      if (self.id === "nigo" && hasPositiveEffect(self, "dAttack")) {
-        return result("Convert stun with amplified physical", [
-          "D+I", "D+L", "S+I", "S+L"
-        ]);
-      }
-      return result("Convert stun into damage", [
-        "S+I", "S+L", "S+K", "S+J", "D+L", "D+I"
-      ]);
-    }
-
-    const selfHpRatio = (self.lp || 0) / Math.max(1, self.maxLp || 2500);
-    const oppHpRatio = (opponent.lp || 0) / Math.max(1, opponent.maxLp || 2500);
-
-    switch (self.id) {
-      case "ichigo": {
-        const hasFocus = has(self, "focus") || hasPositiveEffect(self, "sAttack") || hasPositiveEffect(self, "attack");
-        const hasEvasion = hasPositiveEffect(self, "evasion");
-
-        if (self.faintMeter >= 68 && opponent.chi < 6) {
-          return result("Proactive faint recovery", ["W+L", "A+I", "D+L"]);
-        }
-
-        // If already buffed with Focus / S-Attack boost, cash out immediately with Specials!
-        if (hasFocus && self.chi >= 5) {
-          return result("Cash out Ichigo buff window", [
-            "S+L", "S+I", "S+J", "S+K"
-          ]);
-        }
-
-        // High-chi enemy burst threat: use W+I (High Jump evasion) or A+I guard
-        if (opponent.chi >= 9 && self.chi >= 5 && !hasEvasion && selfHpRatio < 0.75) {
-          return result("Evasive jump or guard against finisher", [
-            "W+I", "A+I", "D+L"
-          ]);
-        }
-
-        if (self.chi < 5) {
-          return result("Rebuild with physical pressure", [
-            "D+L", "D+I", "D+K", "D+J"
-          ]);
-        }
-
-        // Setup W+J (S-Attack boost) or W+K (Focus) when holding enough Chi to cast + follow up next turn
-        if (
-          self.chi >= 8 &&
-          !hasFocus &&
-          self.faintMeter < 60 &&
-          (opponent.chi <= 6 || selfHpRatio > 0.55)
-        ) {
-          return result("Buff setup into Special conversion", [
-            "W+J", "W+K", "S+L", "S+J"
-          ]);
-        }
-
-        return result("Flexible punish and resource control", [
-          "S+L", "S+J", "D+L", "W+I", "A+I"
-        ]);
-      }
-
-      case "nigo": {
-        const hasPower =
-          has(self, "power_focus") ||
-          hasPositiveEffect(self, "dAttack") ||
-          hasPositiveEffect(self, "attack");
-        const hasShutter = has(self, "red_shutter") || hasPositiveEffect(self, "armor");
-
-        if (self.faintMeter >= 70 && opponent.chi < 5) {
-          return result("Recover before committing", ["W+L", "A+I", "D+K"]);
-        }
-
-        // Priority #1: If Power Focus / +200% D-Attack is active, cash out with D+I / D+L!
-        if (hasPower) {
-          return result("Exploit Nigo physical amplification", [
-            "D+I", "D+L", "D+K", "S+J"
-          ]);
-        }
-
-        if (self.chi < 5) {
-          return result("Heavy physical Chi generation", [
-            "D+I", "D+L", "D+K"
-          ]);
-        }
-
-        // Defensive armor setup before heavy exchange
-        if (
-          self.chi >= 7 &&
-          selfHpRatio < 0.65 &&
-          opponent.chi >= 6 &&
-          !hasShutter
-        ) {
-          return result("Red Shutter armor before trading", [
-            "W+J", "A+I", "D+I"
-          ]);
-        }
-
-        // Activate Power Focus / D-Attack buff when we have Chi to buff and immediately pressure
-        if (
-          self.chi >= 7 &&
-          self.faintMeter < 65 &&
-          (opponent.chi < 7 || hasShutter || selfHpRatio >= 0.5)
-        ) {
-          return result("Power Focus / D-buff into physical chain", [
-            "W+K", "W+L", "D+I", "D+L"
-          ]);
-        }
-
-        return result("Reliable punches before risky finishers", [
-          "D+I", "S+J", "D+L", "S+L"
-        ]);
-      }
-
-      case "v3": {
-        const hasSpeed = has(self, "double_typhoon_speed") || hasPositiveEffect(self, "speed");
-        const hasLamp = has(self, "red_lamp_boost") || hasPositiveEffect(self, "attack");
-
-        if (self.chi < 5) {
-          return result("Refill the special reserve", [
-            "D+I", "D+L", "D+K"
-          ]);
-        }
-
-        // Cash out active Red Lamp boost
-        if (hasLamp && self.chi >= 5) {
-          return result("Cash out Red Lamp damage window", [
-            "S+J", "S+L", "S+I", "W+L", "D+I"
-          ]);
-        }
-
-        if (opponent.faintMeter >= 45) {
-          return result("Reach attack into faint conversion", [
-            "W+L", "S+J", "D+I"
-          ]);
-        }
-
-        // Speed / evasion initiative setup
-        if (
-          self.chi >= 8 &&
-          !hasSpeed &&
-          self.faintMeter < 60 &&
-          opponent.chi <= 7
-        ) {
-          return result("Accelerator initiative setup", [
-            "W+J", "W+L", "S+J"
-          ]);
-        }
-
-        // Red Lamp damage setup
-        if (
-          self.chi >= 8 &&
-          !hasLamp &&
-          (hasSpeed || opponent.chi < 6 || selfHpRatio > 0.6)
-        ) {
-          return result("Red Lamp damage cycle", [
-            "W+K", "S+J", "S+L", "D+I"
-          ]);
-        }
-
-        return result("Initiative, faint pressure, then conversion", [
-          "W+L", "S+J", "S+L", "D+I"
-        ]);
-      }
-
-      case "riderman": {
-        const hasAim = has(self, "accuracy_focus") || hasPositiveEffect(self, "accuracy");
-        const oppBound = has(opponent, "rope_bind");
-
-        if (self.chi < 6) {
-          return result("Reach refund engine", ["D+I", "D+L", "D+K"]);
-        }
-
-        // If target is bound and we have Target Lock, unleash heavy Cassette weapons!
-        if (oppBound && hasAim && self.chi >= 5) {
-          return result("Full lock-on weapon cash-out", [
-            "S+L", "S+K", "S+I", "D+I"
-          ]);
-        }
-
-        if (opponent.faintMeter >= 55) {
-          return result("Drill Arm faint conversion", [
-            "S+K", "W+L", "D+I"
-          ]);
-        }
-
-        if (!oppBound && self.chi >= 6) {
-          return result("Bind to control initiative", [
-            "W+L", "D+I", "S+K"
-          ]);
-        }
-
-        if (
-          self.chi >= 8 &&
-          !hasAim &&
-          (oppBound || opponent.chi < 6)
-        ) {
-          return result("Target Lock before weapon conversion", [
-            "W+J", "S+L", "S+K"
-          ]);
-        }
-
-        return result("Bound-target weapon conversion", [
-          "S+L", "S+K", "D+I", "S+I"
-        ]);
-      }
-
-      case "amazon": {
-        const lowHp = selfHpRatio <= 0.42;
-        const needRegen = selfHpRatio <= 0.72;
-        const lowChi = (self.chi || 0) < 5;
-        const canFinisher = (self.chi || 0) >= 10;
-        const hasGigi = has(self, "gigi_focus") || hasPositiveEffect(self, "evasion");
-        const hasRegen = has(self, "inca_regen") || (self.activeBuffs || []).some(
-          b => b.roundsLeft > 0 && ((b.lpRegen || b.effects?.lpRegen || 0) > 0)
-        );
-        const oppHighThreat = !opponent.isFainted && (opponent.chi || 0) >= 8;
-
-        if (lowChi) {
-          return result("Rebuild chi with low-cost pressure", [
-            "D+K", "D+I", "D+J"
-          ]);
-        }
-
-        // Low HP survival: use W+J (Inca Blessing regen) or W+I (evasive leap) instead of passive blocks
-        if (lowHp) {
-          if (!hasRegen && self.chi >= 5 && opponent.chi < 7) {
-            return result("Emergency Inca regen setup", ["W+J", "W+I", "A+J", "D+K"]);
+          // 1. Reward cashing out an active power buff into real damage
+          if (hasActivePowerBuff(meBefore) && move.dir === "S" && dealt > 0) {
+            extra += 42 + dealt * 0.04;
           }
-          if (oppHighThreat && self.chi >= 5) {
-            return result("Evasive leap or guard against finisher", ["W+I", "A+I", "D+K"]);
+
+          // 2. Only reward W setup when BOTH fighters have enough LP (Time Horizon) and Chi!
+          const minLpBefore = Math.min(meBefore.lp, oppBefore.lp);
+          if (
+            move.dir === "W" &&
+            !hasActivePowerBuff(meBefore) &&
+            hasActivePowerBuff(meAfter) &&
+            meAfter.chi >= 4 &&
+            minLpBefore >= 650
+          ) {
+            extra += 26;
+          }
+
+          // 3. Penalize non-healing W moves when either fighter is in sudden-death LP (< 450 LP)
+          if (move.dir === "W" && minLpBefore <= 450 && !isInstantSurvivalW(move)) {
+            extra -= 65;
+          }
+
+          // 4. Reward Dizzy / Faint milestones in simulated outcomes:
+          // - Stunning the opponent (oppAfter.stunned > 0)
+          if (oppBefore.stunned <= 0 && oppAfter.stunned > 0) {
+            extra += 58;
+          } else if (oppAfter.dizzy > oppBefore.dizzy && oppAfter.dizzy >= 65) {
+            extra += (oppAfter.dizzy - oppBefore.dizzy) * 0.55;
+          }
+          // - Recovering our own dizzy when we were in faint danger (meBefore.dizzy >= 55)
+          if (meBefore.dizzy >= 55 && meAfter.dizzy < meBefore.dizzy) {
+            const recovered = meBefore.dizzy - meAfter.dizzy;
+            extra += recovered * (meBefore.dizzy >= 75 ? 0.95 : 0.60);
+          }
+
+          // 5. Reward successful evasion/guard against heavy incoming attacks
+          if ((move.dir === "W" || move.dir === "A") && taken === 0 && oppBefore.chi >= 8 && minLpBefore >= 500) {
+            extra += 16;
           }
         }
 
-        // Proactive Inca Blessing regen when missing >= 28% HP and not under immediate lethal threat
-        if (needRegen && !hasRegen && self.chi >= 7 && opponent.chi < 7) {
-          return result("Sustain with Inca Blessing", ["W+J", "W+K", "D+K", "S+K"]);
+        if (config.bonus) {
+          extra += config.bonus(move, nextState, ctx);
         }
-
-        // Activate Gigi Focus (W+K) or Evasive Leap (W+I) before committing to heavy trades
-        if (!hasGigi && self.chi >= 7 && self.faintMeter < 65) {
-          if (oppHighThreat) {
-            return result("Stack evasion against heavy threat", ["W+I", "W+K", "S+K"]);
-          }
-          return result("Activate Gigi Focus before rushdown", ["W+K", "S+K", "S+L", "D+L"]);
-        }
-
-        // Cash out Gigi Focus or high Chi
-        if (hasGigi || canFinisher) {
-          if (canFinisher && oppHpRatio <= 0.38) {
-            return result("Commit to Super Finisher", ["S+I", "S+L", "S+K"]);
-          }
-          return result("Exploit Gigi Focus / high chi with specials", [
-            "S+L", "S+K", "S+J", "D+L"
-          ]);
-        }
-
-        if ((opponent.lp || 0) > 1000 && (self.chi || 0) >= 5) {
-          return result("Apply bleeding or heavy special", ["S+K", "S+L", "D+L"]);
-        }
-
-        if ((self.chi || 0) >= 7) {
-          return result("Aggressive pressure — build then strike", [
-            "D+L", "D+K", "S+L"
-          ]);
-        }
-
-        return result("Standard rushdown pressure", ["D+K", "D+I", "D+J"]);
-      }
-
-      case "x": {
-        const hasAtk = has(self, "mercury_atk") || hasPositiveEffect(self, "attack");
-        const hasDef = has(self, "mercury_def") || hasPositiveEffect(self, "armor");
-
-        // Cash out Mercury Attack buff immediately!
-        if (hasAtk && self.chi >= 5) {
-          return result("Cash out Mercury attack window", [
-            "S+L", "S+K", "S+I", "D+I", "D+L"
-          ]);
-        }
-
-        // Safe vitality heal when missing >= 220 LP
-        if (
-          self.maxLp - self.lp >= 220 &&
-          self.chi >= 7 &&
-          (opponent.chi < 6 || hasDef)
-        ) {
-          return result("Vitality recovery window", ["W+L", "D+I", "D+L"]);
-        }
-
-        if (self.chi < 6) {
-          return result("Ridol refund engine", ["D+I", "D+L", "D+K"]);
-        }
-
-        // Fortify with Mercury Defense before an opponent's high-Chi turn
-        if (
-          (selfHpRatio < 0.68 || opponent.chi >= 7) &&
-          self.chi >= 8 &&
-          !hasDef
-        ) {
-          return result("Fortify with Mercury Defense", [
-            "W+K", "S+L", "D+I"
-          ]);
-        }
-
-        // Activate Mercury Attack cycle
-        if (
-          self.chi >= 8 &&
-          !hasAtk &&
-          (opponent.chi < 6 || hasDef || selfHpRatio >= 0.6)
-        ) {
-          return result("Mercury attack cycle", [
-            "W+J", "S+L", "D+I"
-          ]);
-        }
-
-        return result("Ridol reach, reserve, and recovery", [
-          "S+L", "D+I", "D+L", "S+K"
-        ]);
-      }
-
-      default:
-        return result("General combat", ["S+J", "D+L", "D+K"]);
-    }
+        return extra;
+      },
+    };
   }
 
-  function intent(state, slot, difficulty) {
-    if (getMode() === "classic") {
-      return intentClassic(state, slot, difficulty);
-    }
-    return intentEnhanced(state, slot, difficulty);
-  }
-
-  function bonus(state, slot, action, difficulty) {
-    const rawDiff = String(difficulty || "").toLowerCase();
-    const level = g.KF.difficulty(difficulty);
-
-    if (
-      level !== "master" &&
-      level !== "soul" &&
-      rawDiff !== "soul" &&
-      rawDiff !== "rider"
-    ) {
-      return 0;
-    }
-
-    const tree = intent(state, slot, difficulty);
-    const index = tree.preferred.indexOf(action?.key);
-
-    if (index < 0) return 0;
-
-    return Math.max(0, 10 - index * 2);
-  }
-
-  function prior(state, slot, action, difficulty) {
-    const self = state?.[slot];
-    const opponent = state?.[C.other(slot)];
-    const move = state?.moves?.[slot]?.[action?.key];
-
-    if (!self || !opponent || !move) return 0.03;
-
-    if (action.key === "DO_NOTHING") {
-      return self.isFainted ? 1 : 0.08;
-    }
-
-    const enhanced = getMode() !== "classic";
-    let weight;
-
-    if (move.offensive) {
-      weight =
-        (1 + move.baseDamage / 260) *
-        (move.hitChance / 100) /
-        (1 + move.chiCost * 0.12);
-
-      weight += move.chiRefundOnHit * 0.18;
-
-      if (self.chi < 5 && move.chiCost <= 1) weight *= 2;
-      if (self.chi - move.chiCost < 5) weight *= 0.75;
-
-      if (move.baseFaintDamage && opponent.faintMeter >= 55) {
-        weight *= 1.4;
-      }
-
-      // In enhanced mode, boost priority of attacks that cash out active D-Attack or S-Attack buffs
-      if (enhanced && !opponent.isFainted) {
-        const key = String(action.key || "");
-        if (key.startsWith("D+") && hasPositiveEffect(self, "dAttack")) {
-          weight *= 1.65;
+  const PROFILES = {
+    ichigo: createProfile({
+      id: "ichigo",
+      name: "Takeshi Hongo",
+      subtitle: "Balanced Cyclone Strategist",
+      style: "Uses Focus (W+K) when healthy with high Chi to set up Rider Kick, and Rider Jump (W+I) only against enemy finishers.",
+      weights: {
+        lp: 1.02,
+        chi: 16.0,
+        buffPower: 82,
+        buffEvade: 60,
+        execute: 52,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const buffed = hasActivePowerBuff(player);
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if (move.code === "D+I") score += 16;
+        if (move.code === "D+L") score += 12;
+        if (move.code === "W+K" && !buffed && player.chi >= 8 && healthyTime) {
+          score += 24;
         }
-        if (key.startsWith("S+") && (hasPositiveEffect(self, "sAttack") || has(self, "focus"))) {
-          weight *= 1.55;
+        if (move.code === "W+I" && opponent.chi >= 10 && !hasActiveEvadeOrGuard(player) && healthyTime) {
+          score += 18;
         }
-        if (hasPositiveEffect(self, "attack")) {
-          weight *= 1.35;
+        if (move.code === "S+L" && (buffed || opponent.lp <= 520 || player.chi >= 9)) {
+          score += 28;
         }
-      }
-    } else if (move.guardKind) {
-      weight = opponent.chi >= 6 ? 0.9 : 0.45;
-    } else {
-      weight = 0.20;
-
-      if (move.buff && !has(self, move.buff.id)) {
-        weight += self.chi >= move.chiCost + 4 ? 0.7 : 0.1;
-
-        if (enhanced && self.chi >= move.chiCost + 3) {
-          const eff = move.buff.effects || {};
-          // Value offensive setup buffs higher when we have leftover Chi to cash out next turn
-          if ((eff.dAttack && eff.dAttack > 1) || (eff.sAttack && eff.sAttack > 1) || (eff.attack && eff.attack > 1)) {
-            weight += 0.45;
-          }
-          // Value evasion/armor buffs higher when opponent has high Chi
-          if ((eff.evasion && eff.evasion > 0) || (eff.armor && eff.armor < 1)) {
-            weight += opponent.chi >= 6 ? 0.55 : 0.25;
-          }
-          // Value regen buffs only when missing LP
-          const regen = Number(move.buff.lpRegen ?? eff.lpRegen ?? 0);
-          if (regen > 0) {
-            const missing = Math.max(0, (self.maxLp || 2500) - (self.lp || 0));
-            weight += missing >= 250 ? Math.min(0.65, missing / 900) : -0.35;
-          }
+        if (move.code === "S+J" && (buffed || opponent.lp <= 420)) {
+          score += 22;
         }
-      }
-
-      if (move.lpRecovery) {
-        weight += Math.min(
-          move.lpRecovery,
-          self.maxLp - self.lp
-        ) / 180;
-      }
-
-      if (move.faintRecovery) {
-        weight += self.faintMeter / 80;
-      }
-    }
-
-    const tree = intent(state, slot, difficulty);
-
-    if (tree.preferred.includes(action.key)) weight *= 1.7;
-
-    return Math.max(0.03, weight);
-  }
-
-  function fighterValue(player) {
-    if (!player) return 0;
-    const profile = profiles[player.id] || profiles.ichigo;
-    const maxLp = Math.max(1, player.maxLp || 2500);
-    const enhanced = getMode() !== "classic";
-
-    let value =
-      2000 * player.lp / maxLp +
-      player.chi * profile.chi -
-      player.faintMeter * profile.faint;
-
-    if (player.chi < 5) value -= (5 - player.chi) * 22;
-    if (player.chi > 14) value += 35;
-    if (player.isFainted) value -= 300;
-
-    for (const buff of player.activeBuffs || []) {
-      if (!(buff.roundsLeft > 0)) continue;
-
-      const effects = buff.effects || {};
-      const lpBleed = Number(buff.lpBleed ?? effects.lpBleed ?? 0);
-      const lpRegen = Number(buff.lpRegen ?? effects.lpRegen ?? 0);
-
-      const harmful =
-        lpBleed > 0 ||
-        Object.entries(effects).some(
-          ([key, amount]) =>
-            (key === "speed" && amount < 1) ||
-            (key === "accuracy" && amount < 0) ||
-            (key === "evasion" && amount < 0) ||
-            (key === "armor" && amount > 1) ||
-            ((key === "attack" || key === "dAttack" || key === "sAttack") && amount < 1)
-        );
-
-      const activeTurns = Math.min(2, buff.roundsLeft);
-
-      value +=
-        (harmful ? -1 : 1) *
-        profile.buff *
-        activeTurns;
-
-      // In enhanced mode, score the actual combat multipliers of active buffs
-      // so lookahead search (MASTER/SOUL/RIDER) understands why W buffs are worth their Chi cost!
-      if (enhanced && !harmful) {
-        const chiReadyFactor = Math.min(1.4, Math.max(0.45, (player.chi || 0) / 7));
-
-        const atkMult = Number(effects.attack || 1);
-        const dAtkMult = Number(effects.dAttack || 1);
-        const sAtkMult = Number(effects.sAttack || 1);
-        const speedMult = Number(effects.speed || 1);
-        const armorMult = Number(effects.armor || 1);
-        const evaBonus = Number(effects.evasion || 0);
-        const accBonus = Number(effects.accuracy || 0);
-
-        if (atkMult > 1) {
-          value += (atkMult - 1) * 95 * activeTurns * chiReadyFactor;
+        if (move.code === "S+I" && player.chi >= 12 && (buffed || opponent.lp <= 780 || opponent.stunned > 0)) {
+          score += 34;
         }
-        if (dAtkMult > 1) {
-          value += Math.min(1.5, dAtkMult - 1) * 75 * activeTurns * chiReadyFactor;
+        return score;
+      },
+      intent({ player, opponent }) {
+        const intent = {};
+        const buffed = hasActivePowerBuff(player);
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if (!buffed && player.chi >= 8 && healthyTime && opponent.stunned <= 0) {
+          intent["W+K"] = 0.20;
         }
-        if (sAtkMult > 1) {
-          value += Math.min(1.5, sAtkMult - 1) * 85 * activeTurns * chiReadyFactor;
+        if (opponent.chi >= 10 && player.chi >= 4 && healthyTime && !hasActiveEvadeOrGuard(player)) {
+          intent["W+I"] = 0.14;
+          intent["A+I"] = 0.16;
         }
-        if (speedMult > 1) {
-          value += (speedMult - 1) * 70 * activeTurns;
+        if (buffed && player.chi >= 6) {
+          intent["S+L"] = 0.28;
+          intent["S+J"] = 0.20;
         }
-        if (armorMult > 0 && armorMult < 1) {
-          value += (1 - armorMult) * 110 * activeTurns;
+        if (player.chi <= 4) {
+          intent["D+I"] = 0.24;
+          intent["D+L"] = 0.18;
         }
-        if (evaBonus > 0) {
-          value += evaBonus * 1.45 * activeTurns;
+        return intent;
+      },
+    }),
+
+    nigo: createProfile({
+      id: "nigo",
+      name: "Hayato Ichimonji",
+      subtitle: "Powerhouse Crusher",
+      style: "Builds Power Charge (W+K) when healthy to unleash devastating heavy S strikes.",
+      weights: {
+        lp: 1.0,
+        chi: 15.2,
+        buffPower: 86,
+        execute: 56,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const buffed = hasActivePowerBuff(player);
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if (move.code === "D+I" || move.code === "D+K") score += 15;
+        if (move.code === "W+K" && !buffed && player.chi >= 8 && healthyTime) score += 25;
+        if (move.code === "W+L" && player.dizzy >= 55) score += 28;
+        if (move.dir === "S" && (buffed || player.chi >= 8)) score += 26;
+        return score;
+      },
+      intent({ player, opponent }) {
+        const intent = {};
+        if (!hasActivePowerBuff(player) && player.chi >= 8 && player.lp >= 650 && opponent.lp >= 550) {
+          intent["W+K"] = 0.22;
         }
-        if (accBonus > 0) {
-          value += accBonus * 1.15 * activeTurns * chiReadyFactor;
+        if (hasActivePowerBuff(player) && player.chi >= 5) {
+          intent["S+K"] = 0.24;
+          intent["S+L"] = 0.26;
         }
-      }
+        return intent;
+      },
+    }),
 
-      if (lpBleed > 0) {
-        value -= 1200 * (lpBleed * activeTurns) / maxLp;
-      }
+    v3: createProfile({
+      id: "v3",
+      name: "Shiro Kazami",
+      subtitle: "Double Typhoon Acrobat",
+      style: "Chains aerial W mobility and Chi Flow into high-tempo Hurricane finishers.",
+      weights: {
+        lp: 1.0,
+        chi: 16.2,
+        buffPower: 80,
+        buffEvade: 64,
+        buffUtility: 56,
+        tempo: 24,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 600 && opponent.lp >= 500;
+        if (move.code === "D+I" || move.code === "D+L") score += 15;
+        if ((move.code === "W+L" || move.code === "W+K") && player.chi >= 7 && healthyTime && countPositiveStatuses(player) === 0) {
+          score += 22;
+        }
+        if (move.code === "W+I" && opponent.chi >= 9 && healthyTime && !hasActiveEvadeOrGuard(player)) {
+          score += 20;
+        }
+        if (move.dir === "S" && (hasActivePowerBuff(player) || player.chi >= 9)) {
+          score += 24;
+        }
+        return score;
+      },
+    }),
 
-      if (lpRegen > 0) {
-        const missingLp = Math.max(0, maxLp - player.lp);
-        const effectiveHeal = Math.min(missingLp + 100, lpRegen * activeTurns);
-        value += 1000 * effectiveHeal / maxLp;
-      }
-    }
+    riderman: createProfile({
+      id: "riderman",
+      name: "Joji Yuki",
+      subtitle: "Tactical Cassette Specialist",
+      style: "Uses Cassette Arm buffs (W), counters (A+K), and debuffs to outsmart stronger foes.",
+      weights: {
+        lp: 1.04,
+        chi: 16.0,
+        buffPower: 80,
+        buffUtility: 62,
+        debuff: 58,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 550 && opponent.lp >= 500;
+        if (move.dir === "W" && countPositiveStatuses(player) < 2 && player.chi >= 6 && healthyTime) {
+          score += 20;
+        }
+        if (move.code === "A+K" && opponent.chi >= 6) score += 20;
+        if (move.dir === "D") score += 14;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || opponent.lp <= 550)) score += 24;
+        return score;
+      },
+    }),
 
-    return value;
-  }
+    x: createProfile({
+      id: "x",
+      name: "Keisuke Jin",
+      subtitle: "Ridol Weapon Master",
+      style: "Balances Ridol defense (A), W stance buffs, and precise weapon strikes.",
+      weights: {
+        lp: 1.03,
+        chi: 15.8,
+        buffPower: 80,
+        buffGuard: 60,
+        execute: 50,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 600 && opponent.lp >= 500;
+        if (move.code === "W+K" && !hasActivePowerBuff(player) && player.chi >= 7 && healthyTime) score += 22;
+        if (move.dir === "A" && opponent.chi >= 8) score += 18;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || player.chi >= 8)) score += 24;
+        return score;
+      },
+    }),
 
-  function evaluate(state, slot) {
-    if (state.winner === "draw") return 0;
-    if (state.winner === slot) return 100000;
-    if (state.winner) return -100000;
+    amazon: createProfile({
+      id: "amazon",
+      name: "Daisuke Yamamoto",
+      subtitle: "Feral Jungle Predator",
+      style: "Triggers Wild Instinct (W) then relentlessly mauls with fast D/S fangs and claws.",
+      weights: {
+        lp: 0.98,
+        chi: 15.0,
+        buffPower: 86,
+        execute: 60,
+        tempo: 26,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 600 && opponent.lp >= 500;
+        if ((move.code === "W+K" || move.code === "W+J") && !hasActivePowerBuff(player) && player.chi >= 7 && healthyTime) {
+          score += 24;
+        }
+        if (move.dir === "D") score += 16;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || opponent.lp <= 650)) score += 28;
+        return score;
+      },
+    }),
 
-    return fighterValue(state[slot]) -
-      fighterValue(state[C.other(slot)]);
-  }
+    stronger: createProfile({
+      id: "stronger",
+      name: "Shigeru Jo",
+      subtitle: "Charge-Up Electro Dynamo",
+      style: "Uses Charge Up (W) to supercharge Electro Fire and fatal S finishers.",
+      weights: {
+        lp: 1.0,
+        chi: 16.4,
+        buffPower: 90,
+        buffUtility: 58,
+        execute: 56,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if ((move.code === "W+K" || move.code === "W+L") && !hasActivePowerBuff(player) && player.chi >= 7 && healthyTime) {
+          score += 26;
+        }
+        if (move.dir === "S" && hasActivePowerBuff(player)) score += 34;
+        if (move.dir === "D" && player.chi <= 5) score += 16;
+        return score;
+      },
+    }),
 
-  g.RiderBrains = {
-    intent,
-    bonus,
-    prior,
-    evaluate,
-    has,
-    getMode,
-    setMode
+    skyrider: createProfile({
+      id: "skyrider",
+      name: "Hiroshi Tsukuba",
+      subtitle: "Sailing Jump Ace",
+      style: "Dominates the skies with W+I Sailing Jump evasion before diving in with aerial S kicks.",
+      weights: {
+        lp: 1.02,
+        chi: 15.8,
+        buffEvade: 70,
+        buffPower: 78,
+        tempo: 24,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 550 && opponent.lp >= 500;
+        if (move.code === "W+I" && !hasActiveEvadeOrGuard(player) && opponent.chi >= 8 && healthyTime) score += 24;
+        if (move.code === "W+K" && !hasActivePowerBuff(player) && player.chi >= 7 && healthyTime) score += 20;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || hasActiveEvadeOrGuard(player))) score += 24;
+        return score;
+      },
+    }),
+
+    super1: createProfile({
+      id: "super1",
+      name: "Kazuya Oki",
+      subtitle: "Five-Hands Shaolin Master",
+      style: "Switches Five Hands (W) and sincere Shaolin defense (A) into pinpoint S strikes.",
+      weights: {
+        lp: 1.04,
+        chi: 16.0,
+        buffPower: 82,
+        buffGuard: 62,
+        buffUtility: 58,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 600 && opponent.lp >= 500;
+        if (move.dir === "W" && countPositiveStatuses(player) < 2 && player.chi >= 7 && healthyTime) score += 22;
+        if (move.dir === "A" && opponent.chi >= 8) score += 18;
+        if (move.dir === "S" && hasActivePowerBuff(player)) score += 28;
+        return score;
+      },
+    }),
+
+    zx: createProfile({
+      id: "zx",
+      name: "Ryo Murasame",
+      subtitle: "Cyber Ninja Illusionist",
+      style: "Uses ninja W deception, smoke evasion, and sudden ambush S bursts.",
+      weights: {
+        lp: 1.0,
+        chi: 16.0,
+        buffEvade: 68,
+        buffPower: 80,
+        debuff: 56,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 550 && opponent.lp >= 500;
+        if (move.dir === "W" && countPositiveStatuses(player) === 0 && player.chi >= 6 && healthyTime) score += 22;
+        if (move.code === "A+K" && opponent.chi >= 6) score += 20;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || opponent.dizzy >= 50)) score += 24;
+        return score;
+      },
+    }),
+
+    black: createProfile({
+      id: "black",
+      name: "Kotaro Minami",
+      subtitle: "Kingstone Sun Duelist",
+      style: "Surges with Kingstone Flash (W) to empower Rider Punch & Rider Kick.",
+      weights: {
+        lp: 1.02,
+        chi: 16.2,
+        buffPower: 86,
+        execute: 56,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if ((move.code === "W+K" || move.code === "W+L") && !hasActivePowerBuff(player) && player.chi >= 8 && healthyTime) {
+          score += 24;
+        }
+        if (move.dir === "D") score += 14;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || player.chi >= 9)) score += 28;
+        return score;
+      },
+    }),
+
+    rx: createProfile({
+      id: "rx",
+      name: "Kotaro Minami RX",
+      subtitle: "Child of the Sun",
+      style: "Shifts forms & W buffs, heals/shields when pressured, and finishes with Revolcane.",
+      weights: {
+        lp: 1.05,
+        chi: 16.4,
+        buffPower: 84,
+        buffGuard: 62,
+        execute: 58,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if (move.dir === "W" && countPositiveStatuses(player) === 0 && player.chi >= 7 && healthyTime) score += 22;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || player.chi >= 9)) score += 28;
+        return score;
+      },
+    }),
+
+    shin: createProfile({
+      id: "shin",
+      name: "Shin Kazamatsuri",
+      subtitle: "Bio-Mutation Berserker",
+      style: "Regenerates and mutates with W instincts before tearing through defenses.",
+      weights: {
+        lp: 1.0,
+        chi: 15.0,
+        buffPower: 84,
+        execute: 60,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 600 && opponent.lp >= 500;
+        if (move.dir === "W" && !hasActivePowerBuff(player) && player.chi >= 7 && healthyTime) score += 22;
+        if (move.dir === "D") score += 16;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || opponent.lp <= 650)) score += 28;
+        return score;
+      },
+    }),
+
+    zo: createProfile({
+      id: "zo",
+      name: "Masaru Aso",
+      subtitle: "Awakened Nature Guardian",
+      style: "Builds steady D pressure, uses W awakening at high Chi, and crushes with ZO Kick.",
+      weights: {
+        lp: 1.02,
+        chi: 15.8,
+        buffPower: 84,
+        execute: 56,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if (move.dir === "W" && !hasActivePowerBuff(player) && player.chi >= 8 && healthyTime) score += 22;
+        if (move.dir === "D") score += 15;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || player.chi >= 8)) score += 26;
+        return score;
+      },
+    }),
+
+    j: createProfile({
+      id: "j",
+      name: "Kouji Segawa",
+      subtitle: "Earth Spirit Jumbo Collossus",
+      style: "Channels Earth Spirit (W) for massive Jumbo-power S finishers.",
+      weights: {
+        lp: 1.04,
+        chi: 16.2,
+        buffPower: 88,
+        buffGuard: 60,
+        execute: 58,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if (move.dir === "W" && !hasActivePowerBuff(player) && player.chi >= 8 && healthyTime) score += 25;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || player.chi >= 9)) score += 28;
+        return score;
+      },
+    }),
+
+    shadowmoon: createProfile({
+      id: "shadowmoon",
+      name: "Shadow Moon",
+      subtitle: "Century King Satan Saber",
+      style: "Coldly combines W dark aura, A+K counters, and relentless Satan Saber S executions.",
+      weights: {
+        lp: 1.04,
+        chi: 16.5,
+        buffPower: 86,
+        buffGuard: 60,
+        debuff: 60,
+        execute: 60,
+      },
+      prior(move, { player, opponent }) {
+        let score = 0;
+        const healthyTime = player.lp >= 650 && opponent.lp >= 550;
+        if (move.dir === "W" && countPositiveStatuses(player) === 0 && player.chi >= 7 && healthyTime) score += 23;
+        if (move.code === "A+K" && opponent.chi >= 6) score += 20;
+        if (move.dir === "S" && (hasActivePowerBuff(player) || player.chi >= 8 || opponent.lp <= 600)) score += 28;
+        return score;
+      },
+    }),
   };
-})(globalThis);
+
+  function getRiderBrain(riderId) {
+    return PROFILES[riderId] || PROFILES.ichigo;
+  }
+
+  function getDifficultyPreset(difficultyId) {
+    return DIFFICULTY_PRESETS[difficultyId] || DIFFICULTY_PRESETS.normal;
+  }
+
+  Game.RiderBrains = {
+    DIFFICULTY_PRESETS,
+    DEFAULT_WEIGHTS,
+    PROFILES,
+    getRiderBrain,
+    getDifficultyPreset,
+    fighterValue,
+    evaluateState,
+  };
+})();
