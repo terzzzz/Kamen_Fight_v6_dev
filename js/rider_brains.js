@@ -1,5 +1,13 @@
 (function () {
-  const Game = (window.KamenFight = window.KamenFight || {});
+  const root =
+    typeof globalThis !== "undefined"
+      ? globalThis
+      : typeof self !== "undefined"
+      ? self
+      : typeof window !== "undefined"
+      ? window
+      : this;
+  const Game = (root.KamenFight = root.KamenFight || {});
 
   const DIFFICULTY_PRESETS = {
     easy: {
@@ -10,7 +18,7 @@
       priorScale: 0.72,
       counterWeight: 0.45,
       lookaheadWeight: 0.55,
-       topChoices: 5,
+      topChoices: 5,
     },
     normal: {
       id: "normal",
