@@ -6,10 +6,11 @@
  * - Newly applied periodic effects do not pay on their application turn.
  * - Duration 3 means three subsequent periodic payments.
  * - Refreshing an existing effect does not postpone an already-due payment.
- * - Bleeding resolves before regeneration.
- * - Both fighters receive bleeding before winner determination.
+ * - Regeneration resolves before bleeding (if the fighter is still alive).
+ * - Bleeding does not cancel cancelOnLpDamage statuses (such as Life Regen).
+ * - Both fighters receive periodic effects before winner determination (a fighter can bleed to KO).
  * - Regeneration cannot revive a fighter at zero LP.
- * - Actual LP damage removes statuses marked cancelOnLpDamage.
+ * - Direct attack/chip LP damage removes statuses marked cancelOnLpDamage.
  * - Charging timers never apply or expire combat statuses.
  *
  * Randomness:
@@ -837,7 +838,8 @@
       });
     }
 
-    function dealLpDamage(slot, requestedDamage) {
+    function dealLpDamage(slot, requestedDamage, options = {}) {
+      const cancelStatuses = options.cancelStatuses !== false;
       const player = state[slot];
       const before = player.lp;
 
@@ -851,7 +853,7 @@
 
       const actualDamage = before - player.lp;
 
-      if (actualDamage > 0) {
+      if (actualDamage > 0 && cancelStatuses) {
         tookLpDamage[slot] = true;
 
         const removed =
@@ -887,46 +889,7 @@
         }
       }
 
-      const bleeding = {
-        p1: 0,
-        p2: 0
-      };
-
-      for (const slot of SLOTS) {
-        const player = state[slot];
-
-        if (player.lp <= 0) continue;
-
-        for (const buff of player.activeBuffs || []) {
-          if (
-            !periodicStatusIsDue(buff, state.round)
-          ) {
-            continue;
-          }
-
-          bleeding[slot] += statusAmount(
-            buff,
-            "lpBleed"
-          );
-        }
-      }
-
-      for (const slot of SLOTS) {
-        if (bleeding[slot] <= 0) continue;
-
-        const damage = dealLpDamage(
-          slot,
-          bleeding[slot]
-        );
-
-        emit({
-          type: "bleeding",
-          slot,
-          requestedDamage: bleeding[slot],
-          damage
-        });
-      }
-
+      // 1. Life Regeneration executes first (if the fighter is still alive)
       for (const slot of SLOTS) {
         const player = state[slot];
 
@@ -961,6 +924,48 @@
           slot,
           requestedRecovery,
           recovery: player.lp - before
+        });
+      }
+
+      // 2. Bleeding executes second, and does NOT cancel status effects like Life Regen
+      const bleeding = {
+        p1: 0,
+        p2: 0
+      };
+
+      for (const slot of SLOTS) {
+        const player = state[slot];
+
+        if (player.lp <= 0) continue;
+
+        for (const buff of player.activeBuffs || []) {
+          if (
+            !periodicStatusIsDue(buff, state.round)
+          ) {
+            continue;
+          }
+
+          bleeding[slot] += statusAmount(
+            buff,
+            "lpBleed"
+          );
+        }
+      }
+
+      for (const slot of SLOTS) {
+        if (bleeding[slot] <= 0) continue;
+
+        const damage = dealLpDamage(
+          slot,
+          bleeding[slot],
+          { cancelStatuses: false }
+        );
+
+        emit({
+          type: "bleeding",
+          slot,
+          requestedDamage: bleeding[slot],
+          damage
         });
       }
     }
