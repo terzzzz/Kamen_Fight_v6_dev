@@ -422,17 +422,19 @@
 
     function formatReport(report) {
       const training = report.kind === "train";
+      const targetTag = String(report.target || "candidate").toUpperCase();
 
       const lines = [
         training
           ? report.warmStart
-            ? "GUIDED WARM-START"
-            : "TRAINING"
-          : "EVALUATION",
+            ? `GUIDED WARM-START [${targetTag}]`
+            : `TRAINING [${targetTag}]`
+          : `EVALUATION [${targetTag}]`,
 
         `Build: ${report.build}`,
         `Patch: ${report.patch}`,
         `Matchup: ${report.learner} -> ${report.opponent}`,
+        `Target model: ${targetTag}`,
         `Learner policy: ${report.learnerPolicy}`,
         `Opponent: ${report.effectiveOpponent}`,
         `Reward: ${report.rewardMode}`,
@@ -671,6 +673,7 @@
         schema: EXPECTED_SCHEMA,
 
         kind,
+        target,
         data,
         checkpoint,
         opponentCheckpoint,
