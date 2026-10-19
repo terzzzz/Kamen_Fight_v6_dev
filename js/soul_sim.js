@@ -1540,4 +1540,184 @@
       const nextEnv = E.create(state);
       nextEnv.history = history;
 
-      const next = readState(nextEnv,
+      const next = readState(nextEnv, learnerSlot, spec, done);
+
+      const resolvedAction = result.actions[learnerSlot];
+      const resolvedEnemyAction = result.actions[enemySlot];
+
+      if (typeof resolvedAction?.key !== "string") {
+        throw new Error(
+          "Resolved learner action is missing its key."
+        );
+      }
+
+      if (rewardMode === "standard") {
+        attributeRealizedBuffPayoffs(
+          pendingWindow,
+          before,
+          state,
+          learnerSlot,
+          result.actions
+        );
+      }
+
+      const evadedEnemyAttack =
+        detectEvadedAttack(before, state, learnerSlot, result.actions) > 0;
+
+      const healedLpThisTurn =
+        state[learnerSlot].lp > before[learnerSlot].lp;
+
+      const buffMeta =
+        rewardMode === "standard"
+          ? extractCastBuffContributions(
+              before,
+              state,
+              learnerSlot,
+              resolvedAction.key
+            )
+          : null;
+
+      let category = "Neu";
+
+      if (state.winner === learnerSlot) {
+        category = "Win";
+      } else if (state.winner && state.winner !== "draw") {
+        category = "Loss";
+      } else if (
+        state[enemySlot].lp < before[enemySlot].lp ||
+        healedLpThisTurn ||
+        evadedEnemyAttack ||
+        Boolean(buffMeta)
+      ) {
+        category = "Dmg";
+      }
+
+      const coreAdjustedAction =
+        decision.action.key !== resolvedAction.key ||
+        decision.action.charge !== resolvedAction.charge;
+
+      const netChiSwing =
+        (state[learnerSlot].chi - before[learnerSlot].chi) -
+        (state[enemySlot].chi - before[enemySlot].chi);
+
+      const isChiTrapTurn =
+        (isAGuardKey(before, learnerSlot, resolvedAction.key) &&
+          isSMoveKey(before, enemySlot, resolvedEnemyAction?.key)) ||
+        (isSMoveKey(before, learnerSlot, resolvedAction.key) &&
+          isAGuardKey(before, enemySlot, resolvedEnemyAction?.key)) ||
+        Math.abs(netChiSwing) >= 4;
+
+      const isTacticalHighlightTurn =
+        isChiTrapTurn ||
+        evadedEnemyAttack ||
+        healedLpThisTurn ||
+        Boolean(buffMeta);
+
+      const transitionObj = {
+        s: decision.s,
+        a: decision.a,
+        m: decision.m,
+        s1: next.s,
+        m1: next.m,
+        r: calculateReward(
+          before,
+          state,
+          learnerSlot,
+          rewardMode,
+          result.actions
+        ),
+        discount: done ? 0 : E.GAMMA,
+        done,
+        demo: decision.demo,
+        weightScale: isTacticalHighlightTurn ? 1.75 : 1,
+        rewardCategory: category,
+        isFinalRoundResolution: true,
+
+        actionKey: decision.action.key,
+        selectedActionKey: decision.action.key,
+        selectedCharge: decision.action.charge,
+
+        plannerActionKey: decision.proposedAction.key,
+        plannerCharge: decision.proposedAction.charge,
+
+        resolvedActionKey: resolvedAction.key,
+        resolvedCharge: resolvedAction.charge,
+
+        opponentActionKey: resolvedEnemyAction?.key || "DO_NOTHING",
+        opponentCharge: resolvedEnemyAction?.charge || 0,
+
+        learnerLp: state[learnerSlot].lp,
+        learnerChi: state[learnerSlot].chi,
+        learnerFaint: state[learnerSlot].faintMeter,
+        oppLp: state[enemySlot].lp,
+        oppChi: state[enemySlot].chi,
+        oppFaint: state[enemySlot].faintMeter,
+
+        charge: decision.action.charge,
+        coreAdjustedAction,
+
+        forcedRecovery: Boolean(before[learnerSlot].isFainted)
+      };
+
+      pendingWindow.push({
+        transition: transitionObj,
+        buffMeta
+      });
+
+      while (pendingWindow.length > BUFF_CREDIT_WINDOW) {
+        const ready = pendingWindow.shift();
+        yield {
+          type: "transition",
+          transition: ready.transition
+        };
+      }
+
+      if (done) {
+        while (pendingWindow.length > 0) {
+          const ready = pendingWindow.shift();
+          yield {
+            type: "transition",
+            transition: ready.transition
+          };
+        }
+      }
+
+      yield {
+        type: "round",
+        rounds,
+        avgQ: qSum / qCount,
+        qSumDelta: decision.q,
+        qCountDelta: 1
+      };
+    }
+
+    while (pendingWindow.length > 0) {
+      const ready = pendingWindow.shift();
+      yield {
+        type: "transition",
+        transition: ready.transition
+      };
+    }
+
+    yield {
+      type: "end",
+      result: {
+        state,
+        rounds,
+        ticks: rounds,
+        avgQ: qCount ? qSum / qCount : 0,
+        qSumDelta: 0,
+        qCountDelta: 0
+      }
+    };
+  }
+
+  g.SoulSim = {
+    BUILD,
+    reactor,
+    episode,
+    calculateReward,
+    resolveExecutionCharge,
+    makeNeuralEvaluator
+  };
+})(globalThis);
