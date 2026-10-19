@@ -665,12 +665,7 @@ async function run(job) {
         }
 
         const key = event.transition.resolvedActionKey;
-        const learnerCharge =
-          event.transition.resolvedCharge ??
-          event.transition.charge ??
-          event.transition.selectedCharge ??
-          0;
-
+        const learnerCharge = event.transition.resolvedCharge;
         const parts = key.split("+");
 
         const stance = ["W", "A", "S", "D"].includes(parts[0])
@@ -685,30 +680,12 @@ async function run(job) {
         jkilCounts[button]++;
         moveMatrix[stance][button]++;
 
-        const oppKey =
-          event.opponentActionKey ||
-          event.oppActionKey ||
-          event.opponentResolvedActionKey ||
-          event.transition.opponentActionKey ||
-          event.transition.oppActionKey ||
-          event.transition.oppKey ||
-          event.transition.oppAction ||
-          "DO_NOTHING";
-
-        const oppCharge =
-          event.opponentCharge ??
-          event.oppCharge ??
-          event.opponentResolvedCharge ??
-          event.transition.opponentCharge ??
-          event.transition.oppCharge ??
-          0;
-
         matchRoundMoves.push({
           round: matchRoundMoves.length + 1,
           learnerMove: key,
           learnerCharge,
-          oppMove: oppKey,
-          oppCharge
+          oppMove: event.transition.opponentActionKey,
+          oppCharge: event.transition.opponentCharge
         });
       } else if (event.type === "round") {
         if (
