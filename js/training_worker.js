@@ -684,8 +684,14 @@ async function run(job) {
           round: matchRoundMoves.length + 1,
           learnerMove: key,
           learnerCharge,
+          learnerLp: event.transition.learnerLp,
+          learnerChi: event.transition.learnerChi,
+          learnerFaint: event.transition.learnerFaint,
           oppMove: event.transition.opponentActionKey,
-          oppCharge: event.transition.opponentCharge
+          oppCharge: event.transition.opponentCharge,
+          oppLp: event.transition.oppLp,
+          oppChi: event.transition.oppChi,
+          oppFaint: event.transition.oppFaint
         });
       } else if (event.type === "round") {
         if (
@@ -811,3 +817,4 @@ self.onmessage = async event => {
     busy = false;
   }
 };
+ 
