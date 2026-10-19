@@ -563,10 +563,12 @@
           if (Array.isArray(game.moves) && game.moves.length > 0) {
             game.moves.forEach(m => {
               const rNum = String(m.round || "").padStart(2);
-              const learnerAction = (m.learnerMove || "IDLE").padEnd(6);
-              const oppAction = m.oppMove || "IDLE";
+              const lAction = String(m.learnerMove || "DO_NOTHING").padEnd(10);
+              const lCharge = String(m.learnerCharge ?? 0).padStart(3) + "%";
+              const oAction = String(m.oppMove || "DO_NOTHING").padEnd(10);
+              const oCharge = String(m.oppCharge ?? 0).padStart(3) + "%";
 
-              lines.push(`  R${rNum}: Learner [ ${learnerAction} ] vs Opponent [ ${oppAction} ]`);
+              lines.push(`  R${rNum}: Learner [ ${lAction} @ ${lCharge} ] vs Opponent [ ${oAction} @ ${oCharge} ]`);
             });
           } else if (typeof game.moveSequence === "string") {
             lines.push(`  Moves: ${game.moveSequence}`);
