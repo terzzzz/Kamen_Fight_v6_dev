@@ -531,8 +531,6 @@ async function run(job) {
   for (let i = 0; i < job.matches && !cancelled; i++) {
     const pair = Math.floor(i / 2);
 
-    // Flip slot parity every full 12-match mixed cycle so each CPU tier
-    // gets balanced P1 and P2 games across cycles.
     const mixedCycleIndex =
       training && job.mode === "mixed"
         ? Math.floor(i / fullMixedCycleLength)
@@ -667,6 +665,12 @@ async function run(job) {
         }
 
         const key = event.transition.resolvedActionKey;
+        const learnerCharge =
+          event.transition.resolvedCharge ??
+          event.transition.charge ??
+          event.transition.selectedCharge ??
+          0;
+
         const parts = key.split("+");
 
         const stance = ["W", "A", "S", "D"].includes(parts[0])
@@ -681,17 +685,30 @@ async function run(job) {
         jkilCounts[button]++;
         moveMatrix[stance][button]++;
 
-        const oppKey = event.transition.opponentActionKey ||
+        const oppKey =
+          event.opponentActionKey ||
+          event.oppActionKey ||
+          event.opponentResolvedActionKey ||
+          event.transition.opponentActionKey ||
           event.transition.oppActionKey ||
           event.transition.oppKey ||
-          event.transition.opponentResolvedActionKey ||
           event.transition.oppAction ||
-          "IDLE";
+          "DO_NOTHING";
+
+        const oppCharge =
+          event.opponentCharge ??
+          event.oppCharge ??
+          event.opponentResolvedCharge ??
+          event.transition.opponentCharge ??
+          event.transition.oppCharge ??
+          0;
 
         matchRoundMoves.push({
           round: matchRoundMoves.length + 1,
           learnerMove: key,
-          oppMove: oppKey
+          learnerCharge,
+          oppMove: oppKey,
+          oppCharge
         });
       } else if (event.type === "round") {
         if (
