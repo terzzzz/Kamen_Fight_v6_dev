@@ -565,10 +565,17 @@
               const rNum = String(m.round || "").padStart(2);
               const lAction = String(m.learnerMove || "DO_NOTHING").padEnd(10);
               const lCharge = String(m.learnerCharge ?? 0).padStart(3) + "%";
+              const lLp = m.learnerLp !== undefined 
+                ? ` (LP:${String(m.learnerLp).padStart(4)} Chi:${String(m.learnerChi).padStart(2)} Fnt:${String(m.learnerFaint).padStart(2)})`
+                : "";
+
               const oAction = String(m.oppMove || "DO_NOTHING").padEnd(10);
               const oCharge = String(m.oppCharge ?? 0).padStart(3) + "%";
+              const oLp = m.oppLp !== undefined 
+                ? ` (LP:${String(m.oppLp).padStart(4)} Chi:${String(m.oppChi).padStart(2)} Fnt:${String(m.oppFaint).padStart(2)})`
+                : "";
 
-              lines.push(`  R${rNum}: Learner [ ${lAction} @ ${lCharge} ] vs Opponent [ ${oAction} @ ${oCharge} ]`);
+              lines.push(`  R${rNum}: Learner [ ${lAction} @ ${lCharge} ]${lLp} vs Opponent [ ${oAction} @ ${oCharge} ]${oLp}`);
             });
           } else if (typeof game.moveSequence === "string") {
             lines.push(`  Moves: ${game.moveSequence}`);
