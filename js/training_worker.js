@@ -372,6 +372,7 @@ async function run(job) {
 
   const recent = [];
   const breakdown = {};
+  const firstWinningGames = [];
 
   const wasdCounts = {
     W: 0,
@@ -455,6 +456,7 @@ async function run(job) {
       patch: PATCH,
       schema: EXPECTED_SCHEMA,
       kind: job.kind,
+      target: job.target || "candidate",
 
       games,
       requested: job.matches,
@@ -510,6 +512,7 @@ async function run(job) {
       cancelled,
 
       breakdown,
+      firstWinningGames: JSON.parse(JSON.stringify(firstWinningGames)),
 
       wasdRatio: {
         counts: { ...wasdCounts }
@@ -618,6 +621,7 @@ async function run(job) {
     }
 
     const matchTransitions = [];
+    const matchRoundMoves = [];
 
     const generator = SoulSim.episode({
       data,
@@ -676,6 +680,19 @@ async function run(job) {
         wasdCounts[stance]++;
         jkilCounts[button]++;
         moveMatrix[stance][button]++;
+
+        const oppKey = event.transition.opponentActionKey ||
+          event.transition.oppActionKey ||
+          event.transition.oppKey ||
+          event.transition.opponentResolvedActionKey ||
+          event.transition.oppAction ||
+          "IDLE";
+
+        matchRoundMoves.push({
+          round: matchRoundMoves.length + 1,
+          learnerMove: key,
+          oppMove: oppKey
+        });
       } else if (event.type === "round") {
         if (
           Number.isFinite(event.qSumDelta) &&
@@ -711,6 +728,14 @@ async function run(job) {
     if (result.state.winner === learnerSlot) {
       wins++;
       outcome = "wins";
+
+      if (firstWinningGames.length < 5) {
+        firstWinningGames.push({
+          gameNumber: games,
+          totalRounds: result.rounds,
+          moves: [...matchRoundMoves]
+        });
+      }
 
       if (training && winOnly) {
         for (const item of matchTransitions) {
