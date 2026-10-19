@@ -381,7 +381,6 @@
         element.disabled = busy || !data;
       });
 
-      // Tests/import/repository fetches are not worker jobs.
       button("stop").disabled = !worker || stopping;
 
       const close = button("close");
@@ -542,6 +541,37 @@
         lines.push(
           `${label}: ${row.wins}W ${row.losses}L ${row.draws}D`
         );
+      }
+
+      if (Array.isArray(report.firstWinningGames) && report.firstWinningGames.length > 0) {
+        lines.push(
+          "",
+          "==================================================",
+          "FIRST WINNING GAMES — EXACT MOVE SEQUENCES",
+          "=================================================="
+        );
+
+        report.firstWinningGames.forEach((game, index) => {
+          const gameNum = game.gameNumber || (index + 1);
+          const totalRounds = game.totalRounds || game.moves?.length || 0;
+
+          lines.push(
+            "",
+            `--- WINNING GAME #${index + 1} (Match #${gameNum}, ${totalRounds} Rounds) ---`
+          );
+
+          if (Array.isArray(game.moves) && game.moves.length > 0) {
+            game.moves.forEach(m => {
+              const rNum = String(m.round || "").padStart(2);
+              const learnerAction = (m.learnerMove || "IDLE").padEnd(6);
+              const oppAction = m.oppMove || "IDLE";
+
+              lines.push(`  R${rNum}: Learner [ ${learnerAction} ] vs Opponent [ ${oppAction} ]`);
+            });
+          } else if (typeof game.moveSequence === "string") {
+            lines.push(`  Moves: ${game.moveSequence}`);
+          }
+        });
       }
 
       if (report.cancelled) {
