@@ -228,11 +228,6 @@
     return false;
   }
 
-  /*
-   * Evaluates a single fighter's active status/buff/regen/airborne value in [-1, +1].
-   * Positive for beneficial buffs (Evasion, LP Regen, ATK/DEF/SPD/ACC, Airborne);
-   * negative for harmful statuses (Bleeding, Rope Bind slow).
-   */
   function fighterStatusValue(player) {
     if (!player || player.lp <= 0) {
       return 0;
@@ -251,12 +246,10 @@
       const eff = buff.effects || {};
       const durationWeight = 0.55 + 0.25 * rounds;
 
-      // Evasion buff (e.g., Amazon Gigi Focus +30% EVS, Airborne Evasion +20% EVS)
       if (Number(eff.evasion) > 0) {
         score += Number(eff.evasion) * 1.15 * durationWeight;
       }
 
-      // Periodic LP Regeneration (e.g., Inca Blessing +200 LP/rnd)
       const lpRegen = Number(buff.lpRegen ?? eff.lpRegen ?? 0);
       if (lpRegen > 0) {
         const expectedHeal = Math.min(
@@ -267,14 +260,12 @@
         score += (expectedHeal / maxLp) * 1.35 * healScale;
       }
 
-      // Periodic LP Bleeding (e.g., Amazon / X bleed debuff -150 LP/rnd)
       const lpBleed = Number(buff.lpBleed ?? eff.lpBleed ?? 0);
       if (lpBleed > 0) {
         const expectedBleed = lpBleed * rounds;
         score -= (expectedBleed / maxLp) * 1.35;
       }
 
-      // Attack / Stance Attack buffs (Ichigo +S-Atk, Nigo +200% D-Atk, etc.)
       if (Number(eff.attack) > 1) {
         score += (Number(eff.attack) - 1) * 0.75 * durationWeight;
       }
@@ -285,17 +276,14 @@
         score += (Number(eff.sAttack) - 1) * 0.65 * durationWeight;
       }
 
-      // Armor / Defense buffs (armor < 1 means reduced incoming damage)
       if (eff.armor !== undefined && Number(eff.armor) < 1) {
         score += (1 - Number(eff.armor)) * 0.85 * durationWeight;
       }
 
-      // Charge speed buffs / debuffs (Rope Bind < 1)
       if (eff.speed !== undefined && Number(eff.speed) !== 1) {
         score += (Number(eff.speed) - 1) * 0.60 * durationWeight;
       }
 
-      // Accuracy buffs
       if (Number(eff.accuracy) > 0) {
         score += (Number(eff.accuracy) / 100) * 0.55 * durationWeight;
       }
@@ -308,9 +296,6 @@
     return K.clamp(score, -1, 1);
   }
 
-  /*
-   * Net status potential from `slot`'s perspective in [-1, +1].
-   */
   function statusPotential(state, slot) {
     if (!state || state.winner) {
       return 0;
@@ -323,12 +308,6 @@
     );
   }
 
-  /*
-   * Normalized [-1, +1] potential measuring Doomed Status / Resource Lock:
-   * - Asymmetric S-move capability
-   * - Severe Chi starvation vs armed opponent
-   * - High faint + low Chi vulnerability
-   */
   function doomedPotential(state, slot) {
     if (!state || state.winner) {
       return 0;
@@ -384,16 +363,11 @@
     return K.clamp(potential, -1, 1);
   }
 
-  /*
-   * Estimates periodic LP change (regen - bleed) that occurred at the end of a turn
-   * so direct combat damage can be separated from end-of-round periodic ticks.
-   */
   function estimatePeriodicLpDelta(beforePlayer, afterPlayer) {
     if (!beforePlayer || !afterPlayer || afterPlayer.lp <= 0) {
       return 0;
     }
 
-    // Periodic statuses tick in CombatCore when their roundsLeft decrements on an active buff
     let periodicDelta = 0;
 
     for (const afterBuff of afterPlayer.activeBuffs || []) {
@@ -401,7 +375,6 @@
       const bleed = Number(afterBuff.lpBleed ?? afterBuff.effects?.lpBleed ?? 0);
       if (regen <= 0 && bleed <= 0) continue;
 
-      // Buffs with appliedRound < current resolved round ticked at the end of this round
       const matchedBefore = (beforePlayer.activeBuffs || []).find(
         b => b.id === afterBuff.id && Number(b.roundsLeft) > Number(afterBuff.roundsLeft)
       );
@@ -410,7 +383,6 @@
       }
     }
 
-    // Also check buffs that were at roundsLeft === 1 in `beforePlayer` and expired after ticking
     for (const beforeBuff of beforePlayer.activeBuffs || []) {
       if (Number(beforeBuff.roundsLeft) !== 1) continue;
       const regen = Number(beforeBuff.lpRegen ?? beforeBuff.effects?.lpRegen ?? 0);
@@ -428,10 +400,6 @@
     return periodicDelta;
   }
 
-  /*
-   * Detects if `evaderSlot` cleanly evaded an opponent's offensive attack this turn.
-   * Returns a normalized avoided-damage score > 0 when an unblocked enemy attack missed.
-   */
   function detectEvadedAttack(before, after, evaderSlot, actions) {
     if (!before || !after || !actions) {
       return 0;
@@ -448,7 +416,6 @@
     const evaderBefore = before[evaderSlot];
     const attackerBefore = before[attackerSlot];
 
-    // Fainted or idle targets cannot evade in CombatCore
     if (
       !evaderBefore ||
       !attackerBefore ||
@@ -466,12 +433,10 @@
       return 0;
     }
 
-    // If the evader used a guard, a 0-damage turn is a block, not an evasion
     if (evaderMove?.guardKind) {
       return 0;
     }
 
-    // Estimate direct combat damage taken by each side (excluding periodic regen/bleed ticks)
     const attackerPeriodic = estimatePeriodicLpDelta(attackerBefore, after[attackerSlot]);
     const evaderPeriodic = estimatePeriodicLpDelta(evaderBefore, after[evaderSlot]);
 
@@ -488,7 +453,6 @@
       return 0;
     }
 
-    // Check if the attacker was interrupted before swinging by a higher-priority hit from evader
     const priorityCmp =
       C.comparePriority(
         before,
@@ -505,7 +469,6 @@
       return 0;
     }
 
-    // Check if evader took 0 faint buildup from the attack
     const evaderFaintIncreased =
       after[evaderSlot].faintMeter > before[evaderSlot].faintMeter ||
       (after[evaderSlot].isFainted && !before[evaderSlot].isFainted);
@@ -527,11 +490,6 @@
     return avoidedDamageRatio * evasionMultiplier;
   }
 
-  /*
-   * Extracts active buff contributions cast by `learnerSlot` on `round` so that
-   * subsequent rounds (t+1, t+2, t+3) can attribute exact proportional payoffs back
-   * to the turn that activated the buff (including stackable evasion & attack buffs).
-   */
   function extractCastBuffContributions(before, after, learnerSlot, resolvedActionKey) {
     const move = before.moves?.[learnerSlot]?.[resolvedActionKey];
     if (!move) {
@@ -543,7 +501,6 @@
     const enemyAfter = after[enemySlot];
     const ownBefore = before[learnerSlot];
 
-    // Check if our own buff was immediately cancelled by taking LP damage on the cast turn
     const ownPeriodic = estimatePeriodicLpDelta(ownBefore, ownAfter);
     const tookDirectDamage = (ownBefore.lp + ownPeriodic) - ownAfter.lp > 1;
     if (tookDirectDamage && move.buff?.cancelOnLpDamage) {
@@ -587,7 +544,6 @@
       )
     );
 
-    // Verify the buff or debuff is actually present in `after` state
     const buffId = move.buff?.id || resolvedActionKey;
     const debuffId = move.targetDebuff?.id || resolvedActionKey;
 
@@ -617,13 +573,6 @@
     };
   }
 
-  /*
-   * Multi-Turn Proportional Buff Credit Assignment:
-   * Distributes actual realized payoffs on the current turn (bonus attack damage,
-   * evaded enemy attacks across stackable evasion buffs, armor damage reduction,
-   * LP regeneration ticks, and enemy bleed ticks) back to the recent pending
-   * transition(s) that cast those buffs.
-   */
   function attributeRealizedBuffPayoffs(
     pendingWindow,
     before,
@@ -662,14 +611,12 @@
 
     const evadedScore = detectEvadedAttack(before, after, learnerSlot, actions);
 
-    // Filter pending entries that still have active buff contributions on this turn
     const activeEntries = [];
     for (const entry of pendingWindow) {
       if (!entry.buffMeta || entry.buffMeta.roundsRemaining <= 0) {
         continue;
       }
 
-      // Check if the buff is still present on `before` (was active entering this round)
       const meta = entry.buffMeta;
       const stillHasOwnBuff =
         (ownBefore.activeBuffs || []).some(b => b.id === meta.buffId && b.roundsLeft > 0) ||
@@ -687,7 +634,6 @@
       return;
     }
 
-    // 1. Proportional Attack Buff Payoff (+Attack, +D-Attack, +S-Attack)
     if (directDamageDealt > 1 && ownMove?.offensive) {
       let totalAttackBonus = 0;
       const entryWeights = [];
@@ -702,7 +648,6 @@
       }
 
       if (totalAttackBonus > 0) {
-        // Fraction of total damage dealt that came from the buff multiplier(s)
         const totalMult = 1 + totalAttackBonus;
         const bonusDamageRatio =
           (directDamageDealt * (totalAttackBonus / totalMult)) / enemyMaxLp;
@@ -721,7 +666,6 @@
       }
     }
 
-    // 2. Proportional Stackable Evasion Payoff (e.g. Amazon W+K Gigi Focus + W+I Jungle Jump)
     if (evadedScore > 0) {
       const baseEvasion = Math.max(0.02, Number(ownBefore.baseEvasion || 0.06));
       let totalBuffEvasion = 0;
@@ -737,7 +681,6 @@
           const boost = Math.max(0, entry.buffMeta.evasionBoost);
           if (boost <= 0) continue;
 
-          // Marginal contribution of this specific evasion skill to the total evasion pool
           const marginalShare = boost / totalEffectiveEvasion;
           const dodgeCredit = 0.75 * evadedScore * marginalShare;
 
@@ -751,7 +694,6 @@
       }
     }
 
-    // 3. Proportional Armor / Damage-Reduction Payoff
     if (directDamageTaken > 1) {
       let totalArmorReduction = 0;
       for (const entry of activeEntries) {
@@ -771,7 +713,6 @@
       }
     }
 
-    // 4. Realized Periodic LP Regeneration Payoff (e.g. Amazon Inca Blessing +200 LP/rnd)
     if (ownPeriodic > 0 && ownAfter.lp > ownBefore.lp - directDamageTaken) {
       const actualLpHealed = Math.max(
         0,
@@ -799,7 +740,6 @@
       }
     }
 
-    // 5. Realized Periodic Enemy Bleed Payoff (e.g. Amazon / X Bleeding -150 LP/rnd)
     if (enemyPeriodic < 0) {
       const bleedDamage = Math.abs(enemyPeriodic);
       let totalBleed = 0;
@@ -822,7 +762,6 @@
       }
     }
 
-    // Decrement remaining attribution window on active buff entries
     for (const entry of activeEntries) {
       entry.buffMeta.roundsRemaining = Math.max(
         0,
@@ -844,11 +783,6 @@
       throw new Error("Cannot charge an unknown move: " + key);
     }
 
-    /*
-     * The 17-output network chooses a move key.
-     * Direct-network training retains one canonical execution
-     * charge for each state/key.
-     */
     const charge = C.maxCharge(
       state[slot],
       move.direction
@@ -945,11 +879,6 @@
       return { q, m };
     }
 
-    /*
-     * Post-turn leaf evaluation uses RiderBrains.evaluate cleanly and rapidly
-     * so 1-turn expectimax and 3-turn rollouts judge LP, Chi, Faint, and Win
-     * with 100% of SOUL's accuracy and speed (enabling 80-128 rollouts within 100ms).
-     */
     function evaluateLeaf(state, perspective, history = rootHistory) {
       assertSlot(perspective);
 
@@ -972,10 +901,6 @@
         : -heuristicScore;
     }
 
-    /*
-     * Exposes the network's centered per-action Q-advantages at the root state
-     * as a clean tie-breaker without distorting post-turn damage evaluations.
-     */
     evaluateLeaf.actionBonuses = function (state, perspective, history = rootHistory) {
       if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
         return null;
@@ -1014,11 +939,6 @@
       return bonuses;
     };
 
-    /*
-     * Returns the top legal move keys favored by the Matrix at the root
-     * (plus A+I when opponent threatens S) so ForeseeEngine includes them
-     * in RIDER's extra finalist slots.
-     */
     evaluateLeaf.advisedMoves = function (state, perspective, history = rootHistory) {
       if (perspective !== learnerSlot || state.winner || state[learnerSlot]?.isFainted) {
         return null;
@@ -1111,11 +1031,6 @@
             }).action;
           }
         } else if (mode === "rider") {
-          /*
-           * RIDER selects with Foresee search. When enabled, retain these
-           * as low-weight demo rows so the raw network can distill search
-           * choices without overpowering TD learning.
-           */
           demo = Boolean(options.distillRider);
 
           action = getAI().choose({
@@ -1154,10 +1069,6 @@
           action = actionForIndex(env, slot, index);
         }
 
-        /*
-         * Preserve what the policy/search requested for telemetry.
-         * It may contain a search-chosen charge value.
-         */
         const proposedAction = normalizeLegalAction(
           env.state,
           slot,
@@ -1179,13 +1090,6 @@
           );
         }
 
-        /*
-         * DDQN training uses canonical charge because an action index
-         * represents a key, not a key+charge pair.
-         *
-         * RIDER evaluation performs no training, so preserve its actual
-         * search-selected charge to match live KF_AI.choose() behavior.
-         */
         const preserveRiderSearchCharge =
           mode === "rider" &&
           options.isTraining === false &&
@@ -1230,17 +1134,8 @@
         (before[slot].lp - after[slot].lp) /
         Math.max(1, before[slot].maxLp);
 
-      // When own LP increases via Regeneration, ownLpChange is negative,
-      // so `-1.15 * ownLpChange` automatically grants positive reward for every LP healed.
       reward = 1.5 * enemyLpChange - 1.15 * ownLpChange;
 
-      /*
-       * Net Chi Differential:
-       * - Rewards parrying an enemy's expensive move with an A-guard
-       *   (enemy loses Chi, self gains guardReward Chi).
-       * - Penalizes throwing expensive moves into an enemy A-guard
-       *   (self loses Chi, enemy gains guardReward Chi).
-       */
       const maxChi = Math.max(1, before[slot].maxChi || 16);
       const enemyMaxChi = Math.max(1, before[enemySlot].maxChi || 16);
 
@@ -1253,12 +1148,6 @@
 
       reward += 0.35 * (ownChiDelta - enemyChiDelta);
 
-      /*
-       * Zero-LP Chi-Trap / A+I vs S Dominance Shaping:
-       * Teaches the network that stuffing S with A+I (or winning a big Chi trade
-       * without losing LP) is a major victory, and getting S stuffed by A+I
-       * for 0 LP damage is a major blunder.
-       */
       const ownKey = String(actions?.[slot]?.key || "");
       const enemyKey = String(actions?.[enemySlot]?.key || "");
 
@@ -1283,42 +1172,21 @@
         }
       }
 
-      /*
-       * Status & Active Regen Potential Shaping:
-       * Immediately rewards landing Evasion (Gigi Focus / Jungle Jump),
-       * LP Regen (Inca Blessing), ATK/DEF/SPD buffs (Ichigo +S-Atk, Nigo +200% D-Atk),
-       * or Bleeding debuffs on the opponent.
-       */
       const statusDelta =
         statusPotential(after, slot) - statusPotential(before, slot);
 
       reward += 0.30 * statusDelta;
 
-      /*
-       * Direct Evasion / Dodge Reward:
-       * Immediately rewards evading an opponent's offensive move without taking
-       * LP or faint damage (especially when Evasion or Airborne is active).
-       */
       const ownEvadedScore = detectEvadedAttack(before, after, slot, actions);
       const enemyEvadedScore = detectEvadedAttack(before, after, enemySlot, actions);
 
       reward += 0.65 * ownEvadedScore - 0.35 * enemyEvadedScore;
 
-      /*
-       * Doomed Status Potential Shaping:
-       * Immediately rewards pushing the opponent into Chi-starved / Faint-doomed
-       * status and penalizes entering Doomed Status even on 0-LP turns.
-       */
       const doomedDelta =
         doomedPotential(after, slot) - doomedPotential(before, slot);
 
       reward += 0.22 * doomedDelta;
 
-      /*
-       * Faint Differential:
-       * - Rewards building faint on the opponent or recovering own faint.
-       * - Penalizes taking faint buildup (including idle-guard faint penalty).
-       */
       const faintThreshold = Math.max(
         1,
         Number(g.COMBAT_RULES?.FAINT_THRESHOLD || 100)
@@ -1470,8 +1338,6 @@
     let qSum = 0;
     let qCount = 0;
 
-    // 3-turn sliding window so W-buffs/evasion/regen receive exact realized payoffs
-    // from subsequent rounds before their transition is yielded to the replay buffer.
     const BUFF_CREDIT_WINDOW = 3;
     const pendingWindow = [];
 
@@ -1685,8 +1551,6 @@
         );
       }
 
-      // 1. Attribute realized bonus damage, dodges, and regen/bleed ticks from THIS round
-      //    back to any active buff-cast turns sitting in `pendingWindow`.
       if (rewardMode === "standard") {
         attributeRealizedBuffPayoffs(
           pendingWindow,
@@ -1778,6 +1642,11 @@
 
         resolvedActionKey: resolvedAction.key,
         resolvedCharge: resolvedAction.charge,
+
+        // CRITICAL FIX: Include opponent's exact resolved move key and execution charge
+        opponentActionKey: resolvedEnemyAction?.key || "DO_NOTHING",
+        opponentCharge: resolvedEnemyAction?.charge || 0,
+
         charge: decision.action.charge,
         coreAdjustedAction,
 
@@ -1789,7 +1658,6 @@
         buffMeta
       });
 
-      // Flush oldest transition once the 3-turn credit window is full
       while (pendingWindow.length > BUFF_CREDIT_WINDOW) {
         const ready = pendingWindow.shift();
         yield {
@@ -1798,7 +1666,6 @@
         };
       }
 
-      // If the match ended, flush all remaining buffered transitions in chronological order
       if (done) {
         while (pendingWindow.length > 0) {
           const ready = pendingWindow.shift();
