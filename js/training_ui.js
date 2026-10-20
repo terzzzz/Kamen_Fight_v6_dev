@@ -40,6 +40,9 @@
       </p>
 
       <p>
+        This game is turn-based decision picking with a charge action 
+        bar to select the % of engagement with every 8-second turn.
+        There is no frame advanatage, no attack range, no spacing.
         Non-idle moves require 1–100% charge.
         Selecting a different direction resets charging to 1%.
         Repeating the same direction preserves its charge clock.
