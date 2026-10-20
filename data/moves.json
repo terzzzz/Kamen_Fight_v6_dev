@@ -346,7 +346,7 @@
         "label": "AIR",
         "type": "speed",
         "duration": 4,
-        "effects": { "attack": 1.35, "evasion": 0.30 }
+        "effects": { "attack": 1.35, "evasion": 0.35 }
       }
     },
     "W+J": {
@@ -377,7 +377,7 @@
         "label": "GIGI FOCUS",
         "type": "speed",
         "duration": 3,
-        "effects": { "evasion": 0.33 }
+        "effects": { "evasion": 0.35 }
       }
     },
     "W+L": {
@@ -387,7 +387,7 @@
       "baseDamage": 0,
       "hitChance": 100,
       "video": "wild_instinct.mp4",
-      "faintRecovery": 40
+      "faintRecovery": 50
     },
     "D+J": { "name": "Mystic Kick", "type": "PHYSICAL", "chiCost": 0, "baseDamage": 77, "hitChance": 80, "video": "kick_myst.mp4", "chiRefundOnHit": 2, "sourceFacing": "right" },
     "D+K": { "name": "Claw Attack", "type": "PHYSICAL", "chiCost": 1, "baseDamage": 130, "hitChance": 75, "video": "claw.mp4", "chiRefundOnHit": 3 },
@@ -398,7 +398,7 @@
       "name": "Jaguar Shock",
       "type": "SPECIAL",
       "chiCost": 5,
-      "baseDamage": 350,
+      "baseDamage": 450,
       "hitChance": 78,
       "video": "jaguar_shock.mp4",
       "debuff": {
@@ -407,10 +407,10 @@
         "type": "dot",
         "duration": 3,
         "refreshable": true,
-        "effects": { "lpBleed": 85 }
+        "effects": { "lpBleed": 95 }
       }
     },
-    "S+L": { "name": "Wild Tackle", "type": "SPECIAL", "chiCost": 7, "baseDamage": 780, "hitChance": 80, "video": "wild_tackle.mp4" },
+    "S+L": { "name": "Wild Tackle", "type": "SPECIAL", "chiCost": 7, "baseDamage": 880, "hitChance": 80, "video": "wild_tackle.mp4" },
     "S+I": { "name": "Daisetsudan", "type": "SPECIAL", "chiCost": 10, "baseDamage": 1020, "hitChance": 77, "video": "dai_slash.mp4", "sourceFacing": "right" },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
