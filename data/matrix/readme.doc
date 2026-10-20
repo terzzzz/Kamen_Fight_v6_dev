@@ -2,7 +2,7 @@ Trained Matrix:
 
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
-001	 Y   Y   Y   y   n   n	   
+001	 Y   Y   Y   Y   n   n	   
 002	 y   y   n   n   n   n						
 003	 y   y   y   n   n   n								
 004	 n   n   n   n   n   n								
@@ -453,7 +453,114 @@ Candidate model `001_003` (Ichigo vs V3) is fully verified and ready for promoti
 
 
 001_004:
+# KAMEN FIGHT — RIDER LEVEL TRAINER EVALUATION REPORT
 
+**Target Candidate Model:** `001_004`
+
+**Learner:** Kamen Rider Ichigo (`001`)
+
+**Opponent:** Riderman (`004`)
+
+**Architecture:** `v5-state256-action17` | **Patch:** `charge1-reset1`
+
+**Evaluation Policy:** `rider` (Live MCTS Search)
+
+**Verification Status:** **PASSED** (All 4 difficulty tiers achieved >50% Win Rate)
+
+---
+
+## 1. Executive Summary
+
+Candidate model `001_004` (Kamen Rider Ichigo trained specifically to counter Riderman) was evaluated across all four difficulty tiers under the RIDER live search engine.
+
+Ichigo surpassed the required **>50% win rate threshold** across all benchmark pools, demonstrating high offensive consistency against Riderman's arm-attachment mixups:
+
+* **SOUL AI (Deep MCTS Search):** **63.9% Win Rate** (23W / 13L)
+* **MASTER AI (High MCTS Search):** **58.3% Win Rate** (28W / 20L)
+* **BALANCED AI (Mid MCTS / Heuristic):** **60.4% Win Rate** (29W / 19L)
+* **EASY AI (Direct Network Policy):** **81.3% Win Rate** (39W / 9L)
+
+---
+
+## 2. Comparative Performance Matrix Across Difficulty Tiers
+
+| Metric | SOUL AI | MASTER AI | BALANCED AI | EASY AI |
+| --- | --- | --- | --- | --- |
+| **Learner / Opponent** | **Ichigo / Riderman** | **Ichigo / Riderman** | **Ichigo / Riderman** | **Ichigo / Riderman** |
+| **Win Rate (W / L)** | **63.9%** (23 / 13) | **58.3%** (28 / 20) | **60.4%** (29 / 19) | **81.3%** (39 / 9) |
+| **P1 Slot Win Rate** | 66.7% (12W / 6L) | 66.7% (16W / 8L) | 62.5% (15W / 9L) | 79.2% (19W / 5L) |
+| **P2 Slot Win Rate** | 61.1% (11W / 7L) | 50.0% (12W / 12L) | 58.3% (14W / 10L) | **83.3%** (20W / 4L) |
+| **Avg. Rounds / Match** | 13.2 | 13.7 | 14.1 | 13.0 |
+| **Mean Selected Q** | 1.2426 | 1.1289 | 1.1608 | 1.3107 |
+| **W-Stance (Utility)** | 3.5% (17) | 3.7% (24) | 3.4% (23) | 2.1% (13) |
+| **A-Stance (Defense)** | 2.9% (14) | 2.3% (15) | 2.4% (16) | 1.6% (10) |
+| **S-Stance (Special)** | **56.6% (276)** | **50.0% (328)** | **48.4% (328)** | **50.0% (311)** |
+| **D-Stance (Physical)** | 27.7% (135) | 34.9% (229) | 37.1% (251) | 40.0% (249) |
+| **IDLE (Forced Stun)** | 9.4% (46) | 9.1% (60) | 8.7% (59) | 6.3% (39) |
+
+---
+
+## 3. Tactical & Strategic Adaptation Analysis
+
+Ichigo’s controller adapted a high-pressure Special burst strategy specifically optimized to break Riderman's flexible range controls:
+
+```
+                       Ichigo Combat Flow vs. Riderman
+                       
+  [ R1 S+L Opening Kick ] ──► Chunk LP to ~2,200 ──► [ Intercept Riderman D-Pokes ]
+  (100% Charge Priority)                               (S+J / S+K Quick Dumps)
+            │                                                     │
+            ▼                                                     ▼
+  [ Build Stun Lockout ]  ──► [ S+I Typhoon Power Break ] ──► [ Clean 13-Round KO ]
+  (D+K High Kick Pressure)    (Punish Stunned Riderman)       (High Margin Lead)
+
+```
+
+1. **Dominant Special Usage (48.4% – 56.6%):** Ichigo heavily leans into `S`-stance. Against deep MCTS search trees (SOUL), `S`-stance usage peaks at **56.6%**, utilizing **`S+L` Rider Power Kick** (125–164 casts per run) and **`S+J` Rider Punch** (104–126 casts per run) to overpower Riderman before Riderman can accumulate Chi for arm attachment specials.
+2. **High-Charge `S+I` Punish Integration:** When Riderman reaches a **100 Fnt lockout**, Ichigo reliably drops **`S+I` Typhoon Power Break** @ 100% charge (1,065 base damage), vaporizing Riderman's remaining health in a single turn (seen in SOUL Game #3 and #5).
+3. **P1/P2 Balance:** Positional performance is well-balanced across all runs, holding 50.0% to 83.3% win rates in the P2 slot.
+
+---
+
+## 4. Key Demo Match Sequence Breakdown
+
+### Game 1: Vs. SOUL AI (Match #3, 7 Rounds) — Fast 7-Round Stun Vaporization
+
+* **Rounds 1–4:** Ichigo opens with **`S+J` @ 90%** and chains two consecutive **`S+L` Rider Kicks @ 100%** on Rounds 2 and 3, reducing Riderman to 1,542 LP by Round 4.
+* **Rounds 5–7:** Ichigo hits **`D+I`** and **`D+J`**, forcing Riderman into **100 Fnt lockout** on Round 6. On Round 7, Ichigo unleashes **`S+I` Typhoon Power Break @ 100%**, instantly knocking out Riderman from 1,374 LP to 0 LP!
+
+### Game 2: Vs. MASTER AI (Match #5, 9 Rounds) — Flawless Faint Punish
+
+* **Rounds 1–3:** Ichigo opens with **`S+L` @ 100%** twice (Rounds 1 & 2) and follows with **`S+J`**, dropping Riderman from 2,800 to 1,542 LP on Round 3 while taking zero damage (2,580 LP).
+* **Rounds 6–9:** Ichigo lands **`S+L` @ 98%** on Round 6 (cutting Riderman to 410 LP) and pushes Riderman into a faint lockout on Round 8. On Round 9, Ichigo connects **`S+K` Rider Flying Knee** for the win.
+
+### Game 3: Vs. BALANCED AI (Match #2, 19 Rounds) — Mid-Game Recovery
+
+* **Rounds 1–5:** Ichigo trades heavy blows early, dropping Riderman to 2,429 LP while managing faint meters.
+* **Rounds 10–11:** Ichigo capitalizes on a Round 10 faint on Riderman, executing a **100% `S+L` Rider Power Kick** on Round 11 to shred Riderman from 1,768 to 693 LP.
+* **Round 19 Finish:** Fully recovered from a late-game faint, Ichigo closes the match on Round 19 with a maximum-charge **`S+L`**.
+
+### Game 4: Vs. EASY AI (Match #2, 8 Rounds) — Clean 8-Round Sweep
+
+* **Rounds 1–4:** Ichigo opens with **`S+L` @ 100%**, **`D+L`**, and another **`S+L` @ 100%**, driving Riderman down to 993 LP by Round 4.
+* **Rounds 7–8:** Riderman collapses into a 100 Fnt lockout on Round 7. Ichigo finishes with back-to-back **`S+J`** and **`S+K`** strikes for an un-punished victory at 1,725 LP.
+
+---
+
+## 5. Technical Validation & Engine Alignment
+
+1. **Q-Value Convergence:** Mean Q-values across all evaluation runs remained calibrated between `1.1289` and `1.3107`.
+2. **Schema Compliance:** Zero invalid charge clock resets or priority sequence errors occurred across 2,443 evaluation decisions.
+3. **Threshold Clearance:** Every difficulty pool exceeded the **50.0% win rate benchmark**, verifying candidate `001_004` for production activation.
+
+---
+
+## 6. Actionable Next Steps
+
+Candidate model `001_004` (Ichigo vs Riderman) is fully verified and ready for activation.
+
+1. Execute **`ACTIVATE SELECTED CANDIDATE`** to promote `001_004` to Active status.
+2. Execute **`EXPORT SELECTED CANDIDATE`** to persist the trained model weights to disk.
 
 001_005:
 
