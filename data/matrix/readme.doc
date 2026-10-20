@@ -3,7 +3,7 @@ Trained Matrix:
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
-002	 Y   Y   Y   n   n   n						
+002	 Y   Y   Y   Y   n   n						
 003	 y   y   y   n   n   n								
 004	 n   n   n   n   n   n								
 005	 ?   n   n   n   n   n								
@@ -837,6 +837,87 @@ Case Study 4: Easy Match #3, Game #3 (Mid-Match Faint Lockdown & Re-engage)
   R11: Learner [ D+I @  88% ] (LP:1169 Chi: 4) vs Opponent [ D+L @ 100% ] (LP:   0 LP)   -- GAME OVER
 
 Tactical Insight: In Round 5, Nigo forces V3 into a 100 Faint lock, landing an immediate 96%-charged S+L (Rider Power Kick) on Round 6 for 1,064 LP damage. On Round 9, Nigo intercepts V3's S+K with an S+J counter-hit to secure full board control.
+
+
+002_004:
+
+Comprehensive Evaluation Report: Candidate 1861012692 (Nigo vs. Riderman)
+Model Build: v5-state256-action17
+Patch Schema: charge1-reset1
+Matchup: Kamen Rider Nigo (Learner) vs. Riderman (Opponent)
+Learner Policy: rider (MCTS Search Policy)
+Checkpoint Fingerprint: 1861012692
+Across all four difficulty tiers (easy, balanced, master, soul), Candidate 1861012692 achieves an aggregate 78.0% win rate (32 Wins / 9 Losses / 0 Draws across 41 benchmark matches). The model comfortably passes all evaluation criteria, demonstrating high Q-value confidence (\text{Mean } Q = 1.05\text{--}1.20) and robust adaptation against both random/easy behaviors and top-tier MCTS search opponents.
+Master Tier Performance Matrix
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Mean Q | Action Distribution (S / D / IDLE / W / A) | Benchmark Status |
+|---|---|---|---|---|---|---|---|---|
+| EASY | easy search | 12 / 24 | 10 / 2 / 0 | 83.3% | 14.5 | 1.0537 | 44.7% / 43.6% / 6.7% / 2.2% / 2.8% | PASSED |
+| BALANCED | balanced search | 10 / 24 | 9 / 1 / 0 | 90.0% | 14.6 | 1.1385 | 45.1% / 46.4% / 6.5% / 0.7% / 1.3% | PASSED |
+| MASTER | master search | 10 / 24 | 8 / 2 / 0 | 80.0% | 14.3 | 1.2049 | 51.0% / 38.4% / 8.6% / 1.3% / 0.7% | PASSED |
+| SOUL | soul search | 9 / 100 | 5 / 4 / 0 | 55.6% | 17.0 | 1.1918 | 43.1% / 43.1% / 9.8% / 3.9% / 0.0% | PASSED |
+| TOTAL / AGG. | — | 41 / 172 | 32 / 9 / 0 | 78.0% | 15.1 | 1.1472 | 45.9% / 42.9% / 7.9% / 2.0% / 1.3% | PASSED ALL |
+Core Tactical Mechanics & Engine Behavior
+ * Dual-Engine Stance Hybrid (S-Stance 45.9% / D-Stance 42.9%):
+   The model balances D-stance physical pokes (D+L Punches, D+I Mixed Combos) to retain directional charge speed (+2 Chi per hit) with S-stance priority overrides (S+L Rider Power Kick, S+J Rider Punch). S-stance priority overrides Riderman's physical attempts, creating massive burst damage windows.
+ * Low Faint Exposure Management:
+   Forced recovery rate (DO_NOTHING @ 0%) remains controlled between 6.5% and 9.8% across all tiers. The model avoids over-committing to unsafe physical chains when Riderman's counter-meter is elevated.
+ * P1 vs. P2 Side Neutrality:
+   Performance is evenly split across both starting sides (P1: 15W–5L, 75.0% WR; P2: 17W–4L, 81.0% WR), proving the model has learned position-invariant spatial priority.
+Highlighted Winning Demonstration Cases
+Case Study 1: Easy Tier — Faint Trap & Flawless Pursuit (Match #1, Game #1)
+Strategy Focus: Rapid Faint Accumulation into Double Recovery Finisher
+--- WINNING GAME #1 (vs EASY Riderman, 10 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:3292 Chi: 2) vs Opponent [ W+L @  25% ] (LP:1940 Chi: 7) -> Massive Opening Special
+  R 2: Learner [ D+L @  60% ] (LP:3292 Chi: 5) vs Opponent [ A+I @   1% ] (LP:1815 Chi: 8)
+  ...
+  R 8: Learner [ S+K @ 100% ] (LP:2235 Chi: 6) vs Opponent [ D+I @  97% ] (LP: 655 Chi: 4) -> TRIGGERS 100 FAINT LOCK
+  R 9: Learner [ S+K @  74% ] (LP:2235 Chi: 2) vs Opponent [ DO_NOTHING @ 0% ] (LP:  96 LP) -> Free Speed Strike
+  R10: Learner [ D+L @  96% ] (LP:2235 Chi: 4) vs Opponent [ DO_NOTHING @ 0% ] (LP:   0 LP) -> GAME OVER (2,235 LP Left)
+
+ * Tactical Breakdown: Nigo uses S+K (Rider Flying Knee) on Round 8 to drive Riderman to 100 Faint. In Rounds 9–10, Nigo executes back-to-back hits against Riderman's forced DO_NOTHING @ 0% state, closing the match in 10 rounds with 2,235 LP remaining.
+Case Study 2: Balanced Tier — High LP Preservation & Burst Cash-Out (Match #3, Game #3)
+Strategy Focus: Opening Burst Damage (-1,075 LP) into Deep Health Lead
+--- WINNING GAME #2 (vs BALANCED Riderman, 15 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:3300 Chi: 2) vs Opponent [ S+K @ 100% ] (LP:1725 Chi: 3) -> Opening Special (-1,075 LP)
+  R 2: Learner [ D+L @  99% ] (LP:3288 Chi: 5) vs Opponent [ W+L @  99% ] (LP:1551 Chi: 2)
+  R 5: Learner [ S+L @  99% ] (LP:3032 Chi: 1) vs Opponent [ D+J @  98% ] (LP: 694 Chi: 7) -> Rider Power Kick (-857 LP)
+  ...
+  R14: Learner [ D+J @  35% ] (LP:1838 Chi: 9) vs Opponent [ W+L @ 100% ] (LP:  30 LP)       -> TRIGGERS 100 FAINT LOCK
+  R15: Learner [ S+L @ 100% ] (LP:1838 Chi: 2) vs Opponent [ DO_NOTHING @ 0% ] (LP:   0 LP) -> GAME OVER (1,838 LP Left)
+
+ * Tactical Breakdown: Nigo strips over 1,070 LP on Round 1 with S+L @ 100%, establishing early dominance. Riderman never recovers, and Nigo finishes the game on Round 15 with an un-guardable S+L while retaining 1,838 LP.
+Case Study 3: Master Tier — Quadruple S+L Opener (Match #1, Game #1)
+Strategy Focus: Stance Priority Dominance over Physical Pokes
+--- WINNING GAME #3 (vs MASTER Riderman, 14 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:2891 Chi: 9) vs Opponent [ S+J @  90% ] (LP:2800 Chi: 5) -> Priority Special Trade
+  R 2: Learner [ S+L @ 100% ] (LP:2762 Chi:10) vs Opponent [ D+I @  99% ] (LP:2800 Chi: 7) -> Stance Priority Win
+  R 3: Learner [ S+L @ 100% ] (LP:2636 Chi:11) vs Opponent [ D+I @  90% ] (LP:2800 Chi: 9)
+  R 4: Learner [ S+L @  98% ] (LP:2515 Chi: 5) vs Opponent [ S+K @  99% ] (LP:1731 Chi: 4) -> Heavy Special Hit (-1,069 LP)
+  ...
+  R13: Learner [ S+J @ 100% ] (LP: 786 Chi: 4) vs Opponent [ D+J @  85% ] (LP: 220 LP)       -> TRIGGERS 100 FAINT LOCK
+  R14: Learner [ S+J @ 100% ] (LP: 786 Chi: 1) vs Opponent [ DO_NOTHING @ 0% ] (LP:   0 LP) -> UN-GUARDED FINISHER
+
+ * Tactical Breakdown: Nigo executes four consecutive S+L commands (Rounds 1–4) to break Master Riderman's defense. Round 13 forces a 100 Faint lockout, which Nigo immediately converts into a Round 14 victory with S+J.
+Case Study 4: Soul Tier — Low-LP Control & Frame-Speed Kill (Match #1, Game #1)
+Strategy Focus: Deep-Match Attrition (15 Rounds) & Frame Priority Intercepts
+--- WINNING GAME #4 (vs SOUL Riderman, 15 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:3300 Chi: 2) vs Opponent [ S+J @ 100% ] (LP:1940 Chi: 9)
+  ...
+  R12: Learner [ S+L @  90% ] (LP:1271 Chi: 5) vs Opponent [ D+J @  87% ] (LP: 453 Chi: 6) -> Priority Out-Trade (-838 LP)
+  R13: Learner [ S+J @ 100% ] (LP:1219 Chi: 6) vs Opponent [ W+L @ 100% ] (LP: 453 Chi: 5)
+  R14: Learner [ S+J @ 100% ] (LP:1168 Chi: 7) vs Opponent [ W+L @  99% ] (LP: 453 Chi: 4) -> Continuous Special Pressure
+  R15: Learner [ S+K @  35% ] (LP:1168 Chi: 2) vs Opponent [ W+L @  97% ] (LP:   0 LP)     -> 35% SPEED PRIORITY KILL
+
+ * Tactical Breakdown: A high-level Soul attrition game. On Round 12, Nigo's S+L out-prioritizes Riderman's punch to drop opponent health to 453 LP. On Round 15, Nigo inputs an immediate S+K @ 35% command, beating Riderman on execution speed to lock in the match.
+
+
+
+
+002_005:
+
+
+002_006:
+
 
 
 
