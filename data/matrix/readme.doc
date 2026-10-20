@@ -3,7 +3,7 @@ Trained Matrix:
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
-002	 y   y   n   n   n   n						
+002	 Y   y   n   n   n   n						
 003	 y   y   y   n   n   n								
 004	 n   n   n   n   n   n								
 005	 ?   n   n   n   n   n								
@@ -205,119 +205,7 @@ Checkpoint **`254051651`** is fully verified and deployed as the active producti
 
 001_002:
 
-
-# KAMEN FIGHT — RIDER LEVEL TRAINER EVALUATION REPORT
-
-**Target Candidate Model:** `002_001` (Kamen Rider Nigo)
-
-**Architecture:** `v5-state256-action17` | **Patch:** `charge1-reset1`
-
-**Verification Status:** **PASSED** (All 4 difficulty tiers achieved >50% Win Rate)
-
----
-
-## 1. Executive Summary & Verification Target
-
-The newly trained candidate model `002_001` (Nigo) was subjected to benchmark evaluations under the **RIDER difficulty engine**, which enforces search-selected charge preservation and directional charge-clock reset mechanics.
-
-The candidate successfully passed the validation threshold across **all four difficulty tiers**, maintaining a **>50% win rate** against every opponent controller:
-
-* **SOUL AI (Deep MCTS Search):** **52.0% Win Rate** (13W / 12L)
-* **MASTER AI (High MCTS Search):** **73.7% Win Rate** (14W / 5L)
-* **BALANCED AI (Mid MCTS / Heuristic):** **61.8% Win Rate** (21W / 13L)
-* **EASY AI (Direct Network Policy):** **58.8% Win Rate** (10W / 7L)
-
----
-
-## 2. Comparative Performance Matrix Across Difficulty Tiers
-
-| Metric | SOUL AI | MASTER AI | BALANCED AI | EASY AI |
-| --- | --- | --- | --- | --- |
-| **Evaluated Policy** | `rider` (Search) | `rider` (Search) | `rider` (Search) | `network` (Direct) |
-| **Win Rate (W / L)** | **52.0%** (13 / 12) | **73.7%** (14 / 5) | **61.8%** (21 / 13) | **58.8%** (10 / 7) |
-| **Avg. Rounds / Match** | 13.6 | 13.9 | 13.4 | **24.0** |
-| **Mean Selected Q** | 0.9434 | 0.9522 | 0.9459 | **1.7844** |
-| **W-Stance (Utility)** | 4.9% (17) | 8.7% (23) | 4.8% (22) | **38.8% (159)** |
-| **A-Stance (Defense)** | 3.2% (11) | 1.9% (5) | 2.6% (12) | 2.9% (12) |
-| **S-Stance (Special)** | 41.3% (142) | 46.0% (122) | 42.3% (192) | 23.9% (98) |
-| **D-Stance (Physical)** | 44.2% (152) | 38.5% (102) | 45.6% (207) | 32.2% (132) |
-| **IDLE (Forced Stun)** | 6.4% (22) | 4.9% (13) | 4.6% (21) | 2.2% (9) |
-
----
-
-## 3. Strategic Adaptation Analysis
-
-Candidate Nigo (`002`) dynamically alters its operational profile based on opponent difficulty, search depth, and execution risk:
-
-### A. Vs. High-Search Opponents (Master 73.7% & Soul 52.0%)
-
-* **Ground Brawling Shift:** Nigo abandons lengthy setup sequences and suppresses non-damaging utility (W-stance usage stays under 9%). Against deep MCTS search trees, spending turns on zero-damage buffs invites unmitigated counter-attacks.
-* **The `D+I` $\rightarrow$ `S+J` / `S+L` Resource Engine:** Nigo relies on **D+I Mixed Combo** (1 Chi cost, 130 Dmg, 82% Hit, net +1 Chi refund) to continuously build Chi and faint pressure. When Chi thresholds are met, Nigo converts into **S+J Rider Punch** (3 Chi, 370 Dmg) for fast dumps or **S+L Rider Power Kick** (7 Chi, 860 Dmg) for heavy punishments.
-* **Charge Clock Optimization:** Under the `rider` policy, Nigo maintains **85%–100% charge levels** on decisive turns. High charge ensures priority during simultaneous execution ties.
-
-### B. Vs. Mid-Search Opponents (Balanced 61.8%)
-
-* **Balanced Damage Profile:** Nigo establishes a 45.6% Physical (`D`) and 42.3% Special (`S`) distribution.
-* **P1/P2 Neutrality:** Nigo shows balanced performance regardless of starting side (P1: 11W–6L vs P2: 10W–7L), leveraging **W+I Rider Power Jump** (20 uses) to gain +20 Accuracy and 1.35x Attack multiplier to override starting frame discrepancies.
-
-### C. Vs. Low-Search / Direct Net Opponents (Easy 58.8%)
-
-* **Utility & Buff Farming (38.8% W-Stance):** When facing an unguided direct network policy, Nigo shifts to a cautious, utility-heavy posture, casting **W+I Rider Power Jump** 130 times (31.7% of all actions) and **W+K Power Focus** 26 times.
-* **Marathon Attrition:** Without deep MCTS threat pressure, Nigo safe-farms Chi reserves up to 16 Chi, elongating match length to **24.0 average rounds** (e.g., Match #5 running 41 rounds) to secure near-zero risk victories.
-
----
-
-## 4. Key Demo Match Sequence Breakdown
-
-Below is a detailed tactical breakdown of representative winning games from each evaluation run:
-
-### Game 1: Vs. Soul AI (Match #6, 12 Rounds) — Stun-Lock Exploitation
-
-* **Rounds 1–4:** Nigo opens with **S+L @ 100%** (860 Dmg), followed by **D+I** pokes, chunking Soul Nigo down to 942 LP while inflicting heavy Faint damage.
-* **Round 5 Punish:** On Round 4, Soul Nigo hits **100 Fnt lockout**. On Round 5, Nigo capitalizes on Soul's forced `DO_NOTHING @ 0%` by dropping an unpunished **S+K Rider Flying Knee @ 90%** (480 Dmg).
-* **Rounds 10–12 Finish:** After recovering from a mid-game faint on Round 11, Nigo executes **S+J Rider Punch @ 100%** on Round 12 for the KO.
-
-### Game 2: Vs. Master AI (Match #1, 15 Rounds) — Precision Buff Integration
-
-* **Rounds 1–6:** Nigo opens with **S+L @ 90%** and **S+K** volleys, forcing Master Nigo into a Round 5 Faint lockout. Nigo punishes Round 6 with **S+K @ 100%** (bringing Master down to 1,192 LP).
-* **Rounds 8–9 Buff Setup:** Nigo weaves **W+I Rider Power Jump** (Round 8) and **W+K Power Focus** (Round 9, 2.5x `dAttack` multiplier) into neutral play while Master guards.
-* **Round 15 Finisher:** Fully buffed and with 0 Chi remaining on Master, Nigo fires a **100% S+L Rider Power Kick** to close the match.
-
-### Game 3: Vs. Master AI (Match #5, 11 Rounds) — Turn 11 `S+I` Nuke
-
-* **Rounds 1–3:** Nigo stacks back-to-back **S+L** and **S+J** strikes, eroding Master's LP to 2,052 while holding a full health bar (2,640 LP).
-* **Rounds 9–10 Control:** Nigo casts **W+I Power Jump @ 100%** on Round 9, followed by **D+J** on Round 10 to push Master Nigo to **100 Fnt**.
-* **Round 11 Nuke:** With Master immobilized in `DO_NOTHING @ 0%`, Nigo unleashes **S+I Typhoon Power Break @ 100%** (10 Chi, 1,065 Base Damage), vaporizing Master's remaining LP instantly!
-
-### Game 4: Vs. Balanced AI (Match #1, 9 Rounds) — Turn 2 `S+I` Opening
-
-* **Round 1–2 Nuke:** Nigo absorbs an opening trade on Round 1, then immediately fires **S+I Typhoon Power Break @ 100%** on Round 2, dropping Balanced Nigo from 3,300 to 1,925 LP on turn two.
-* **Rounds 6–9 Execution:** Nigo uses **W+I Jump** on Round 5 for airborne accuracy, lands **S+L @ 99%** on Round 6 (reducing opponent to 434 LP), and finishes with back-to-back **S+J Rider Punches**.
-
-### Game 5: Vs. Easy AI (Match #5, 41 Rounds) — The 41-Round Marathon
-
-* **Rounds 1–20:** Nigo repeatedly uses **W+I Power Jump** to maintain airborne evasion while building a max-capped bank of 16 Chi.
-* **Rounds 21–41:** Nigo systematically chips away at Easy Nigo's health with low-risk **D+J** and **D+K** pokes, finishing the game on Round 41 with **S+J Rider Punch** while maintaining 565 LP.
-
----
-
-## 5. Technical Validation & Engine Compatibility
-
-1. **Charging Schema Alignment:** The candidate model strictly adhered to `v5-state256-action17` / `charge1-reset1`. No invalid charge clock state overflows were detected across all 1,473 recorded round decisions.
-2. **Q-Value Stabilization:** Mean selected Q-values remained highly consistent across MCTS search difficulties (Soul: `0.9434`, Master: `0.9522`, Balanced: `0.9459`), demonstrating well-calibrated value functions.
-3. **Search Charge Preservation:** The `rider` evaluation policy successfully preserved search-selected charge values, eliminating priority loss bugs present in earlier build iterations.
-
----
-
-## 6. Final Recommendation
-
-The candidate model `002_001` (Nigo) has met all strategic performance benchmarks and exceeded the mandatory **>50% win rate threshold** across all RIDER difficulty levels.
-
-**Recommended Next Actions:**
-
-1. Execute **`ACTIVATE SELECTED CANDIDATE`** to promote `002_001` to the Active slot.
-2. Perform **`EXPORT SELECTED CANDIDATE`** immediately to prevent RAM loss following persistent storage save warnings.
-
+The report is confirmed but corrupted with wrong wordings thus removed.
 
 
 
@@ -643,52 +531,87 @@ Ichigo’s high physical usage (**41.4% to 46.5% D-Stance**) stacks rapid faint 
 002_001:
 
 
-Evaluation Benchmark Report: Matchup 002_001 (Nigo vs. Ichigo)
-Build: v5-state256-action17 | Schema Patch: charge1-reset1
-Checkpoint Fingerprint: 2757976499 (1,387 games / 23,460 accepted decisions)
-Evaluator Policy: rider (MCTS Search Lookahead)
-Status: PASSED ALL BENCHMARK TIERS (69.1% AGGREGATE WIN RATE) — Active Promotion Confirmed
-1. Multi-Tier Benchmark Summary
-Across 94 total benchmark matches in live RIDER search mode, active checkpoint 2757976499 comfortably surpassed the 50.0% promotion threshold against all opponent difficulty settings. Nigo's heavy physical brawler profile established clean tactical dominance over Ichigo across every tier.
-| Opponent Tier | Match Completion | Record (W / L / D) | Win Rate | Mean Q | Decision Speed | Status |
-|---|---|---|---|---|---|---|
-| EASY | 10 / 34 (Partial) | 9 / 1 / 0 | 90.0% | 1.5433 | 7.6 matches/min | PASS |
-| BALANCED | 39 / 100 (Partial) | 28 / 11 / 0 | 71.8% | 1.4564 | 6.9 matches/min | PASS |
-| SOUL | 19 / 100 (Partial) | 12 / 7 / 0 | 63.2% | 1.3959 | 2.7 matches/min | PASS |
-| MASTER | 26 / 26 (Complete) | 16 / 10 / 0 | 61.5% | 1.4496 | 5.3 matches/min | PASS |
-| COMBINED | 94 Matches | 65 / 29 / 0 | 69.1% | 1.4515 | — | PASSED |
-> CRITICAL RAM SAVE WARNING: The trainer reported Persistent save failed. Models remain in RAM; export them before closing. Ensure you click EXPORT ACTIVE immediately to download 2757976499.json to your local drive.
-> 
-2. Tactical Stance & Decision Analysis (1,653 Recorded Decisions)
-Analyzing action allocations across all 1,653 decisions reveals how ForeseeEngine handles Nigo's offense against Ichigo.
-                 ACTION DISTRIBUTION (SOUL Tier — 399 Decisions)
-  Forward / Push (D)  [####################################### ] 60.4% (241 uses)
-  Special Finisher (S)[################################        ] 31.3% (125 uses)
-  Idle / Recover      [###                                     ] 5.0%  (20 uses)
-  Retreat / Guard (A) [##                                      ] 3.3%  (13 uses)
-  Utility / Belt (W)  [                                        ] 0.0%  (0 uses)
+Candidate model `1121140321` (**Kamen Rider Nigo vs. Kamen Rider Ichigo**) comfortably clears the **>50.0% win rate benchmark** across all four difficulty tiers under the `rider` search policy. Nigo is fully verified for deployment.
 
-Key Tactical Findings
- * D+I (Mixed Combo) Monopolizes the Neutral Game (\sim 73\%–77\% of D Actions):
-   * SOUL Tier: 177 out of 241 D actions were D+I (73.4%).
-   * MASTER Tier: 187 out of 254 D actions were D+I (73.6%).
-   * BALANCED Tier: 302 out of 389 D actions were D+I (77.6%).
-     Nigo's 130-base-damage physical strike completely bullies Ichigo's weaker ground pokes. MCTS repeatedly picks D+I as the primary attrition engine.
- * S+J (Rider Punch) Efficient Chi Execution (\sim 60\%–68\% of S Actions):
-   * Rather than holding out for 10 Chi to execute S+I Typhoon Power Break, Nigo continuously dumps Chi into 3-Chi S+J Rider Punches (78/125 in SOUL, 99/146 in MASTER). This maintains constant pressure on Ichigo without incurring severe turn-tempo delays.
- * Complete Elimination of W Utility Moves (0.0% Usage):
-   * Across all 1,653 recorded decisions across four tiers, W utility moves were selected 0 times. MCTS determined that Nigo doesn't need setup turns against Ichigo—direct physical grinding (D+I) combined with low-cost specials (S+J) achieves a higher 2-turn expected LP payoff than taking a 0-damage setup turn.
- * A+I Omni Guard Secondary Line:
-   * When forced onto defense, Nigo defaults almost exclusively to A+I (Windmill Guard) (27/32 in MASTER, 10/13 in SOUL) to absorb Ichigo's incoming special counter-attacks.
-3. Roster Status & Matrix Completion
-With 2757976499 validated and promoted, the cross-matchup matrix between Ichigo (001) and Nigo (002) is officially complete.
-| Matchup | Pair | Status | Active Fingerprint | Key Benchmark Performance |
-|---|---|---|---|---|
-| 001_001 | Ichigo vs. Ichigo | PASSED | 3131578912 | 75.0% vs BALANCED / 57.0% vs MASTER |
-| 001_002 | Ichigo vs. Nigo | PASSED | 2935113210 | 52.9% vs SOUL / 56.1% vs MASTER |
-| 002_001 | Nigo vs. Ichigo | PASSED | 2757976499 | 63.2% vs SOUL / 61.5% vs MASTER |
-| 002_002 | Nigo vs. Nigo | PASSED | 1488529860 | 60.5% vs SOUL / 60.0% vs MASTER |
-| 001_003 | Ichigo vs. V3 | PENDING | — | Next Target |
+---
+
+### Candidate `1121140321` Evaluation Summary Matrix
+
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| **EASY (NOVICE)** | `easy` search | 44 / 44 | 38 / 6 / 0 | **86.4%** | 12.8 | **PASSED** |
+| **BALANCED** | `balanced` search | 44 / 44 | 32 / 12 / 0 | **72.7%** | 12.9 | **PASSED** |
+| **MASTER** | `master` search | 38 / 38 | 22 / 16 / 0 | **57.9%** | 14.0 | **PASSED** |
+| **SOUL** | `soul` search | 38 / 38 | 27 / 11 / 0 | **71.1%** | 13.3 | **PASSED** |
+
+---
+
+### Tactical Performance Breakdown
+
+* **$S$-Stance Execution Core (39.8% – 44.1% Usage):**
+* The MCTS search engine heavily leverages Nigo's Tier 3 stance priority. Moves like **`S+J` (Power Punch)** and **`S+L` (Rider Kick)** dominate offensive rounds, allowing Nigo to out-prioritize Ichigo's physical pokes and convert accumulated Chi into massive LP chunks.
+
+
+* **$D$-Stance Direction Clock Continuity (45.6% – 48.0% Usage):**
+* Nigo's primary Chi generator remains **`D+I` (Straight Punch)**. By chaining consecutive $D$-direction inputs, Nigo avoids the 1% directional charge reset penalty, maintaining execution speed $q$ while refunding +2 Chi per hit and building Ichigo's Faint meter.
+
+
+* **$W$-Stance Evasive Openers (4.1% – 6.7% Usage):**
+* On Round 1 against high-tier search opponents (`soul` and `master`), Nigo frequently opens with **`W+I @ 100%`**. This evades Ichigo's opening `S`-stance nukes, applies stat/evasion multipliers, and sets up guaranteed counter-damage in Round 2 and 3.
+
+
+* **Faint Lockout Conversion:**
+* Driven by `D+I` pokes, Nigo routinely forces Ichigo into **100 Faint lockouts** (`DO_NOTHING @ 0%`), allowing Nigo to safely break direction lock and launch 100%-charged $S$-stance finishers without risk of counter-attack.
+
+
+--- WINNING GAME #1 (Match #1, 17 Rounds) ---
+  R 1: Learner [ S+J        @ 100% ] (LP:2568 Chi: 9 Fnt:25) vs Opponent [ S+L        @  45% ] (LP:3000 Chi: 3 Fnt: 0)
+  R 2: Learner [ S+L        @ 100% ] (LP:2471 Chi: 3 Fnt:56) vs Opponent [ D+I        @  60% ] (LP:3000 Chi: 6 Fnt: 0)
+  R 3: Learner [ D+I        @  44% ] (LP:1399 Chi: 4 Fnt:87) vs Opponent [ S+L        @  99% ] (LP:3000 Chi: 1 Fnt: 0)
+  R 4: Learner [ S+J        @  98% ] (LP:1399 Chi: 2 Fnt:74) vs Opponent [ D+I        @  60% ] (LP:2540 Chi: 2 Fnt:31)
+  R 5: Learner [ D+I        @  59% ] (LP:1399 Chi: 5 Fnt:61) vs Opponent [ D+I        @  90% ] (LP:2396 Chi: 3 Fnt:62)
+  R 6: Learner [ S+J        @  98% ] (LP:1061 Chi: 6 Fnt:86) vs Opponent [ S+J        @  43% ] (LP:2396 Chi: 1 Fnt:49)
+  R 7: Learner [ D+I        @  35% ] (LP: 984 Chi: 5 Fnt:100) vs Opponent [ D+I        @  58% ] (LP:2396 Chi: 4 Fnt:36)
+  R 8: Learner [ DO_NOTHING @   0% ] (LP: 508 Chi: 6 Fnt: 0) vs Opponent [ S+K        @  97% ] (LP:2396 Chi: 1 Fnt:23)
+  R 9: Learner [ W+I        @ 100% ] (LP: 431 Chi: 7 Fnt:25) vs Opponent [ D+I        @  60% ] (LP:2396 Chi: 4 Fnt:10)
+  R10: Learner [ A+I        @ 100% ] (LP: 431 Chi: 4 Fnt:43) vs Opponent [ S+K        @  90% ] (LP:2396 Chi: 1 Fnt: 0)
+  R11: Learner [ D+I        @  35% ] (LP: 348 Chi: 5 Fnt:74) vs Opponent [ D+I        @  17% ] (LP:2396 Chi: 4 Fnt: 0)
+  R12: Learner [ D+L        @  57% ] (LP: 348 Chi: 8 Fnt:61) vs Opponent [ S+J        @  99% ] (LP:2187 Chi: 2 Fnt:31)
+  R13: Learner [ D+K        @  59% ] (LP: 348 Chi: 9 Fnt:48) vs Opponent [ D+J        @  43% ] (LP:2170 Chi: 3 Fnt:43)
+  R14: Learner [ A+J        @ 100% ] (LP: 249 Chi:12 Fnt:60) vs Opponent [ S+J        @  99% ] (LP:2170 Chi: 1 Fnt:30)
+  R15: Learner [ D+I        @  35% ] (LP: 249 Chi:15 Fnt:47) vs Opponent [ D+I        @  56% ] (LP:2037 Chi: 2 Fnt:61)
+  R16: Learner [ S+L        @ 100% ] (LP: 249 Chi: 9 Fnt:34) vs Opponent [ D+J        @  34% ] (LP: 962 Chi: 3 Fnt:92)
+  R17: Learner [ S+L        @  89% ] (LP: 249 Chi: 2 Fnt:21) vs Opponent [ S+J        @  58% ] (LP:   0 Chi: 0 Fnt:79)
+
+--- WINNING GAME #2 (Match #3, 8 Rounds) ---
+  R 1: Learner [ W+I        @ 100% ] (LP:2911 Chi: 9 Fnt:25) vs Opponent [ S+J        @  90% ] (LP:3000 Chi: 6 Fnt: 0)
+  R 2: Learner [ S+J        @ 100% ] (LP:2513 Chi:10 Fnt:50) vs Opponent [ S+J        @  99% ] (LP:3000 Chi: 4 Fnt: 0)
+  R 3: Learner [ S+L        @  89% ] (LP:2191 Chi:11 Fnt:75) vs Opponent [ S+J        @  30% ] (LP:3000 Chi: 2 Fnt: 0)
+  R 4: Learner [ S+I        @  98% ] (LP:2191 Chi: 2 Fnt:62) vs Opponent [ D+J        @  44% ] (LP:1676 Chi: 3 Fnt:31)
+  R 5: Learner [ D+I        @  98% ] (LP:2095 Chi: 5 Fnt:74) vs Opponent [ S+J        @  88% ] (LP:1515 Chi: 1 Fnt:62)
+  R 6: Learner [ D+K        @  29% ] (LP:2095 Chi: 8 Fnt:61) vs Opponent [ D+K        @  88% ] (LP:1435 Chi: 2 Fnt:93)
+  R 7: Learner [ D+I        @  87% ] (LP:2095 Chi:11 Fnt:48) vs Opponent [ D+I        @  44% ] (LP:1278 Chi: 1 Fnt:100)
+  R 8: Learner [ S+I        @ 100% ] (LP:2095 Chi: 1 Fnt:35) vs Opponent [ DO_NOTHING @   0% ] (LP:   0 Chi: 1 Fnt: 0)
+
+--- WINNING GAME #3 (Match #4, 10 Rounds) ---
+  R 1: Learner [ W+I        @ 100% ] (LP:2462 Chi: 9 Fnt:25) vs Opponent [ S+L        @  90% ] (LP:3000 Chi: 3 Fnt: 0)
+  R 2: Learner [ S+L        @  89% ] (LP:2105 Chi:10 Fnt:50) vs Opponent [ S+J        @  60% ] (LP:3000 Chi: 1 Fnt: 0)
+  R 3: Learner [ S+I        @ 100% ] (LP:2105 Chi: 1 Fnt:37) vs Opponent [ D+I        @  50% ] (LP:1669 Chi: 2 Fnt:31)
+  R 4: Learner [ D+I        @  35% ] (LP:2105 Chi: 4 Fnt:24) vs Opponent [ D+L        @  44% ] (LP:1536 Chi: 3 Fnt:62)
+  R 5: Learner [ S+J        @  90% ] (LP:2021 Chi: 2 Fnt:36) vs Opponent [ S+J        @  44% ] (LP:1086 Chi: 1 Fnt:93)
+  R 6: Learner [ D+I        @  35% ] (LP:2021 Chi: 5 Fnt:23) vs Opponent [ D+I        @  88% ] (LP: 953 Chi: 1 Fnt:100)
+  R 7: Learner [ S+J        @ 100% ] (LP:2021 Chi: 3 Fnt:10) vs Opponent [ DO_NOTHING @   0% ] (LP: 491 Chi: 2 Fnt: 0)
+  R 8: Learner [ S+J        @ 100% ] (LP:2021 Chi: 1 Fnt: 0) vs Opponent [ D+I        @  34% ] (LP:  29 Chi: 3 Fnt:31)
+  R 9: Learner [ D+L        @  33% ] (LP:1588 Chi: 2 Fnt:31) vs Opponent [ S+J        @  50% ] (LP:  29 Chi: 1 Fnt:18)
+  R10: Learner [ D+K        @  33% ] (LP:1588 Chi: 4 Fnt:18) vs Opponent [ D+I        @   1% ] (LP:   0 Chi: 0 Fnt: 5)
+
+---
+
+### Verification Verdict
+
+Candidate `1121140321` is **fully verified and production-ready**.
+
+
 
 
 
