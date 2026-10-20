@@ -2,7 +2,7 @@ Trained Matrix:
 
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
-001	 Y   Y   n   y   n   n	   
+001	 Y   Y   Y   y   n   n	   
 002	 y   y   n   n   n   n						
 003	 y   y   y   n   n   n								
 004	 n   n   n   n   n   n								
@@ -325,54 +325,141 @@ The candidate model `002_001` (Nigo) has met all strategic performance benchmark
 
 
 001_003:
+# KAMEN FIGHT — RIDER LEVEL TRAINER EVALUATION REPORT
 
-# Complete 4-Tier Sweep Report: Checkpoint `2750587729`
+**Target Candidate Model:** `001_003`
 
-**Build:** `v5-state256-action17` | **Schema Patch:** `charge1-reset1`
+**Learner:** Kamen Rider Ichigo (`001`)
 
-**Matchup:** `ichigo -> riderman` (`001_004`)
+**Opponent:** Kamen Rider V3 (`003`)
 
-**Learner Policy:** `rider` (MCTS Search Lookahead)
+**Architecture:** `v5-state256-action17` | **Patch:** `charge1-reset1`
 
-**Status:** **FULLY GENERALIZED & PASSED (68.3% COMBINED WIN RATE)**
+**Evaluation Policy:** `rider` (Live MCTS Search)
 
----
-
-### Multi-Tier Benchmark Summary: `001_004` (Ichigo vs. Riderman)
-
-| Opponent Tier | Completed Matches | Record (W / L / D) | Win Rate | Mean $Q$ | Decision Speed | Status |
-| --- | --- | --- | --- | --- | --- | --- |
-| **NOVICE / EASY** | 10 / 100 | 10 / 0 / 0 | **100.0%** | 1.4080 | 8.2 matches/min | **PASSED** |
-| **BALANCED** | 17 / 100 | 13 / 4 / 0 | **76.5%** | 1.0468 | 8.0 matches/min | **PASSED** |
-| **MASTER** | 22 / 100 | 12 / 10 / 0 | **54.5%** | 0.9266 | 1.8 matches/min | **PASSED** |
-| **SOUL** | 14 / 100 | 8 / 6 / 0 | **57.1%** | 0.9567 | 3.3 matches/min | **PASSED** |
-| **COMBINED** | **63 Matches** | **43 / 20 / 0** | **68.3%** | **1.0421** | — | **FULLY VERIFIED** |
-
-> **RAM EXPORT REMINDER:** Checkpoint `2750587729` exists only in volatile RAM (`Persistent save failed`). Export `2750587729.json` to local disk immediately.
+**Verification Status:** **PASSED** (All 4 difficulty tiers achieved >50% Win Rate)
 
 ---
 
-### Tactical Action Distribution Across All 4 Tiers (987 Total Decisions)
+## 1. Executive Summary
+
+Candidate model `001_003` (Kamen Rider Ichigo trained to fight Kamen Rider V3) was evaluated across all four standard difficulty tiers under the RIDER engine.
+
+Ichigo successfully passed the validation benchmark across **all four difficulty pools**, maintaining a dominant win rate over V3’s search tree policies:
+
+* **SOUL AI (Deep MCTS Search):** **68.4% Win Rate** (26W / 12L)
+* **MASTER AI (High MCTS Search):** **56.0% Win Rate** (14W / 11L)
+* **BALANCED AI (Mid MCTS / Heuristic):** **75.0% Win Rate** (24W / 8L)
+* **EASY AI (Direct Network Policy):** **75.9% Win Rate** (41W / 13L)
+
+---
+
+## 2. Benchmark Performance Matrix Across Tiers
+
+| Metric | SOUL AI | MASTER AI | BALANCED AI | EASY AI |
+| --- | --- | --- | --- | --- |
+| **Learner / Opponent** | **Ichigo / V3** | **Ichigo / V3** | **Ichigo / V3** | **Ichigo / V3** |
+| **Win Rate (W / L)** | **68.4%** (26 / 12) | **56.0%** (14 / 11) | **75.0%** (24 / 8) | **75.9%** (41 / 13) |
+| **P1 Slot Win Rate** | 73.7% (14W / 5L) | 46.2% (6W / 7L) | 68.8% (11W / 5L) | 66.7% (18W / 9L) |
+| **P2 Slot Win Rate** | **63.2%** (12W / 7L) | **66.7%** (8W / 4L) | **81.3%** (13W / 3L) | **85.2%** (23W / 4L) |
+| **Avg. Rounds / Match** | 13.4 | 13.8 | 14.0 | 13.3 |
+| **Mean Selected Q** | 1.3714 | 1.3550 | 1.3828 | 1.4133 |
+| **W-Stance (Utility)** | 3.3% (17) | 6.1% (21) | 3.3% (15) | 5.0% (36) |
+| **A-Stance (Defense)** | 2.0% (10) | 0.9% (3) | 2.9% (13) | 2.2% (16) |
+| **S-Stance (Special)** | **47.0% (239)** | **41.7% (144)** | **44.4% (200)** | **47.3% (339)** |
+| **D-Stance (Physical)** | **39.0% (198)** | **43.5% (150)** | **42.9% (193)** | **38.5% (276)** |
+| **IDLE (Forced Stun)** | 8.7% (44) | 7.8% (27) | 6.4% (29) | 6.8% (49) |
+
+---
+
+## 3. Strategic Adaptation: How Ichigo Countered V3
+
+Ichigo’s neural controller adapted its tactical profile specifically to exploit structural weaknesses in V3’s moveset and AI search behavior:
 
 ```
-                 ACTION DISTRIBUTION (001_004 Sweep — 987 Decisions)
-  Special Finisher (S)[####################################### ] 45.9% (453 uses)
-  Forward / Push (D)  [###################################     ] 35.6% (351 uses)
-  Idle / Recover      [########                                ] 7.8%  (77 uses)
-  Utility / Belt (W)  [######                                  ] 6.4%  (63 uses) 🌪️
-  Retreat / Guard (A) [####                                    ] 4.4%  (43 uses) 🛡️
+                      Ichigo Counter-Strategy vs. V3
+                      
+   [ Early S+L Rider Kick ] ──► Chunk V3 LP to <2,100 ──► [ Punish V3 W+L Casts ]
+   (860 Base Dmg, 100% Chg)                                (Intercept Startup)
+              │                                                    │
+              ▼                                                    ▼
+   [ D-Pokes & S+J Punch ] ──►  [ Trigger 100 Fnt Lockout ] ──► [ S+L / S+I Finisher ]
+   (Build Chi & Faint Meter)     (Target Immobilized)          (Guaranteed KO)
 
 ```
 
-#### Why This Model Proves Broad Generalization
+### A. Exploiting V3's `W+L` (Double Typhoon) Recovery Blunders
 
-1. **Anti-Chaos Dominance (Novice 100.0% / Balanced 76.5%):**
-Against un-optimized or wild button-mashing opponents, Ichigo converts fast 1-Chi physicals (`D+L`) into heavy 6-Chi cashouts (`S+L` Rider Kick), ending rounds in an average of **10.9 to 12.9 turns**.
-2. **Deterministic Engine Countering (Soul 57.1%):**
-Against Soul's 64-rollout lookahead, Ichigo reliably deploys `W+I` (*Rider High Jump*, 63 total utility uses) to float over Riderman's ground REACH hooks (`D+I`) and BIND speed slows (`W+L`).
-3. **Timing-Mixup Resilience (Master 54.5%):**
-When facing Master AI's off-beat partial-charge releases (`1%`, `35%`, `60%`), Ichigo falls back on `A+I` (*Omni Guard*, 43 total guard uses) to absorb interruptions without losing turn control.
- 
+* V3 frequently relies on **`W+L` Double Typhoon** to clear faint or generate buffs mid-fight.
+* Ichigo's policy learned to aggressively punish these zero/low-damage startup frames with **`S+L` Rider Power Kick** (860 Base Dmg) or **`S+J` Rider Punch** (370 Base Dmg), turning V3's utility turns into immediate health deficits for V3.
+
+### B. High Special Efficiency (`S+L` & `S+J` Dual Engine)
+
+Across all jobs, Ichigo spent **41.7% to 47.3%** of its choices in `S`-stance:
+
+* **`S+L` Rider Power Kick (Heavy Finisher):** Accounted for **34% to 49%** of all Special moves (e.g., 119 uses vs SOUL, 153 uses vs EASY). Used as a high-charge opener and stun-punish.
+* **`S+J` Rider Punch (Burst Valve):** Used as a rapid 3-Chi dump (74 uses vs SOUL, 126 uses vs EASY) to maintain pressure without stalling for 7–10 Chi.
+
+### C. Superior Performance in P2 Position
+
+Unlike earlier iterations that struggled when starting second, Candidate Ichigo achieved exceptional win rates in the P2 slot:
+
+* **85.2% P2 Win Rate vs Easy AI** (23W / 4L)
+* **81.3% P2 Win Rate vs Balanced AI** (13W / 3L)
+* **66.7% P2 Win Rate vs Master AI** (8W / 4L)
+Ichigo leverages high-charge **`S+L`** and **`W+I` Power Jump** positioning to negate P1's initial frame advantage.
+
+---
+
+## 4. Key Demo Match Sequence Breakdown
+
+### Game #1: Vs. SOUL AI (Match #1, 10 Rounds) — Turn 10 Stun Execution
+
+* **Rounds 1–3:** Ichigo opens Round 1 with **`S+L` @ 90%**, dealing heavy damage and leaving V3 at 2,103 LP. Ichigo follows up with **`D+L`** and **`S+J`** to rapidly push V3’s faint bar.
+* **Rounds 5–6:** V3 attempts to cast **`W+L` Double Typhoon** twice (Rounds 5 & 6). Ichigo punishes with **`S+J`** and **`D+L`**, bringing V3 to 1,451 LP.
+* **Rounds 9–10:** Ichigo casts **`W+I` Power Jump @ 100%** on Round 9 while V3 guards in `A+I`. On Round 10, with V3 stunned in `DO_NOTHING @ 0%`, Ichigo executes a **100% `S+L` Rider Power Kick** for an absolute KO with 1,738 LP remaining!
+
+### Game #2: Vs. MASTER AI (Match #1, 11 Rounds) — 2,182 LP Flawless Victory
+
+* **Rounds 1–3:** Ichigo opens with **`S+L` @ 100%** on Round 1, dropping V3 to 2,075 LP on turn one. Follows with **`D+L`** and **`S+K`** on Round 3 to bring V3 to 1,477 LP.
+* **Rounds 9–11:** Ichigo connects back-to-back **`D+K`** pokes on Rounds 9 & 10, driving V3 directly into a **100 Fnt lockout**. On Round 11, Ichigo delivers a **100% `S+L` Rider Power Kick** to finish V3 cleanly.
+
+### Game #3: Vs. BALANCED AI (Match #3, 13 Rounds) — Triple `S+L` Bombardment
+
+* **Rounds 1–4:** Ichigo stacks **`S+L` @ 100%** on Round 1, **`D+L`** on Round 2, and another **`S+L` @ 100%** on Round 3, reducing V3 from 3,000 down to 1,118 LP by Round 4.
+* **Rounds 8–13:** After a mid-game faint recovery, Ichigo lands **`S+K`** on Round 9 (pushing V3 to 358 LP) and finishes the fight on Round 13 with **`S+J` Rider Punch**.
+
+### Game #4: Vs. EASY AI (Match #5, 14 Rounds) — 2,052 LP Domination
+
+* **Rounds 1–8:** Ichigo connects three separate **`S+L` Rider Power Kicks** (Rounds 1, 4, and 7/8), leaving V3 clinging to just 48 LP while Ichigo retains 2,207 LP.
+* **Rounds 11–14:** Ichigo uses **`A+L` Guard** on Round 11 and **`W+I` Power Jump** on Round 12 to neutralize V3's remaining Chi, sealing the match on Round 14 with **`S+J` Rider Punch**.
+
+---
+
+## 5. Technical Validation & Engine Compliance
+
+1. **Q-Value Calibration:** Mean Q-values across all four evaluation jobs were stable between `1.3550` and `1.4133`, indicating a balanced, well-converged value function.
+2. **Charging Rule Adherence:** No charge clock violations or invalid direction resets were logged across 2,019 round decisions.
+3. **Target Threshold Met:** Every difficulty level exceeded the **50.0% win rate threshold**, validating `001_003` for live deployment.
+
+---
+
+## 6. Actionable Next Steps
+
+Candidate model `001_003` (Ichigo vs V3) is fully verified and ready for promotion.
+
+1. Execute **`ACTIVATE SELECTED CANDIDATE`** to promote `001_003` to the Active slot.
+2. Execute **`EXPORT SELECTED CANDIDATE`** immediately to save checkpoint weights to disk.
+
+
+001_004:
+
+
+001_005:
+
+
+001_006:
+
 
 
 002_001:
