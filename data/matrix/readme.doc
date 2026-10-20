@@ -2,7 +2,7 @@ Trained Matrix:
 
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
-001	 Y   Y   Y   Y   n   n	   
+001	 Y   Y   Y   Y   Y   n	   
 002	 y   y   n   n   n   n						
 003	 y   y   y   n   n   n								
 004	 n   n   n   n   n   n								
@@ -563,6 +563,48 @@ Candidate model `001_004` (Ichigo vs Riderman) is fully verified and ready for a
 2. Execute **`EXPORT SELECTED CANDIDATE`** to persist the trained model weights to disk.
 
 001_005:
+
+KAMEN FIGHT — RIDER LEVEL TRAINER EVALUATION REPORTTarget Candidate Model: 001_005Learner: Kamen Rider Ichigo (001)Opponent: Kamen Rider X (005)
+Architecture: v5-state256-action17 | Patch: charge1-reset1Evaluation Policy: rider (Live MCTS Search)Verification 
+
+Status: PASSED (All 4 difficulty tiers achieved >50% Win Rate)
+
+1. Executive SummaryCandidate model 001_005 (Kamen Rider Ichigo trained to counter Kamen Rider X) was evaluated across all four difficulty tiers under 
+the RIDER live search engine.While direct unassisted network policy generated a 44.5% win rate during online exploration, the RIDER live search policy
+(rider) drastically transformed performance—clearing every tier with a win rate between 58.3% and 81.0%. Search lookahead successfully bypassed X’s W+L 
+Kaizorg Vitality heal trap by timing high-faint physical combinations (D+I, D+L) to stun lock Rider X before unleashing unmitigated S+L and S+I nukes.
+SOUL AI (Deep MCTS Search): 66.7% Win Rate (14W / 7L)
+MASTER AI (High MCTS Search): 58.3% Win Rate (14W / 10L)
+BALANCED AI (Mid MCTS / Heuristic): 66.7% Win Rate (44W / 22L)
+EASY AI / NOVICE (Direct Policy): 81.0% Win Rate (17W / 4L)
+
+2. Comparative Performance Matrix Across TiersMetricSOUL AIMASTER AIBALANCED AIEASY AI (NOVICE)Learner / OpponentIchigo / Rider XIchigo / Rider XIchigo / 
+Rider XIchigo / Rider XWin Rate (W / L)66.7% (14 / 7)58.3% (14 / 10)66.7% (44 / 22)81.0% (17 / 4)P1 Slot Win Rate63.6% (7W / 4L)91.7% (11W / 1L)
+60.6% (20W / 13L)90.9% (10W / 1L)P2 Slot Win Rate70.0% (7W / 3L)25.0% (3W / 9L)72.7% (24W / 9L)70.0% (7W / 3L)
+Avg. Rounds / Match14.616.416.112.6Mean Selected Q1.99161.81441.75701.8077W-Stance (Utility)4.9% (16)7.5% (30)4.3% (46)4.0% (11)A-Stance 
+(Defense)0.6% (2)2.3% (9)1.8% (19)0.0% (0)S-Stance (Special)44.3% (145)41.0% (163)44.1% (468)49.6% (138)D-Stance (Physical)46.5% (152)45.0% 
+(179)46.7% (496)45.0% (125)IDLE (Forced Stun)3.7% (12)4.3% (17)3.0% (32)1.4% (4)
+
+3. Tactical Adaptation & Heal Countering DynamicsUnder live MCTS search, Ichigo shifts away from raw special spam and adopts a Physical-Heavy Faint 
+Punish Strategy:                      
+
+
+Ichigo Strategic Flow vs. Rider X
+                       
+  [ Early S+L Rider Kick ] ──► [ Stack Physical D-Combos ] ──► [ Trigger 100 Faint Lockout ]
+  (Chunk Initial LP)           (D+I / D+L Build Faint)         (Rider X Forced DO_NOTHING)
+            │                                                               │
+            ▼                                                               ▼
+  [ Bypass W+L Heal Passes ] ◄─────────────────────────────── [ S+I / S+L Stun Execution ]
+  (Out-Damage LP Recovery)                                    (Vaporize Target LP)
+
+Shift to High Physical Density (45.0% – 46.7% D-Stance): Ichigo leans heavily into D+I (up to 178 casts) and D+L (up to 163 casts). 
+These 1-Chi physical moves inflict cumulative Faint damage while building Chi, preventing Rider X from freely setting up healing cycles without risking a stun.
+Punishing the W+L "Heal Pass": When Rider X attempts to cast W+L (+420 LP, -2 Chi), MCTS search routes Ichigo into immediate high-charge S+L Rider Power
+Kick (860 Base Dmg) or S+K Rider Flying Knee (580 Base Dmg), resulting in a net LP loss of -440 LP for Rider X on the exact same round.
+Suppressed IDLE Stun Rate (1.4% – 4.3%): Ichigo maintains defensive priority, keeping its own forced stun rate under 4.3% across all tiers.
+
+4. Key Demo Match Sequence BreakdownGame 1: Vs. SOUL AI (Match #4, 8 Rounds) — Fast 8-Round Stun VaporizationRounds 1–5: Ichigo opens with back-to-back S+L @ 100% and follows with physical pokes (D+I), taking X down to 1,830 LP while stacking 93 Faint points on X by Round 5.Rounds 6–8: Ichigo uses W+I High Jump on Round 6 and D+K on Round 7, pushing X into a 100 Faint lockout (DO_NOTHING @ 0%). On Round 8, Ichigo hits S+I Kirimomi Kick @ 100%, instantly knocking out X from 1,748 LP to 0 LP!Game 2: Vs. SOUL AI (Match #8, 10 Rounds) — Overpowering 4 Consecutive HealsRounds 5–8: Rider X attempts four back-to-back W+L Kaizorg Vitality heals on Rounds 5, 6, 7, and 8. Ichigo counters with W+I, S+L @ 100% (dealing 860 damage), D+I, and S+K @ 100%.Rounds 9–10: X collapses into a 100 Faint stun on Round 9. Ichigo finishes with S+J Rider Chop on Round 10 for a clean win at 2,428 LP remaining.Game 3: Vs. MASTER AI (Match #7, 15 Rounds) — Neutralizing Heals with Relentless PressureRounds 2–5: Rider X casts W+L four turns in a row. Ichigo responds with D+L, S+L @ 100%, D+I, and D+L, successfully out-damaging X's heal output and lowering X's LP to 1,980.Rounds 14–15: Ichigo lands S+L @ 100% on Round 14, driving X to 100 Faint. On Round 15, Ichigo closes out the match with S+J.Game 4: Vs. EASY AI / NOVICE (Match #5, 8 Rounds) — 8-Round Clean SweepRounds 1–4: Ichigo trades S+L @ 90% and D+L on Rounds 1–2, then lands S+J and D+I, dropping X to 1,775 LP.Rounds 6–8: Ichigo lands S+L @ 97% on Round 6 (cutting X to 604 LP) and D+I on Round 7 (forcing 100 Faint). Ichigo seals the win on Round 8 with S+K without taking damage in the final 4 rounds (2,115 LP remaining).5. Technical Validation & Engine AlignmentQ-Value Calibration: Mean selected Q-values across all evaluation jobs remained optimal (1.7570 to 1.9916).Schema & Checkpoint Verification: Fingerprint 1789497224 passed all build validation checks under v5-state256-action17 / charge1-reset1.Threshold Clearance: Candidate 001_005 comfortably cleared the >50.0% win rate requirement across all four AI tiers, confirming production readiness.
 
 
 001_006:
