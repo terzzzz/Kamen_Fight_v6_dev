@@ -3,7 +3,7 @@ Trained Matrix:
 x_y.json								
 x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
-002	 Y   Y   n   n   n   n						
+002	 Y   Y   Y   n   n   n						
 003	 y   y   y   n   n   n								
 004	 n   n   n   n   n   n								
 005	 ?   n   n   n   n   n								
@@ -752,6 +752,93 @@ $S$-stance commands (`S+J` *Rider Punch*, `S+L` *Rider Power Kick*, `S+K` *Rider
 ```
 
 * **Tactical Breakdown:** In this high-intensity Soul tier battle, Learner gains a huge early lead in Round 2 via `S+L` (-1,451 LP). On Round 15, Learner hits 100 Faint and undergoes a forced `DO_NOTHING @ 0%` state on Round 16. Having maintained a huge LP cushion (2,230 LP vs 151 LP), Learner easily absorbs opponent's `S+K` punish, recovers on Round 17, and executes `S+J @ 98%` to close out the game.
+
+
+
+
+
+002_003:
+
+Candidate model 3110451948 (Kamen Rider Nigo vs. Kamen Rider V3) has completed evaluations across all four difficulty tiers under the rider search policy. The model maintains a dominant win rate across all tiers, topping out at 88.2% in Easy tier and holding 57.9% in Soul tier.
+Candidate 3110451948 Evaluation Summary Matrix
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Action Split (D / S / W / A / IDLE) | Status |
+|---|---|---|---|---|---|---|---|
+| EASY | easy search | 17 / 38 | 15 / 2 / 0 | 88.2% | 14.8 | 43.1% / 44.7% / 4.7% / 0.4% / 7.1% | PASSED |
+| BALANCED | balanced search | 33 / 38 | 24 / 9 / 0 | 72.7% | 13.6 | 48.6% / 40.9% / 2.0% / 1.5% / 7.0% | PASSED |
+| MASTER | master search | 17 / 38 | 12 / 5 / 0 | 70.6% | 14.6 | 42.1% / 45.6% / 5.0% / 0.0% / 7.3% | PASSED |
+| SOUL | soul search | 38 / 38 | 22 / 16 / 0 | 57.9% | 16.4 | 42.6% / 41.3% / 5.1% / 1.0% / 10.0% | PASSED |
+Tactical Breakdown & Engine Mechanics
+ * D-Stance Continuity Engine (\sim 42\text{--}48\% Usage):
+   Nigo utilizes D+L (Punches, 140 base damage) and D+I (Mixed Combo, 130 base damage) as main neutral pokes. Chaining identical directional inputs avoids the 1% charge reset penalty, maintaining frame speed q while harvesting +2 Chi per hit.
+ * S-Stance Special Priority (\sim 40\text{--}45\% Usage):
+   S+J (Rider Punch, 370 base) and S+L (Rider Power Kick, 860 base) occupy Tier 3 stance priority (S > W > D > A). The model uses S-stance commands to override V3's physical pokes when LP trades favor Nigo.
+ * Faint Lockout Punish Execution:
+   Because Nigo's D-stance physical moves deal massive damage, continuous pokes rapidly push V3's Faint meter to 100. When V3 enters a forced DO_NOTHING @ 0% state, Nigo breaks direction lock to unleash a 100%-charged S+L nuke without risk of counter-attack.
+Strategic Case Studies (4 Winning Demonstration Matches)
+Case Study 1: Master Match #1, Game #1 (Late-Game Omni-Guard Break & Final Special)
+ * Strategy: High-Attrition Grinding into Faint Lockout
+ * Outcome: Nigo Win (17 Rounds, 157 LP remaining)
+--- MASTER MATCH #1, GAME #1 (17 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:2763 Chi: 2) vs Opponent [ S+J @ 100% ] (LP:3150 Chi: 5)  -- Opening Special Trade
+  R 2: Learner [ D+I @  60% ] (LP:2063 Chi: 3) vs Opponent [ S+K @ 100% ] (LP:3150 Chi: 1)  -- Absorbs Flying Knee
+  ...
+  R 8: Learner [ D+L @  87% ] (LP:1165 Chi: 4) vs Opponent [ D+I @  86% ] (LP:2069 Chi: 2)  -- Physical Direction Lock
+  R 9: Learner [ S+J @ 100% ] (LP: 966 Chi: 5) vs Opponent [ W+L @  99% ] (LP:2069 Chi: 1)  -- Priority Cash-Out
+  R10: Learner [ S+J @ 100% ] (LP: 839 Chi: 2) vs Opponent [ D+I @  86% ] (LP:1977 Chi: 4)  -- Triggers Forced Recovery
+  R11: Learner [ DO_NOTHING @ 0% ] (LP:317 LP) vs Opponent [ S+J @  89% ] (LP:1977 Chi: 1)  -- Takes Opponent Punish
+  ...
+  R15: Learner [ W+I @ 100% ] (LP: 157 Chi:11) vs Opponent [ W+L @ 100% ] (LP:1732 Chi: 1)  -- Re-sets Position/Airborne
+  R16: Learner [ S+L @ 100% ] (LP: 157 Chi: 5) vs Opponent [ A+I @ 100% ] (LP: 281 Chi: 1)  -- Forces Guard, Hits 100 Fnt
+  R17: Learner [ S+K @ 100% ] (LP: 157 Chi: 0) vs Opponent [ DO_NOTHING @ 0% ] (LP:   0)   -- GAME OVER
+
+Tactical Insight: On Round 16, Nigo uses S+L against V3's A+I (Windmill Guard). Although guarded, the raw impact pushes V3's Faint to 100. On Round 17, Nigo uses S+K (Rider Flying Knee) to punish V3's forced DO_NOTHING @ 0% state for the match win.
+Case Study 2: Balanced Match #2, Game #1 (Early Lead & Faint Lock Finisher)
+ * Strategy: Aggressive Stance Switching & Double Special Finish
+ * Outcome: Nigo Win (13 Rounds, 1,960 LP remaining)
+--- BALANCED MATCH #2, GAME #1 (13 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:3300 Chi: 2) vs Opponent [ S+L @ 100% ] (LP:2075 Chi: 1)  -- Early LP Lead (-1,225 LP)
+  R 2: Learner [ D+I @  90% ] (LP:3182 Chi: 3) vs Opponent [ D+I @  60% ] (LP:2075 Chi: 4)  -- Neutral Direction Poke
+  R 3: Learner [ S+J @  99% ] (LP:2645 Chi: 1) vs Opponent [ S+J @ 100% ] (LP:2075 Chi: 1)  -- Stance Priority Trade
+  ...
+  R10: Learner [ D+L @  86% ] (LP:2119 Chi: 7) vs Opponent [ D+I @  90% ] (LP:1247 Chi: 2)  -- Stacks Faint to 90
+  R11: Learner [ S+L @ 100% ] (LP:1960 Chi: 8) vs Opponent [ W+L @  98% ] (LP:1247 Chi: 1)  -- Rider Power Kick
+  R12: Learner [ S+L @ 100% ] (LP:1960 Chi: 2) vs Opponent [ D+K @  98% ] (LP: 172 Chi: 1)  -- TRIGGERS 100 FAINT LOCK
+  R13: Learner [ D+L @ 100% ] (LP:1960 Chi: 4) vs Opponent [ DO_NOTHING @ 0% ] (LP:   0)   -- UN-GUARDED FINISHER
+
+Tactical Insight: Nigo executes S+L back-to-back in Rounds 11 and 12. Round 12 strips V3's LP to 172 while simultaneously locking V3 into 100 Faint. Round 13 closes the game cleanly with D+L against a helpless opponent.
+Case Study 3: Master Match #4, Game #4 (Flawless Direction Control & High LP Survival)
+ * Strategy: Physical Defense & High-LP Retention
+ * Outcome: Nigo Win (11 Rounds, 2,928 LP remaining)
+--- MASTER MATCH #4, GAME #4 (11 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:3300 Chi: 2) vs Opponent [ S+K @ 100% ] (LP:2075 Chi: 4)  -- Opening Special Lead
+  R 2: Learner [ D+L @  90% ] (LP:3270 Chi: 5) vs Opponent [ D+L @  60% ] (LP:1905 Chi: 4)  -- Out-Damages V3 Punches
+  R 3: Learner [ S+J @  90% ] (LP:3187 Chi: 3) vs Opponent [ S+J @  89% ] (LP:1905 Chi: 1)  -- Stance Priority Intercept
+  ...
+  R 7: Learner [ D+L @  29% ] (LP:3121 Chi: 7) vs Opponent [ W+L @  99% ] (LP:1163 Chi: 1)  -- TRIGGERS 100 FAINT LOCK
+  R 8: Learner [ S+L @  98% ] (LP:3121 Chi: 1) vs Opponent [ DO_NOTHING @ 0% ] (LP:  94 LP) -- FREE NUKE (-1,069 LP)
+  R 9: Learner [ D+J @  29% ] (LP:2949 Chi: 2) vs Opponent [ W+L @  49% ] (LP:  94 LP)
+  R10: Learner [ D+I @  33% ] (LP:2928 Chi: 2) vs Opponent [ D+I @  28% ] (LP:  94 LP)
+  R11: Learner [ D+L @  35% ] (LP:2928 Chi: 4) vs Opponent [ D+L @   1% ] (LP:   0 LP)   -- GAME OVER (2,928 LP Left)
+
+Tactical Insight: Nigo maintains over 88% of max health (2,928 LP) throughout the entire match by using S+L on Round 8 to punish V3's Faint lockout, followed by steady D-stance pressure to seal the win.
+Case Study 4: Easy Match #3, Game #3 (Mid-Match Faint Lockdown & Re-engage)
+ * Strategy: Continuous D-Stance Poking into Special Finisher
+ * Outcome: Nigo Win (11 Rounds, 1,169 LP remaining)
+--- EASY MATCH #3, GAME #3 (11 Rounds) ---
+  R 1: Learner [ S+L @ 100% ] (LP:3300 Chi: 2) vs Opponent [ S+J @ 100% ] (LP:2290 Chi: 9)  -- Opening Special Hit
+  R 2: Learner [ D+L @ 100% ] (LP:2128 Chi: 3) vs Opponent [ S+L @  99% ] (LP:2290 Chi: 2)  -- Physical Trade
+  ...
+  R 5: Learner [ D+L @  90% ] (LP:2022 Chi: 7) vs Opponent [ S+J @  97% ] (LP:1563 Chi: 0)  -- TRIGGERS 100 FAINT LOCK
+  R 6: Learner [ S+L @  96% ] (LP:2022 Chi: 1) vs Opponent [ DO_NOTHING @ 0% ] (LP: 499 LP) -- FREE NUKE (-1,064 LP)
+  R 7: Learner [ D+L @  90% ] (LP:1904 Chi: 2) vs Opponent [ D+I @  60% ] (LP: 499 LP)
+  R 8: Learner [ D+L @  90% ] (LP:1849 Chi: 3) vs Opponent [ D+K @   1% ] (LP: 499 LP)
+  R 9: Learner [ S+J @  99% ] (LP:1169 Chi: 4) vs Opponent [ S+K @  89% ] (LP: 499 LP)  -- Intercepts Flying Knee
+  R10: Learner [ S+J @ 100% ] (LP:1169 Chi: 2) vs Opponent [ D+L @ 100% ] (LP:  37 LP)
+  R11: Learner [ D+I @  88% ] (LP:1169 Chi: 4) vs Opponent [ D+L @ 100% ] (LP:   0 LP)   -- GAME OVER
+
+Tactical Insight: In Round 5, Nigo forces V3 into a 100 Faint lock, landing an immediate 96%-charged S+L (Rider Power Kick) on Round 6 for 1,064 LP damage. On Round 9, Nigo intercepts V3's S+K with an S+J counter-hit to secure full board control.
+
+
 
 
 003_001:
