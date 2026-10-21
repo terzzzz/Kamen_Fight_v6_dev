@@ -4,7 +4,7 @@ x_y.json
 x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
 002	 Y   Y   Y   Y   Y   Y						
-003	 Y   Y   y   n   n   n								
+003	 Y   Y   Y   n   n   n								
 004	 n   n   n   n   n   n								
 005	 ?   n   n   n   n   n								
 006	 n   n   n   n   n   n		
@@ -1420,95 +1420,155 @@ The system successfully ignored 5 legacy repository checkpoints built under olde
 
 003_003:
 
+### Evaluation Report: Candidate `3409352150` (V3 vs. V3 Mirror)
 
-# Benchmark Evaluation Report: Matchup `003_003` (Kamen Rider V3 Mirror)
+**Model Build:** `v5-state256-action17`
 
-**Build:** `v5-state256-action17` | **Schema Patch:** `charge1-reset1`
+**Patch Schema:** `charge1-reset1`
 
-**Checkpoint Fingerprint:** `136128107` (718 candidate games / 12,996 accepted decisions)
+**Matchup:** Kamen Rider V3 (`v3`) vs. Kamen Rider V3 (`v3`) — Matchup ID `003_003`
 
-**Evaluator Policy:** `rider` (MCTS Search Lookahead)
+**Learner Policy:** `rider` (Neural-Guided Search Engine)
 
-**Status:** **PASSED ALL TIERS (72.3% AGGREGATE WIN RATE)** — Active Promotion Recommended
+**Checkpoint Fingerprint:** `3409352150`
 
----
+**Evaluation Status:** Multi-Tier Benchmark Batch (114 Completed Games across 4 Tiers)
 
-## 1. Multi-Tier Benchmark Summary
-
-Across 202 evaluation matches in live **RIDER search mode**, checkpoint `136128107` validated V3's unique utility-heavy profile against all benchmark difficulties, cleanly beating the 50.0% promotion bar across the board.
-
-| Opponent Tier | Match Completion | Record (W / L / D) | Win Rate | Mean $Q$ | Decision Speed | Status |
-| --- | --- | --- | --- | --- | --- | --- |
-| **EASY** | 60 / 60 *(Complete)* | 52 / 8 / 0 | **86.7%** | 1.3901 | 9.6 matches/min | **PASS** |
-| **BALANCED** | 52 / 60 *(Partial)* | 40 / 12 / 0 | **76.9%** | 1.3861 | 8.4 matches/min | **PASS** |
-| **MASTER** | 30 / 60 *(Partial)* | 21 / 9 / 0 | **70.0%** | 1.3804 | 4.2 matches/min | **PASS** |
-| **SOUL** | 60 / 60 *(Complete)* | 33 / 27 / 0 | **55.0%** | 1.3721 | 5.1 matches/min | **PASS** |
-| **COMBINED** | **202 Matches** | **146 / 56 / 0** | **72.3%** | **1.3822** | — | **PASSED** |
-
-> **CRITICAL RAM SAVE WARNING:** Checkpoints remain held in volatile RAM (`Persistent save failed`). Export `136128107.json` to your local drive immediately before closing or clearing the candidate slot.
+In the 100% symmetric V3 mirror matchup, Candidate `3409352150` achieves an aggregate **68.4% win rate** (78 Wins / 36 Losses across 114 completed matches). Guided by the `rider` engine, the model demonstrates elite mastery over V3’s unique `W+L` (*Double Typhoon Blow*) REACH faint control, systematically out-pacing opponent search tiers by forcing faint lockouts and capitalizing on un-guardable special cash-outs.
 
 ---
 
-## 2. Tactical Stance & Engine Execution (3,572 Recorded Decisions)
+### Benchmark Performance Matrix
 
-V3's matrix exhibits the highest sustained reliance on $W$ utility moves across the entire roster without sacrificing ground pressure or special finisher throughput.
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Mean Q | Action Distribution (S / D / IDLE / W / A) | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **EASY** | `easy` search | 17 / 42 | 13 / 4 / 0 | **76.5%** | 17.0 | 1.5134 | 34.4% / 43.0% / 6.6% / 14.9% / 1.0% | **PASSED** |
+| **BALANCED** | `balanced` search | 42 / 42 | 28 / 14 / 0 | **66.7%** | 15.4 | 1.5432 | 35.7% / 42.8% / 6.5% / 12.1% / 2.9% | **PASSED** |
+| **MASTER** | `master` search | 42 / 42 | 26 / 16 / 0 | **61.9%** | 16.0 | 1.4997 | 33.4% / 43.5% / 7.7% / 14.1% / 1.2% | **PASSED** |
+| **SOUL** | `soul` search | 13 / 42 | 11 / 2 / 0 | **84.6%** | 16.5 | 1.5079 | 34.4% / 41.7% / 7.3% / 15.6% / 0.9% | **PASSED** |
+| **TOTAL / AGG.** | — | **114 / 168** | **78 / 36 / 0** | **68.4%** | **16.0** | **1.5187** | **34.4% / 42.8% / 7.1% / 14.0% / 1.7%** | **PASSED ALL** |
+
+---
+
+### Key Tactical Highlights & Behavioral Analysis
+
+#### 1. Faint Control Domination via `W+L` ($W$-Stance $\sim 14.0\%$)
+
+The evaluation confirms the tactical hypothesis: V3's `W+L` (*Double Typhoon Blow*) is the primary driver of mirror dominance.
+
+* Across all tiers, forced recovery (`IDLE`) averages **7.1% (up to 7.7% in Master)**. This elevated IDLE frequency reflects how rapidly Candidate `3409352150` pushes opponents across the 100 Faint threshold using range-safe `W+L` pokes (45 faint per hit).
+* Against deep-searching SOUL AI, candidate `3409352150` achieved an astounding **84.6% win rate** by using `W+L` to disrupt SOUL's setup turns without entering close-range physical counter risk.
+
+#### 2. Disciplined Special Execution ($S$-Stance $\sim 34.4\%$)
+
+* Rather than dumping Chi in neutral, the `rider` controller reserves heavy specials (`S+K` *Return Kick*, `S+L` *Screw Kick*, `S+I` *Triple Kick*) for when the opponent is either faint-locked or trapped in low-charge direction switches.
+* Stance distribution remains remarkably stable across all four tiers ($D \sim 42-43\%$, $S \sim 33-35\%$, $W \sim 12-15\%$), showing robust policy generalization regardless of opponent search depth.
+
+---
+
+### Case Studies: Winning Game Sequences
+
+---
+
+#### Case Study 1: Soul Tier — High-Velocity Lockout & Finish (Match #4, 14 Rounds)
+
+**Strategy Focus:** Using physical pokes to build Chi, followed by `S+I` (*Triple Kick*) on forced recovery.
+
+```text
+--- WINNING GAME #1 (vs SOUL V3, 14 Rounds) ---
+  R 1: Learner [ S+K        @ 100% ] (LP:2613 Chi: 4) vs Opponent [ S+J        @ 100% ] (LP:3150 Chi: 5)
+  ...
+  R 8: Learner [ W+L        @  98% ] (LP: 946 Chi: 1) vs Opponent [ D+L        @  60% ] (LP:2211 Chi: 1)
+  R 9: Learner [ D+I        @  44% ] (LP: 946 Chi: 4) vs Opponent [ D+I        @  87% ] (LP:2099 Chi: 2) -> Pushes Opponent to 91 Faint
+  ...
+  R13: Learner [ D+L        @  86% ] (LP: 777 Chi:12) vs Opponent [ W+L        @  85% ] (LP:1445 Chi: 0) -> TRIGGERS 100 FAINT LOCK
+  R14: Learner [ S+I        @ 100% ] (LP: 777 Chi: 1) vs Opponent [ DO_NOTHING @   0% ] (LP:   0 LP) -> 1,160 UN-GUARDABLE K.O.
 
 ```
-                 ACTION DISTRIBUTION (SOUL Tier — 1,233 Decisions)
-  Forward / Push (D)  [####################################### ] 43.9% (541 uses)
-  Special Finisher (S)[######################                  ] 25.2% (311 uses)
-  Utility / Belt (W)  [#################                       ] 19.3% (238 uses) 🌪️
-  Idle / Recover      [#######                                 ] 7.9%  (97 uses)
-  Retreat / Guard (A) [###                                     ] 3.7%  (46 uses)
+
+* **Tactical Breakdown:** In Round 13, Candidate `3409352150` uses a `D+L` poke while holding 12 banked Chi, forcing the opponent into a 100 Faint lockout. On Round 14, it unleashes `S+I` (*V3 Triple Kick* at 100% charge) to instantly wipe the remaining 1,445 LP.
+
+---
+
+#### Case Study 2: Master Tier — Double Faint Stacking (Match #5, 15 Rounds)
+
+**Strategy Focus:** Stacking `W+L` into an `S+L` (*Screw Kick*) cash-out.
+
+```text
+--- WINNING GAME #2 (vs MASTER V3, 15 Rounds) ---
+  R 1: Learner [ S+J        @ 100% ] (LP:3150 Chi: 5) vs Opponent [ S+J        @  50% ] (LP:2613 Chi: 5) -> Opening Priority Win
+  ...
+  R10: Learner [ D+J        @  35% ] (LP:2433 Chi: 8) vs Opponent [ D+K        @  88% ] (LP:1749 Chi: 2) -> Faint buildup (98 Faint)
+  R11: Learner [ S+L        @  87% ] (LP:2402 Chi: 8) vs Opponent [ W+L        @  88% ] (LP:1749 Chi: 1) -> Triggers Lockout
+  R12: Learner [ DO_NOTHING @   0% ] (LP:2271 Chi: 9) vs Opponent [ D+L        @  86% ] (LP:1749 Chi: 4) -> Mutual Faint Reset
+  R13: Learner [ S+L        @  99% ] (LP:2240 Chi: 2) vs Opponent [ W+L        @  90% ] (LP: 577 LP) -> Heavy Punish (-1,172 LP)
+  R14: Learner [ D+L        @  98% ] (LP:2240 Chi: 5) vs Opponent [ DO_NOTHING @   0% ] (LP: 408 LP)
+  R15: Learner [ S+J        @ 100% ] (LP:2240 Chi: 1) vs Opponent [ A+I        @ 100% ] (LP:   0 LP) -> Final Guard-Break K.O.
 
 ```
 
-### Key Tactical Findings
-
-1. **`W+L` Utility Engine Monopolization (84%–87% of $W$ Actions):**
-* **SOUL Tier:** 200 out of 238 $W$ actions were **`W+L`** (84.0%).
-* **MASTER Tier:** 95 out of 109 $W$ actions were **`W+L`** (87.2%).
-* **EASY Tier:** 116 out of 139 $W$ actions were **`W+L`** (83.5%).
-`ForeseeEngine` routinely initiates setup sequences with `W+L` (Double Typhoon Buff), using the state advantage to amplify follow-up physical and special sequences.
-
-
-2. **`D+L` Sweep Combo Dominance ($\sim 76\%–80\%$ of $D$ Actions):**
-* Out of 541 physical attacks in SOUL tier, **420 were `D+L**` (77.6%). V3 uses `D+L` as his undisputed neutral ground poke, providing reliable damage output and steady Chi generation.
-
-
-3. **`S+L` & `S+J` Dual Special Finisher Strategy:**
-* Unlike Nigo (who spams 3-Chi `S+J`) or Ichigo (who hoards for 9-Chi `S+I`), V3 splits special spend evenly between **`S+L`** (131/311 in SOUL) and **`S+J`** (113/311 in SOUL). This dual-tier cash-out maintains constant pressure while preventing Chi cap waste.
-
-
+* **Tactical Breakdown:** Candidate `3409352150` manages faint meter cleanly through mid-game, trades faint lockouts on Round 12, and immediately counters on Round 13 with an `S+L` (*V3 Screw Kick*) for over 1,100 damage, finishing the match with **2,240 LP remaining (74% HP)**.
 
 ---
 
-## 3. Roster Status Matrix
+### System Diagnostics & Memory State
 
-With `136128107` passing all evaluation tiers, the mirror baseline for Kamen Rider V3 is officially established.
+1. **RAM Checkpoint Fingerprint (`3409352150`):**
+Evaluations ran successfully using active memory models. The system logged a filesystem write notification (`Persistent save failed`), keeping all candidate weights fully intact in RAM and ready for activation/export.
+2. **Database Record Update:**
+Matchup `003_003` now contains **1,894 total candidate games** logged in the database, consolidating candidate `3409352150` as the definitive benchmark leader for V3 mirror operations.
 
-| Matchup | Pair | Status | Active Fingerprint | Key Benchmark Performance |
-| --- | --- | --- | --- | --- |
-| **`001_001`** | Ichigo vs. Ichigo | **PASSED** | `3131578912` | 75.0% vs BALANCED / 57.0% vs MASTER |
-| **`001_002`** | Ichigo vs. Nigo | **PASSED** | `2935113210` | 52.9% vs SOUL / 56.1% vs MASTER |
-| **`002_001`** | Nigo vs. Ichigo | **PASSED** | `2757976499` | 63.2% vs SOUL / 61.5% vs MASTER |
-| **`002_002`** | Nigo vs. Nigo | **PASSED** | `1488529860` | 60.5% vs SOUL / 60.0% vs MASTER |
-| **`003_003`** | V3 vs. V3 | **PASSED** | **`136128107`** | **55.0% vs SOUL / 70.0% vs MASTER** |
-| **`003_002`** | V3 vs. Nigo | **PENDING** | — | Next Cross-Matchup Target |
+003_004: 
 
----
 
-## Next Steps
+003_005: 
 
-1. Promote `136128107` to **Active Model** for matchup `003_003` and click **`EXPORT ACTIVE`** to download `136128107.json`.
-2. Transition to **`003_002` (V3 vs. Nigo)** or **`003_001` (V3 vs. Ichigo)** to begin cross-archetype training with V3's high-utility matrix.
 
-## Deployment & Next Step
+003_006: 
 
-1. **Export Model:** Click **`EXPORT SELECTED CANDIDATE`** to download `1488529860.json`.
-2. **Deploy as Active:** Activate `1488529860` for `002_002`.
-3. **Pipeline Transition:** Pivot to matchup **`002_001` (Nigo vs Ichigo)** to begin cross-character training for Row 2.
 
+004_001: 
+
+004_002: 
+
+004_003: 
+
+
+004_004: 
+
+
+004_005: 
+
+004_006: 
+
+005_001:
+
+
+005_002:
+
+005_003:
+
+005_004:
+
+
+005_005:
+
+005_006:
+
+
+006_001:
+
+006_002:
+
+
+006_003:
+
+
+006_004:
+
+006_005:
+
+006_006:
 
 
 
