@@ -4,7 +4,7 @@ x_y.json
 x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
 002	 Y   Y   Y   Y   Y   Y						
-003	 y   y   y   n   n   n								
+003	 Y   y   y   n   n   n								
 004	 n   n   n   n   n   n								
 005	 ?   n   n   n   n   n								
 006	 n   n   n   n   n   n		
@@ -1176,79 +1176,114 @@ Forced recovery stays strictly under 5% across all tiers, preventing Amazon from
 
 003_001:
 
-# Benchmark Evaluation Report: Matchup `003_001` (V3 vs. Ichigo)
+### Comprehensive Evaluation Report: Candidate `864942613` (V3 vs. Ichigo)
 
-**Matchup `003_001` (Kamen Rider V3 vs. Ichigo) is officially PASSED**, comfortably exceeding the 50.0% benchmark threshold across all difficulty tiers with an aggregate **65.1% win rate** in live RIDER search mode.
+**Model Build:** `v5-state256-action17`
 
----
+**Patch Schema:** `charge1-reset1`
 
-## 1. Multi-Tier Benchmark Summary
+**Matchup:** Kamen Rider V3 (`v3`) vs. Kamen Rider Ichigo (`ichigo`) — Matchup ID `003_001`
 
-Across 106 evaluation matches using checkpoint fingerprint `3790877652` (2,445 candidate games / 39,341 accepted decisions), V3 established complete tactical control over Ichigo's high-mobility nuke kit.
+**Learner Policy:** `rider` (MCTS Search Policy)
 
-| Opponent Tier | Match Completion | Record (W / L / D) | Win Rate | Mean $Q$ | Decision Speed | Status |
-| --- | --- | --- | --- | --- | --- | --- |
-| **BALANCED** | 6 / 100 *(Partial)* | 6 / 0 / 0 | **100.0%** | 1.7183 | 1.9 matches/min | **PASS** |
-| **SOUL** | 52 / 100 *(Partial)* | 33 / 19 / 0 | **63.5%** | 1.5603 | 4.4 matches/min | **PASS** |
-| **MASTER** | 48 / 100 *(Partial)* | 30 / 18 / 0 | **62.5%** | 1.6283 | 5.3 matches/min | **PASS** |
-| **COMBINED** | **106 Matches** | **69 / 37 / 0** | **65.1%** | **1.6356** | — | **PASSED** |
+**Checkpoint Fingerprint:** `864942613`
 
-> **CRITICAL RAM SAVE WARNING:** Checkpoint `3790877652` is held only in volatile memory (`Persistent save failed`). Click **`EXPORT ACTIVE`** to download `3790877652.json` to your local drive before clearing session memory.
+When evaluated under the `rider` MCTS search policy across all four benchmark difficulty tiers (`easy`, `balanced`, `master`, `soul`), Candidate `864942613` achieves an outstanding aggregate **78.5% win rate** (113 Wins / 31 Losses across 144 matches).
+
+The search policy successfully rectifies the direct network's previous over-jumping tendency—reducing $W$-stance utility moves from **39.2% down to 16.2%** while doubling $S$-stance special execution to **33.1%**. Candidate `864942613` easily passes all benchmark thresholds.
 
 ---
 
-## 2. Stance Breakdown & Tactical Highlights (1,820 Recorded Decisions)
+### Benchmark Performance Matrix
 
-Analyzing action allocations across SOUL (929 decisions) and MASTER (799 decisions) demonstrates V3's high-utility, anti-mobility strategy:
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Mean Q | Action Distribution (S / D / IDLE / W / A) | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **EASY / NOVICE** | `easy` search | 42 / 42 | 36 / 6 / 0 | **85.7%** | 14.0 | 1.8197 | 31.2% / 43.2% / 3.4% / 19.1% / 3.1% | **PASSED** |
+| **BALANCED** | `balanced` search | 42 / 42 | 33 / 9 / 0 | **78.6%** | 13.6 | 1.8595 | 35.4% / 46.6% / 3.0% / 12.2% / 2.8% | **PASSED** |
+| **MASTER** | `master` search | 22 / 42 | 17 / 5 / 0 | **77.3%** | 13.7 | 1.8093 | 33.0% / 46.8% / 3.8% / 15.1% / 1.3% | **PASSED** |
+| **SOUL** | `soul` search | 38 / 42 | 27 / 11 / 0 | **71.1%** | 13.8 | 1.7863 | 32.7% / 44.7% / 2.5% / 17.9% / 2.3% | **PASSED** |
+| **TOTAL / AGG.** | — | **144 / 168** | **113 / 31 / 0** | **78.5%** | **13.8** | **1.8209** | **33.1% / 45.1% / 3.1% / 16.2% / 2.5%** | **PASSED ALL** |
+
+---
+
+### Key Tactical & Engine Adjustments under MCTS
+
+1. **Disciplined Ground Pressure ($D$-Stance $\sim 45.1\%$):**
+MCTS heavily favors `D+I` (*Mixed Hits*, 106 base) and `D+L` (*Chop Combo*, 136 base). Chaining these physical attacks maintains the directional charge clock while accumulating Chi efficiently without exposing V3 to Ichigo's high-priority pokes.
+2. **Aggressive Chi Conversion ($S$-Stance $\sim 33.1\%$):**
+Unlike direct network training (14.1% $S$-stance), MCTS aggressively converts banked Chi into mid-tier and high-tier specials: `S+J` (*V3 Kick*, 430 base / 4 Chi), `S+K` (*V3 Return Kick*, 560 base / 5 Chi), and `S+L` (*V3 Screw Kick*, 940 base / 8 Chi).
+3. **Targeted Utility & Reach Disruptions ($W$-Stance $\sim 16.2\%$):**
+$W$-stance usage dropped by over half. MCTS replaces generic jumping (`W+I`) with `W+L` (*Double Typhoon Blow*, 160 base damage + 45 faint damage), using its REACH property to chip Ichigo's LP and build faint meter safely from range.
+4. **Low Faint Exposure (IDLE $\sim 3.1\%$):**
+Forced recovery turns remain low across all difficulty tiers, denying Ichigo easy setups for high-damage specials (`S+I` *Kirimomi Kick*, 1,100 base).
+
+---
+
+### Highlighted Demonstration Matches
+
+---
+
+#### Case Study 1: Soul Tier — High Health Preservation (Match #3, Game #1)
+
+**Strategy Focus:** Rapid Special Interception & Faint Lock Finisher
+
+```text
+--- WINNING GAME #1 (vs SOUL Ichigo, 14 Rounds) ---
+  R 1: Learner [ S+J        @  90% ] (LP:3004 Chi: 5) vs Opponent [ S+L        @  45% ] (LP:2896 Chi: 3) -> Priority Lead
+  R 2: Learner [ S+K        @ 100% ] (LP:3004 Chi: 1) vs Opponent [ S+J        @  89% ] (LP:2896 Chi: 1)
+  R 3: Learner [ D+I        @  88% ] (LP:2904 Chi: 2) vs Opponent [ D+L        @  60% ] (LP:2896 Chi: 4)
+  ...
+  R 7: Learner [ W+L        @ 100% ] (LP:2306 Chi: 1) vs Opponent [ S+J        @  97% ] (LP:1882 LP) -> REACH FAINT LOCK
+  R 8: Learner [ D+L        @  90% ] (LP:2306 Chi: 4) vs Opponent [ DO_NOTHING @   0% ] (LP:1717 LP) -> Un-guardable Punish
+  ...
+  R13: Learner [ D+J        @  59% ] (LP:1689 Chi: 5) vs Opponent [ D+L        @  44% ] (LP: 465 LP) -> TRIGGERS 100 FAINT LOCK
+  R14: Learner [ S+K        @ 100% ] (LP:1689 Chi: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:   0 LP) -> K.O. (1,689 LP Left)
 
 ```
-                 ACTION DISTRIBUTION (MASTER Tier — 799 Decisions)
-  Forward / Push (D)  [########################################] 48.7% (389 uses)
-  Utility / Belt (W)  [#####################                   ] 26.5% (212 uses) 🌪️
-  Special Finisher (S)[###############                         ] 18.8% (150 uses)
-  Idle / Recover      [##                                      ] 3.3%  (26 uses)
-  Retreat / Guard (A) [##                                      ] 2.8%  (22 uses)
 
-```
-
-### Key Tactical Findings
-
-1. **Massive 26.5%–30.1% Utility ($W$) Footprint:**
-* **`W+L` (Double Typhoon Buff):** 124 uses in MASTER, 183 uses in SOUL.
-* **`W+I` (Rider Jump/Airborne Utility):** 82 uses in MASTER, 86 uses in SOUL.
-V3 does not abandon utility against Ichigo; he uses `W+L` buff loops to compound Chi and state value, while adding `W+I` jumps to counter-predict Ichigo's ground pokes. This yields exceptionally high Mean $Q$ ratings (**1.5603** to **1.7183**).
-
-
-2. **Dual-Poke Physical Dominance (`D+I` & `D+L`):**
-* **`D+I` (Mixed Combo):** 194 uses in MASTER (49.9% of $D$), 204 in SOUL (48.9% of $D$).
-* **`D+L` (Sweep Combo):** 156 uses in MASTER (40.1% of $D$), 180 in SOUL (43.2% of $D$).
-`D+I` and `D+L` account for over 90% of all physical attacks, allowing V3 to out-reach Ichigo's low kicks and jabs on ground level.
-
-
-3. **Symmetrical Turn-Order Balance in Master AI:**
-* **P1 Record:** 14W 10L (58.3% Win Rate)
-* **P2 Record:** 16W 8L (66.7% Win Rate)
-V3 performs slightly better as P2, proving that his `W+L` setup and `D+I` poke engine can react to and punish Ichigo's turn-1 openings.
-
-
+* **Tactical Breakdown:** V3 maintains strict priority over Soul AI. In Round 7, `W+L` (*Double Typhoon Blow*) forces Ichigo into a Faint lockout. On Round 13, V3 triggers another Faint lock and immediately converts it into an un-guardable `S+K` finisher on Round 14 with 1,689 LP remaining.
 
 ---
 
-## 3. Roster Status Matrix
+#### Case Study 2: Master Tier — 9-Round Quick Elimination (Match #3, Game #1)
 
-With `3790877652` promoted, 7 out of 36 matrix matchups are completed and verified above Soul/Master benchmark standards:
+**Strategy Focus:** High-Chi Special Bursting & Fast Recovery Conversion
 
-| Matchup | Pair | Status | Active Fingerprint | Key Benchmark Performance |
-| --- | --- | --- | --- | --- |
-| **`001_001`** | Ichigo vs. Ichigo | **PASSED** | `3131578912` | 75.0% vs BALANCED / 57.0% vs MASTER |
-| **`001_002`** | Ichigo vs. Nigo | **PASSED** | `2935113210` | 52.9% vs SOUL / 56.1% vs MASTER |
-| **`001_003`** | Ichigo vs. V3 | **PASSED** | `3121210290` | 70.0% vs BALANCED / 52.2% vs SOUL |
-| **`002_001`** | Nigo vs. Ichigo | **PASSED** | `2757976499` | 63.2% vs SOUL / 61.5% vs MASTER |
-| **`002_002`** | Nigo vs. Nigo | **PASSED** | `1488529860` | 60.5% vs SOUL / 60.0% vs MASTER |
-| **`003_003`** | V3 vs. V3 | **PASSED** | `136128107` | 55.0% vs SOUL / 70.0% vs MASTER |
-| **`003_001`** | V3 vs. Ichigo | **PASSED** | **`3790877652`** | **63.5% vs SOUL / 62.5% vs MASTER** |
-| **`003_002`** | V3 vs. Nigo | **PENDING** | — | Final Target to Complete Row 3 |
+```text
+--- WINNING GAME #2 (vs MASTER Ichigo, 9 Rounds) ---
+  R 1: Learner [ S+K        @ 100% ] (LP:3150 Chi: 4) vs Opponent [ S+L        @ 100% ] (LP:2300 Chi: 3) -> Fast Opener
+  R 2: Learner [ S+J        @  90% ] (LP:3150 Chi: 1) vs Opponent [ S+J        @  99% ] (LP:1777 Chi: 4)
+  R 3: Learner [ D+I        @  90% ] (LP:2550 Chi: 2) vs Opponent [ S+K        @ 100% ] (LP:1777 Chi: 1)
+  ...
+  R 7: Learner [ D+J        @  88% ] (LP:2504 Chi:12) vs Opponent [ S+J        @  87% ] (LP:1515 LP) -> TRIGGERS 100 FAINT LOCK
+  R 8: Learner [ S+I        @ 100% ] (LP:2504 Chi: 2) vs Opponent [ DO_NOTHING @   0% ] (LP:  65 LP) -> V3 Triple Kick (-1,450 LP)
+  R 9: Learner [ W+L        @ 100% ] (LP:2504 Chi: 0) vs Opponent [ D+J        @  59% ] (LP:   0 LP) -> REACH K.O. (2,504 LP Left)
 
+```
+
+* **Tactical Breakdown:** A dominant 9-round victory. In Round 7, V3 banks 12 Chi and forces Ichigo into 100 Faint. On Round 8, V3 executes `S+I` (*V3 Triple Kick*, 1,160 base) for a massive 1,450 LP chunk, finishing the match next turn while preserving 2,504 LP (83% HP).
+
+---
+
+#### Case Study 3: Balanced Tier — 9-Round Flawless Chi Management (Match #5, Game #4)
+
+**Strategy Focus:** Early Opening Intercepts into Mid-Game Burst
+
+```text
+--- WINNING GAME #3 (vs BALANCED Ichigo, 9 Rounds) ---
+  R 1: Learner [ S+J        @ 100% ] (LP:2075 Chi: 5) vs Opponent [ S+L        @ 100% ] (LP:2914 Chi: 3)
+  R 2: Learner [ S+J        @  99% ] (LP:1677 Chi: 6) vs Opponent [ S+J        @  99% ] (LP:2914 Chi: 1)
+  ...
+  R 6: Learner [ D+I        @  60% ] (LP:1578 Chi: 6) vs Opponent [ D+K        @  88% ] (LP:1540 LP) -> TRIGGERS 100 FAINT LOCK
+  R 7: Learner [ S+K        @  96% ] (LP:1578 Chi: 2) vs Opponent [ DO_NOTHING @   0% ] (LP: 848 LP) -> Free Return Kick
+  R 8: Learner [ D+L        @  60% ] (LP:1578 Chi: 5) vs Opponent [ D+I        @  88% ] (LP: 696 Chi: 3)
+  R 9: Learner [ S+K        @  99% ] (LP:1578 Chi: 0) vs Opponent [ D+L        @  60% ] (LP:   0 LP) -> 9-ROUND K.O.
+
+```
+
+* **Tactical Breakdown:** V3 out-prioritizes Ichigo's physical pokes in Round 6 to cause a Faint lockout, following up with `S+K` in Round 7 and closing out the game in Round 9 with 1,578 LP remaining.
+
+---
 
 
 003_003:
