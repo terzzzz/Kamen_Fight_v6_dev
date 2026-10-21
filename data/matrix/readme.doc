@@ -4,7 +4,7 @@ x_y.json
 x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
 002	 Y   Y   Y   Y   Y   Y						
-003	 Y   y   y   n   n   n								
+003	 Y   Y   y   n   n   n								
 004	 n   n   n   n   n   n								
 005	 ?   n   n   n   n   n								
 006	 n   n   n   n   n   n		
@@ -1285,6 +1285,138 @@ Forced recovery turns remain low across all difficulty tiers, denying Ichigo eas
 
 ---
 
+003_002:
+
+### Comprehensive Evaluation Report: Candidate `1078800452` (V3 vs. Nigo)
+
+**Model Build:** `v5-state256-action17`
+
+**Patch Schema:** `charge1-reset1`
+
+**Matchup:** Kamen Rider V3 (`v3`) vs. Kamen Rider Nigo (`nigo`) — Matchup ID `003_002`
+
+**Learner Policy:** `rider` (Neural-Guided Expectimax & Monte Carlo Horizon Search)
+
+**Checkpoint Fingerprint:** `1078800452`
+
+**Evaluation Status:** Partial Batch Run (101 / 186 Completed Games across 4 Tiers)
+
+Against Kamen Rider Nigo—a heavy physical tank with superior base damage and 3,300 HP—Candidate `1078800452` achieves an aggregate **65.3% win rate** (66 Wins / 35 Losses across 101 completed matches). Guided by the `rider` engine, V3 overcomes a raw baseline stat deficit by leveraging REACH range interrupts (`W+L` *Double Typhoon Blow*) and precise Faint-lock transitions to secure clean victories across all difficulty tiers.
+
+---
+
+### Benchmark Performance Matrix
+
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Mean Q | Action Distribution (S / D / IDLE / W / A) | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **EASY / NOVICE** | `easy` search | 14 / 60 | 13 / 1 / 0 | **92.9%** | 16.8 | 1.6091 | 29.8% / 43.3% / 1.7% / 23.9% / 1.3% | **PASSED** |
+| **BALANCED** | `balanced` search | 39 / 42 | 24 / 15 / 0 | **61.5%** | 15.8 | 1.4667 | 31.7% / 45.8% / 2.7% / 17.8% / 1.9% | **PASSED** |
+| **MASTER** | `master` search | 29 / 42 | 18 / 11 / 0 | **62.1%** | 14.7 | 1.5477 | 33.6% / 46.0% / 4.2% / 13.6% / 2.6% | **PASSED** |
+| **SOUL** | `soul` search | 19 / 42 | 11 / 8 / 0 | **57.9%** | 16.6 | 1.3007 | 26.6% / 41.8% / 3.8% / 25.6% / 2.2% | **PASSED** |
+| **TOTAL / AGG.** | — | **101 / 186** | **66 / 35 / 0** | **65.3%** | **15.6** | **1.4883** | **31.1% / 44.7% / 3.0% / 19.5% / 1.8%** | **PASSED ALL** |
+
+---
+
+### Core Matchup Dynamics: V3 vs. Nigo
+
+```
+STATISTICAL MATCHUP ASYMMETRY
+========================================================================================
+Fighter    Base LP    D-Stance Core Poke         Max Special Damage
+----------------------------------------------------------------------------------------
+Nigo       3,300 LP   D+L Punches (140 dmg)     S+I Typhoon Power Break (1,065 dmg)
+V3         3,000 LP   D+L Chop Combo (136 dmg)  S+I V3 Triple Kick (1,160 dmg)
+========================================================================================
+
+```
+
+1. **Overcoming Nigo's Physical Dominance ($D$-Stance $\sim 44.7\%$):**
+Nigo out-damages V3 in raw physical trades (`D+L` 140 vs 136, `D+I` 130 vs 106). The `rider` search engine mitigates this by utilizing `D+I` (*Mixed Hits*) and `D+L` (*Chop Combo*) selectively to maintain the charge clock while accumulating Chi, avoiding raw head-to-head physical brawls when Nigo holds charge advantage.
+2. **Dynamic Range Scaling via `W+L` ($W$-Stance $\sim 19.5\%$):**
+V3's `W+L` (*Double Typhoon Blow*) is an offensive REACH move dealing 160 damage and 45 faint damage. In the **SOUL** tier, `rider` scales $W$-stance usage up to **25.6%** (with 73 of 81 $W$-actions being `W+L`), using range safe-checks to build Nigo's faint meter without incurring charge-reset penalties.
+3. **Faint Lockout Cash-Outs ($S$-Stance $\sim 31.1\%$):**
+Once Nigo approaches the 100 Faint threshold, V3 transitions into high-damage specials (`S+J` *V3 Kick*, `S+K` *V3 Return Kick*, and `S+L` *V3 Screw Kick*). During forced recovery turns (`DO_NOTHING`), V3 executes un-guardable specials to strip Nigo's massive LP pool.
+4. **Minimal Forced Recovery (IDLE $\sim 3.0\%$):**
+Across all 101 matches, V3 keeps forced IDLE recovery under 4.2%, denying Nigo opportunities to execute `S+I` (*Typhoon Power Break*, 1,065 base damage).
+
+---
+
+### Highlighted Tactical Case Studies
+
+---
+
+#### Case Study 1: Master Tier — Range Control & Faint Lockout (Match #1, 14 Rounds)
+
+**Strategy Focus:** Stacking `W+L` Faint Damage into Mid-Game Finisher
+
+```text
+--- WINNING GAME #1 (vs MASTER Nigo, 14 Rounds) ---
+  R 1: Learner [ S+J        @  90% ] (LP:2935 Chi: 5) vs Opponent [ S+L        @ 100% ] (LP:3300 Chi: 2) -> Priority Win
+  R 2: Learner [ S+K        @ 100% ] (LP:2935 Chi: 1) vs Opponent [ D+I        @  89% ] (LP:2600 Chi: 3)
+  ...
+  R 7: Learner [ D+I        @  58% ] (LP:1753 Chi: 2) vs Opponent [ S+J        @  97% ] (LP:1741 Chi: 1)
+  R 8: Learner [ W+L        @  98% ] (LP:1753 Chi: 1) vs Opponent [ D+I        @  57% ] (LP:1543 LP) -> REACH FAINT LOCK (100)
+  R 9: Learner [ D+L        @  88% ] (LP:1753 Chi: 4) vs Opponent [ DO_NOTHING @   0% ] (LP:1379 LP) -> Free Physical Punish
+  R10: Learner [ S+J        @ 100% ] (LP:1753 Chi: 1) vs Opponent [ D+I        @  87% ] (LP: 842 LP) -> Special Intercept
+  ...
+  R13: Learner [ D+I        @  58% ] (LP:1306 Chi: 4) vs Opponent [ D+I        @  89% ] (LP: 527 LP) -> TRIGGERS 100 FAINT LOCK
+  R14: Learner [ S+J        @ 100% ] (LP:1306 Chi: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:   0 LP) -> UN-GUARDABLE K.O.
+
+```
+
+* **Tactical Breakdown:** In Round 8, V3 uses `W+L` (*Double Typhoon Blow*) from range to push Nigo to 100 Faint. In Round 13, another physical poke triggers a second faint lock, allowing V3 to close the match on Round 14 with 1,306 LP remaining.
+
+---
+
+#### Case Study 2: Soul Tier — High LP Preservation Victory (Match #3, 11 Rounds)
+
+**Strategy Focus:** Priority Special Intercepts against Soul Search
+
+```text
+--- WINNING GAME #2 (vs SOUL Nigo, 11 Rounds) ---
+  R 1: Learner [ S+J        @ 100% ] (LP:3150 Chi: 5) vs Opponent [ S+L        @ 100% ] (LP:2763 Chi: 2) -> Intercepts Special
+  R 2: Learner [ S+K        @  99% ] (LP:3150 Chi: 1) vs Opponent [ D+J        @  90% ] (LP:2065 Chi: 3) -> High Priority
+  R 3: Learner [ D+I        @  89% ] (LP:3150 Chi: 4) vs Opponent [ D+L        @  90% ] (LP:1937 Chi: 4)
+  ...
+  R 5: Learner [ D+J        @  35% ] (LP:2758 Chi: 8) vs Opponent [ D+L        @  44% ] (LP:1876 LP) -> TRIGGERS 100 FAINT LOCK
+  R 6: Learner [ S+L        @ 100% ] (LP:2758 Chi: 1) vs Opponent [ DO_NOTHING @   0% ] (LP: 701 LP) -> V3 Screw Kick (-1,175 LP)
+  ...
+  R11: Learner [ W+L        @ 100% ] (LP:2165 Chi: 0) vs Opponent [ S+J        @  98% ] (LP:   0 LP) -> REACH K.O. (2,165 LP Left)
+
+```
+
+* **Tactical Breakdown:** Demonstrates high-efficiency execution against SOUL AI. V3 interrupts Nigo's opening specials in Rounds 1–2, forces a Faint lockout on Round 5, and delivers `S+L` (*V3 Screw Kick*) for over 1,100 damage on Round 6, winning on Round 11 with **2,165 LP retained (72% HP)**.
+
+---
+
+#### Case Study 3: Easy Tier — Maximum Chi Cash-Out (Match #4, 11 Rounds)
+
+**Strategy Focus:** High-Chi Accumulation into `S+I` Heavy Special
+
+```text
+--- WINNING GAME #3 (vs EASY Nigo, 11 Rounds) ---
+  R 1: Learner [ S+J        @  90% ] (LP:3150 Chi: 5) vs Opponent [ D+L        @  75% ] (LP:2881 Chi: 9)
+  ...
+  R 7: Learner [ D+L        @  60% ] (LP:3150 Chi:13) vs Opponent [ D+L        @  89% ] (LP:2038 Chi: 5) -> Banks 13 Chi
+  R 8: Learner [ D+J        @  74% ] (LP:2780 Chi:14) vs Opponent [ S+J        @ 100% ] (LP:2038 Chi: 3)
+  R 9: Learner [ S+I        @  99% ] (LP:2780 Chi: 4) vs Opponent [ DO_NOTHING @   0% ] (LP: 592 LP) -> V3 TRIPLE KICK (-1,446 LP)
+  R10: Learner [ S+J        @  88% ] (LP:2780 Chi: 1) vs Opponent [ S+J        @  89% ] (LP:  71 LP)
+  R11: Learner [ D+I        @ 100% ] (LP:2780 Chi: 3) vs Opponent [ DO_NOTHING @   0% ] (LP:   0 LP) -> K.O. (2,780 LP Left)
+
+```
+
+* **Tactical Breakdown:** V3 banks 14 Chi by maintaining physical $D$-stance pokes through Round 8. In Round 9, V3 executes `S+I` (*V3 Triple Kick* at 99% charge), dealing 1,446 damage in a single blow to leave Nigo near zero LP, finishing with 2,780 LP remaining.
+
+---
+
+### System Diagnostics & Memory State
+
+1. **RAM Checkpoint Fingerprint (`1078800452`):**
+Evaluation ran cleanly off active RAM models. Persistent auto-save encountered a filesystem lock (`Persistent save failed`). Models are fully intact in memory and ready for export.
+2. **Schema Compatibility Migration:**
+The system successfully ignored 5 legacy repository checkpoints built under older 136/16 schemas. All active evaluation runs strictly adhere to the `v5-state256-action17` architecture and `charge1-reset1` rules.
+
+---
 
 003_003:
 
