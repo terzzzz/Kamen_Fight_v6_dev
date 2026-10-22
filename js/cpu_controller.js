@@ -247,7 +247,9 @@
       ...context,
       difficulty,
       opponentDifficulty,
-      state: C.cloneState(context.state),
+      state: C.copyState
+        ? C.copyState(context.state)
+        : C.cloneState(context.state),
       history: cloneJSON(context.history || [])
     };
 
