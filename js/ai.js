@@ -13,11 +13,10 @@
 
   function stamp(action, debug) {
     return {
-      action: { ...action },
-      debug: {
-        ...debug,
+      action: Object.assign({}, action),
+      debug: Object.assign({}, debug, {
         engineVersion: VERSION
-      }
+      })
     };
   }
 
@@ -35,43 +34,48 @@
   }
 
   function choose(context) {
-    const { state, slot } = context || {};
+    const safeContext = context || {};
+    const state = safeContext.state;
+    const slot = safeContext.slot;
 
     if (
       !state ||
       !["p1", "p2"].includes(slot) ||
       !state[slot] ||
       !state[C.other(slot)] ||
-      !state.moves?.[slot]
+      !state.moves ||
+      !state.moves[slot]
     ) {
       throw new Error("Invalid AI context.");
     }
 
-    let difficulty = difficultyName(context.difficulty || context.mode);
-    if (context.useMCTS === true) difficulty = "rider";
+    let difficulty = difficultyName(safeContext.difficulty || safeContext.mode);
+    if (safeContext.useMCTS === true) {
+      difficulty = "rider";
+    }
 
     if (state.winner || state[slot].isFainted) {
       return stamp(
         { key: "DO_NOTHING", charge: 0 },
         {
-          difficulty,
+          difficulty: difficulty,
           strategy: "Completed match / forced faint recovery"
         }
       );
     }
 
-    if (typeof g.ForeseeEngine?.search !== "function") {
+    if (!g.ForeseeEngine || typeof g.ForeseeEngine.search !== "function") {
       throw new Error("ForeseeEngine.search is missing.");
     }
 
-    let net = context.neuralNetwork || null;
-    let spec = context.neuralSpec || null;
+    let net = safeContext.neuralNetwork || null;
+    let spec = safeContext.neuralSpec || null;
 
     if (difficulty === "rider" && !net) {
-      let checkpoint = context.policyWeights || null;
+      let checkpoint = safeContext.policyWeights || null;
 
-      if (!checkpoint && !context.disableAgent) {
-        checkpoint = g.SoulAgent?.getSection(
+      if (!checkpoint && !safeContext.disableAgent && g.SoulAgent) {
+        checkpoint = g.SoulAgent.getSection(
           state[slot].id,
           state[C.other(slot)].id,
           "active"
@@ -95,48 +99,57 @@
     }
 
     const rider = difficulty === "rider";
-    const isTeacher = Boolean(context.isTeacher);
-    const isTraining = Boolean(context.isTraining);
+    const isTeacher = Boolean(safeContext.isTeacher);
+    const isTraining = Boolean(safeContext.isTraining);
 
     if (rider && net) {
       spec = spec || g.SoulEnv.makeSpec();
       g.SoulEnv.assertSpec(spec);
     }
 
-    const evaluator = rider && net && typeof g.SoulSim?.makeNeuralEvaluator === "function"
-      ? g.SoulSim.makeNeuralEvaluator(
-          net,
-          spec,
-          slot,
-          context.history || []
-        )
-      : null;
+    const evaluator =
+      rider && net && g.SoulSim && typeof g.SoulSim.makeNeuralEvaluator === "function"
+        ? g.SoulSim.makeNeuralEvaluator(
+            net,
+            spec,
+            slot,
+            safeContext.history || []
+          )
+        : null;
 
     const searchDifficulty = rider ? "soul" : difficulty;
 
-    // Allocate 100 ms extended thinking budget for live/evaluated RIDER search
-    const customBudget =
-      context.timeBudgetMs ?? context.timeLimitMs ?? context.maxTimeMs;
-    const timeBudgetMs = rider && !isTraining
-      ? (Number.isFinite(customBudget) && customBudget > 0 ? customBudget : 100)
-      : (Number.isFinite(customBudget) && customBudget > 0 ? customBudget : 0);
+    let customBudget = safeContext.timeBudgetMs;
+    if (customBudget === undefined || customBudget === null) {
+      customBudget = safeContext.timeLimitMs;
+    }
+    if (customBudget === undefined || customBudget === null) {
+      customBudget = safeContext.maxTimeMs;
+    }
 
-    const searchContext = {
-      ...context,
+    const timeBudgetMs =
+      rider && !isTraining
+        ? Number.isFinite(customBudget) && customBudget > 0
+          ? customBudget
+          : 100
+        : Number.isFinite(customBudget) && customBudget > 0
+          ? customBudget
+          : 0;
+
+    const searchContext = Object.assign({}, safeContext, {
       state: C.copyState(state),
-      slot,
-      history: context.history || [],
+      slot: slot,
+      history: safeContext.history || [],
       difficulty: searchDifficulty,
-      evaluator,
+      evaluator: evaluator,
       isRider: rider,
-      isTeacher,
-      isTraining,
-      timeBudgetMs,
+      isTeacher: isTeacher,
+      isTraining: isTraining,
+      timeBudgetMs: timeBudgetMs,
       timeLimitMs: timeBudgetMs,
       maxTimeMs: timeBudgetMs
-    };
+    });
 
-    // These are dispatcher-only fields, not search inputs.
     delete searchContext.neuralNetwork;
     delete searchContext.neuralSpec;
     delete searchContext.policyWeights;
@@ -144,12 +157,14 @@
 
     const result = g.ForeseeEngine.search(searchContext);
 
-    const rows = (result?.rows || [])
-      .filter(row =>
-        Number.isFinite(row.score) &&
-        C.isLegal(state, slot, row.action)
-      )
-      .sort((a, b) => b.score - a.score);
+    const rawRows = result && Array.isArray(result.rows) ? result.rows : [];
+    const rows = rawRows
+      .filter(function (row) {
+        return Number.isFinite(row.score) && C.isLegal(state, slot, row.action);
+      })
+      .sort(function (a, b) {
+        return b.score - a.score;
+      });
 
     if (!rows.length) {
       throw new Error("ForeseeEngine returned no legal, finite candidate.");
@@ -158,23 +173,26 @@
     let selected = rows[0];
 
     if (!rider && !isTeacher) {
-      const tolerance = Math.max(
-        0,
-        K.levels?.[searchDifficulty]?.nearBest ?? 0
-      );
+      const levelCfg = K.levels && K.levels[searchDifficulty] ? K.levels[searchDifficulty] : null;
+      const nearBest = levelCfg && Number.isFinite(levelCfg.nearBest) ? levelCfg.nearBest : 0;
+      const tolerance = Math.max(0, nearBest);
 
-      const close = rows.filter(
-        row => rows[0].score - row.score <= tolerance
-      );
+      const close = rows.filter(function (row) {
+        return rows[0].score - row.score <= tolerance;
+      });
 
-      const probabilities = close.map(row =>
-        Math.exp(
+      const probabilities = close.map(function (row) {
+        return Math.exp(
           (row.score - rows[0].score) / Math.max(1, tolerance / 3)
-        )
-      );
+        );
+      });
 
-      const total = probabilities.reduce((sum, value) => sum + value, 0);
-      const rng = K.rng(K.hash(context.seed ?? 1, "selection"));
+      const total = probabilities.reduce(function (sum, value) {
+        return sum + value;
+      }, 0);
+
+      const seedVal = safeContext.seed !== undefined && safeContext.seed !== null ? safeContext.seed : 1;
+      const rng = K.rng(K.hash(seedVal, "selection"));
       let cursor = rng() * total;
 
       selected = close[close.length - 1];
@@ -189,35 +207,40 @@
       }
     }
 
+    const baseDebug = result && result.debug ? result.debug : {};
+    const finalDebug = Object.assign({}, baseDebug, {
+      difficulty: difficulty,
+      chosenScore: Number(selected.score.toFixed(3)),
+      neural: Boolean(evaluator),
+      strategy: rider
+        ? evaluator
+          ? "RIDER: neural-evaluated Foresee search"
+          : "RIDER fallback: pure SOUL search; no compatible active model"
+        : "Pure Foresee search"
+    });
+
     return stamp(
       C.normalizeAction(state, slot, selected.action),
-      {
-        ...(result.debug || {}),
-        difficulty,
-        chosenScore: Number(selected.score.toFixed(3)),
-        neural: Boolean(evaluator),
-        strategy: rider
-          ? evaluator
-            ? "RIDER: neural-evaluated Foresee search"
-            : "RIDER fallback: pure SOUL search; no compatible active model"
-          : "Pure Foresee search"
-      }
+      finalDebug
     );
   }
 
   function remember(history, before, selected) {
-    const p1 = { ...selected.p1 };
-    const p2 = { ...selected.p2 };
+    const p1 = Object.assign({}, selected.p1);
+    const p2 = Object.assign({}, selected.p2);
 
     const next = Array.isArray(history) ? history.slice() : [];
 
     next.push({
-      p1,
-      p2,
-      actions: { p1, p2 },
+      p1: p1,
+      p2: p2,
+      actions: {
+        p1: p1,
+        p2: p2
+      },
       fainted: {
-        p1: Boolean(before?.p1?.isFainted),
-        p2: Boolean(before?.p2?.isFainted)
+        p1: Boolean(before && before.p1 && before.p1.isFainted),
+        p2: Boolean(before && before.p2 && before.p2.isFainted)
       }
     });
 
@@ -225,8 +248,8 @@
   }
 
   g.KF_AI = {
-    VERSION,
-    choose,
-    remember
+    VERSION: VERSION,
+    choose: choose,
+    remember: remember
   };
 })(globalThis);
