@@ -407,11 +407,11 @@
         "type": "dot",
         "duration": 3,
         "refreshable": true,
-        "effects": { "lpBleed": 95 }
+        "effects": { "lpBleed": 155 }
       }
     },
     "S+L": { "name": "Wild Tackle", "type": "SPECIAL", "chiCost": 7, "baseDamage": 880, "hitChance": 80, "video": "wild_tackle.mp4" },
-    "S+I": { "name": "Daisetsudan", "type": "SPECIAL", "chiCost": 10, "baseDamage": 1020, "hitChance": 77, "video": "dai_slash.mp4", "sourceFacing": "right" },
+    "S+I": { "name": "Daisetsudan", "type": "SPECIAL", "chiCost": 9, "baseDamage": 1020, "hitChance": 77, "video": "dai_slash.mp4", "sourceFacing": "right" },
     "A+I": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+J": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
     "A+K": { "name": "Guard", "type": "DEFENSE", "chiCost": 0, "baseDamage": 0, "hitChance": 100, "video": "guard.mp4" },
