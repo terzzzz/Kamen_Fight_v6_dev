@@ -5,7 +5,7 @@ x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
 002	 Y   Y   Y   Y   Y   Y						
 003	 Y   Y   Y   Y   Y   Y								
-004	 n   n   n   n   n   n								
+004	 Y   n   n   n   n   n								
 005	 ?   n   n   n   Y   n								
 006	 n   n   n   n   Y   n		
 007								
@@ -1872,6 +1872,131 @@ Performance across both sides is balanced (Master: 15W-6L P1 / 14W-6L-1D P2; Eas
 
 
 004_001: 
+
+EVALUATION [CANDIDATE]
+Build: v5-state256-action17
+Patch: charge1-reset1
+Matchup: riderman -> ichigo
+Target model: CANDIDATE
+Learner policy: rider
+Opponent: easy
+Reward: standard
+
+Completed: 11 / 68
+W / L / D: 10 / 1 / 0
+Win rate: 90.9%
+Average rounds: 13.2
+Matches/minute: 19.3
+Recorded round decisions: 145
+Elapsed: 34.2s
+Mean selected Q, this job: 1.5227
+
+Checkpoint fingerprint: 1992440452
+Loaded fingerprint: 1992440452
+No gradient updates or epsilon exploration.
+
+ROUND ACTION USAGE — includes forced recovery
+W          5 3.4%
+A          3 2.1%
+S         49 33.8%
+D         88 60.7%
+IDLE       0 0.0%
+
+STANCE: J / K / I / L / NONE
+W: 0 / 1 / 1 / 3 / 0
+A: 0 / 0 / 3 / 0 / 0
+S: 29 / 9 / 2 / 9 / 0
+D: 4 / 8 / 42 / 34 / 0
+IDLE: 0 / 0 / 0 / 0 / 0
+
+BREAKDOWN
+ichigo / easy / p1: 6W 0L 0D
+ichigo / easy / p2: 4W 1L 0D
+
+==================================================
+FIRST WINNING GAMES — EXACT MOVE SEQUENCES
+==================================================
+
+--- WINNING GAME #1 (Match #1, 12 Rounds) ---
+  R 1: Learner [ S+J        @  90% ] (LP:2031 Chi: 9 Fnt:25) vs Opponent [ S+L        @  60% ] (LP:3000 Chi: 3 Fnt: 0)
+  R 2: Learner [ S+L        @ 100% ] (LP:2031 Chi: 3 Fnt:12) vs Opponent [ DO_NOTHING @   0% ] (LP:2140 Chi: 4 Fnt:31)
+  R 3: Learner [ D+I        @ 100% ] (LP:2031 Chi: 5 Fnt: 0) vs Opponent [ A+J        @ 100% ] (LP:1978 Chi: 5 Fnt:66)
+  R 4: Learner [ D+L        @ 100% ] (LP:1643 Chi: 6 Fnt:25) vs Opponent [ S+J        @  89% ] (LP:1978 Chi: 3 Fnt:53)
+  R 5: Learner [ S+J        @ 100% ] (LP:1643 Chi: 3 Fnt:12) vs Opponent [ DO_NOTHING @   0% ] (LP:1453 Chi: 4 Fnt:84)
+  R 6: Learner [ D+I        @  99% ] (LP:1643 Chi: 5 Fnt: 0) vs Opponent [ S+K        @  99% ] (LP:1291 Chi: 4 Fnt:100)
+  R 7: Learner [ S+J        @ 100% ] (LP:1643 Chi: 2 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP: 766 Chi: 5 Fnt: 0)
+  R 8: Learner [ D+L        @  88% ] (LP:1549 Chi: 3 Fnt:31) vs Opponent [ D+I        @  50% ] (LP: 766 Chi: 8 Fnt: 0)
+  R 9: Learner [ A+I        @ 100% ] (LP:1549 Chi: 4 Fnt:37) vs Opponent [ DO_NOTHING @   0% ] (LP: 766 Chi: 9 Fnt: 0)
+  R10: Learner [ D+I        @  98% ] (LP:1549 Chi: 6 Fnt:24) vs Opponent [ S+L        @ 100% ] (LP: 637 Chi:10 Fnt:28)
+  R11: Learner [ S+K        @ 100% ] (LP:1549 Chi: 1 Fnt:11) vs Opponent [ S+L        @  99% ] (LP:  29 Chi:11 Fnt:63)
+  R12: Learner [ D+K        @  49% ] (LP:1335 Chi: 3 Fnt:23) vs Opponent [ S+L        @  99% ] (LP:   0 Chi: 5 Fnt:50)
+
+--- WINNING GAME #2 (Match #2, 12 Rounds) ---
+  R 1: Learner [ S+J        @  90% ] (LP:2031 Chi: 9 Fnt:25) vs Opponent [ S+L        @  60% ] (LP:3000 Chi: 3 Fnt: 0)
+  R 2: Learner [ S+L        @ 100% ] (LP:2031 Chi: 3 Fnt:12) vs Opponent [ DO_NOTHING @   0% ] (LP:2140 Chi: 4 Fnt:31)
+  R 3: Learner [ D+I        @ 100% ] (LP:2031 Chi: 5 Fnt: 0) vs Opponent [ A+J        @ 100% ] (LP:1978 Chi: 5 Fnt:66)
+  R 4: Learner [ D+L        @  90% ] (LP:1643 Chi: 6 Fnt:25) vs Opponent [ S+J        @  89% ] (LP:1978 Chi: 3 Fnt:53)
+  R 5: Learner [ S+J        @ 100% ] (LP:1643 Chi: 3 Fnt:12) vs Opponent [ DO_NOTHING @   0% ] (LP:1453 Chi: 4 Fnt:84)
+  R 6: Learner [ D+I        @  99% ] (LP:1643 Chi: 5 Fnt: 0) vs Opponent [ S+K        @  99% ] (LP:1291 Chi: 4 Fnt:100)
+  R 7: Learner [ S+J        @ 100% ] (LP:1643 Chi: 2 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP: 766 Chi: 5 Fnt: 0)
+  R 8: Learner [ D+L        @  88% ] (LP:1549 Chi: 3 Fnt:31) vs Opponent [ D+I        @  50% ] (LP: 766 Chi: 8 Fnt: 0)
+  R 9: Learner [ A+I        @ 100% ] (LP:1549 Chi: 4 Fnt:37) vs Opponent [ DO_NOTHING @   0% ] (LP: 766 Chi: 9 Fnt: 0)
+  R10: Learner [ D+I        @  98% ] (LP:1549 Chi: 6 Fnt:24) vs Opponent [ S+L        @ 100% ] (LP: 637 Chi:10 Fnt:28)
+  R11: Learner [ S+K        @ 100% ] (LP:1549 Chi: 1 Fnt:11) vs Opponent [ S+L        @  99% ] (LP:  29 Chi:11 Fnt:63)
+  R12: Learner [ D+K        @  49% ] (LP:1335 Chi: 3 Fnt:23) vs Opponent [ S+L        @  99% ] (LP:   0 Chi: 5 Fnt:50)
+
+--- WINNING GAME #3 (Match #3, 12 Rounds) ---
+  R 1: Learner [ S+J        @ 100% ] (LP:2800 Chi: 5 Fnt: 0) vs Opponent [ S+L        @  60% ] (LP:2895 Chi: 3 Fnt:12)
+  R 2: Learner [ D+I        @ 100% ] (LP:2800 Chi: 7 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:2733 Chi: 4 Fnt:47)
+  R 3: Learner [ S+J        @ 100% ] (LP:2800 Chi: 4 Fnt: 0) vs Opponent [ W+L        @  50% ] (LP:2208 Chi: 5 Fnt:78)
+  R 4: Learner [ D+L        @  49% ] (LP:2800 Chi: 7 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:2101 Chi: 5 Fnt:100)
+  R 5: Learner [ S+K        @ 100% ] (LP:2800 Chi: 2 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:1493 Chi: 6 Fnt: 0)
+  R 6: Learner [ D+I        @ 100% ] (LP:2800 Chi: 4 Fnt: 0) vs Opponent [ A+K        @  75% ] (LP:1363 Chi: 7 Fnt:28)
+  R 7: Learner [ D+I        @ 100% ] (LP:2800 Chi: 6 Fnt: 0) vs Opponent [ S+L        @ 100% ] (LP:1233 Chi: 8 Fnt:56)
+  R 8: Learner [ D+I        @  99% ] (LP:2800 Chi: 8 Fnt: 0) vs Opponent [ D+I        @  25% ] (LP:1104 Chi: 9 Fnt:84)
+  R 9: Learner [ D+I        @ 100% ] (LP:2800 Chi: 7 Fnt: 0) vs Opponent [ S+L        @ 100% ] (LP:1104 Chi: 4 Fnt:71)
+  R10: Learner [ S+L        @  99% ] (LP:2800 Chi: 1 Fnt: 0) vs Opponent [ S+J        @  25% ] (LP: 247 Chi: 4 Fnt:100)
+  R11: Learner [ D+L        @ 100% ] (LP:2800 Chi: 4 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:  91 Chi: 5 Fnt: 0)
+  R12: Learner [ S+J        @  59% ] (LP:2800 Chi: 0 Fnt: 0) vs Opponent [ D+J        @   1% ] (LP:   0 Chi: 5 Fnt: 0)
+
+--- WINNING GAME #4 (Match #4, 13 Rounds) ---
+  R 1: Learner [ S+J        @ 100% ] (LP:2800 Chi: 5 Fnt: 0) vs Opponent [ S+L        @  60% ] (LP:2895 Chi: 3 Fnt:12)
+  R 2: Learner [ D+I        @ 100% ] (LP:2800 Chi: 7 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:2733 Chi: 4 Fnt:47)
+  R 3: Learner [ S+J        @  90% ] (LP:2800 Chi: 4 Fnt: 0) vs Opponent [ W+L        @  50% ] (LP:2222 Chi: 5 Fnt:78)
+  R 4: Learner [ D+L        @  49% ] (LP:2800 Chi: 7 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:2115 Chi: 5 Fnt:100)
+  R 5: Learner [ S+K        @ 100% ] (LP:2800 Chi: 2 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:1507 Chi: 6 Fnt: 0)
+  R 6: Learner [ D+I        @ 100% ] (LP:2800 Chi: 4 Fnt: 0) vs Opponent [ A+L        @  75% ] (LP:1377 Chi: 7 Fnt:28)
+  R 7: Learner [ D+I        @ 100% ] (LP:2800 Chi: 6 Fnt: 0) vs Opponent [ S+L        @ 100% ] (LP:1247 Chi: 8 Fnt:56)
+  R 8: Learner [ D+I        @  99% ] (LP:2800 Chi: 8 Fnt: 0) vs Opponent [ D+I        @  25% ] (LP:1118 Chi: 9 Fnt:84)
+  R 9: Learner [ D+I        @ 100% ] (LP:2800 Chi: 7 Fnt: 0) vs Opponent [ S+L        @  89% ] (LP:1118 Chi: 4 Fnt:71)
+  R10: Learner [ S+L        @ 100% ] (LP:2800 Chi: 1 Fnt: 0) vs Opponent [ S+J        @  25% ] (LP: 258 Chi: 4 Fnt:100)
+  R11: Learner [ D+L        @  88% ] (LP:2800 Chi: 4 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP: 107 Chi: 5 Fnt: 0)
+  R12: Learner [ D+J        @  88% ] (LP:2754 Chi: 5 Fnt:31) vs Opponent [ D+J        @   1% ] (LP: 107 Chi: 8 Fnt: 0)
+  R13: Learner [ S+J        @  24% ] (LP:2754 Chi: 1 Fnt:18) vs Opponent [ D+I        @ 100% ] (LP:   0 Chi: 8 Fnt: 0)
+
+--- WINNING GAME #5 (Match #5, 17 Rounds) ---
+  R 1: Learner [ D+I        @ 100% ] (LP:2716 Chi: 7 Fnt:25) vs Opponent [ D+L        @  75% ] (LP:3000 Chi:11 Fnt: 0)
+  R 2: Learner [ D+I        @  90% ] (LP:1856 Chi: 6 Fnt:50) vs Opponent [ S+L        @ 100% ] (LP:2975 Chi: 6 Fnt:10)
+  R 3: Learner [ D+L        @  90% ] (LP:1856 Chi: 9 Fnt:37) vs Opponent [ S+L        @  99% ] (LP:2823 Chi: 1 Fnt:41)
+  R 4: Learner [ S+K        @  98% ] (LP:1856 Chi: 4 Fnt:24) vs Opponent [ D+J        @  89% ] (LP:2067 Chi: 2 Fnt:84)
+  R 5: Learner [ D+L        @  88% ] (LP:1834 Chi: 4 Fnt:36) vs Opponent [ D+L        @ 100% ] (LP:2037 Chi: 2 Fnt:96)
+  R 6: Learner [ D+I        @  99% ] (LP:1834 Chi: 6 Fnt:23) vs Opponent [ D+I        @  60% ] (LP:1875 Chi: 2 Fnt:100)
+  R 7: Learner [ S+K        @ 100% ] (LP:1834 Chi: 1 Fnt:10) vs Opponent [ DO_NOTHING @   0% ] (LP:1115 Chi: 3 Fnt: 0)
+  R 8: Learner [ D+L        @  74% ] (LP:1834 Chi: 4 Fnt: 0) vs Opponent [ S+J        @  98% ] (LP: 970 Chi: 1 Fnt:31)
+  R 9: Learner [ S+J        @  90% ] (LP:1834 Chi: 1 Fnt: 0) vs Opponent [ D+I        @  87% ] (LP: 459 Chi: 2 Fnt:62)
+  R10: Learner [ D+L        @  88% ] (LP:1730 Chi: 2 Fnt:31) vs Opponent [ D+L        @  73% ] (LP: 459 Chi: 5 Fnt:49)
+  R11: Learner [ D+K        @  59% ] (LP:1730 Chi: 5 Fnt:18) vs Opponent [ W+I        @ 100% ] (LP: 408 Chi: 6 Fnt:74)
+  R12: Learner [ D+I        @ 100% ] (LP:1730 Chi: 4 Fnt: 5) vs Opponent [ D+I        @   1% ] (LP: 382 Chi: 6 Fnt:84)
+  R13: Learner [ S+J        @  99% ] (LP:1730 Chi: 1 Fnt: 0) vs Opponent [ W+K        @  50% ] (LP: 382 Chi: 6 Fnt:71)
+  R14: Learner [ D+L        @  90% ] (LP: 122 Chi: 2 Fnt:31) vs Opponent [ S+L        @  99% ] (LP: 382 Chi: 1 Fnt:58)
+  R15: Learner [ D+I        @ 100% ] (LP: 122 Chi: 1 Fnt:18) vs Opponent [ W+I        @ 100% ] (LP: 350 Chi: 2 Fnt:70)
+  R16: Learner [ D+J        @  35% ] (LP: 122 Chi: 4 Fnt: 5) vs Opponent [ D+L        @  87% ] (LP: 294 Chi: 2 Fnt:100)
+  R17: Learner [ S+J        @ 100% ] (LP: 122 Chi: 0 Fnt: 0) vs Opponent [ DO_NOTHING @   0% ] (LP:   0 Chi: 2 Fnt: 0)
+
+STOPPED — partial job.
+Decision totals may include an unfinished match.
+
+Incomplete evaluation was not recorded for activation.
 
 004_002: 
 
