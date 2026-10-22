@@ -26,7 +26,7 @@
     "name": "Kamen Rider V3",
     "sourceFacing": "right",
     "maxLp": 3150,
-    "archetype": "High CHI / Fast Combo",
+    "archetype": "Faint-Lock Speed Demon",
     "icon": "assets/images/icons/v3.png",
     "videoFolder": "assets/videos/v3/",
     "finisher": "V3 Triple Kick",
