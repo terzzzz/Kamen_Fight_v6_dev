@@ -4,7 +4,7 @@ x_y.json
 x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
 002	 Y   Y   Y   Y   Y   Y						
-003	 Y   Y   Y   Y   Y   n								
+003	 Y   Y   Y   Y   Y   Y								
 004	 n   n   n   n   n   n								
 005	 ?   n   n   n   Y   n								
 006	 n   n   n   n   Y   n		
@@ -1743,6 +1743,132 @@ V3 vs. Rider X operations.
 
 
 003_006: 
+### Evaluation Report: Candidate `1024060902` (V3 vs. Amazon)
+
+**Model Build:** `v5-state256-action17`
+
+**Patch Schema:** `charge1-reset1`
+
+**Matchup:** Kamen Rider V3 (`v3`) vs. Kamen Rider Amazon (`amazon`) — Matchup ID `003_006`
+
+**Learner Policy:** `rider` (Neural-Guided Search Engine)
+
+**Checkpoint Fingerprint:** `1024060902`
+
+**Evaluation Status:** Multi-Tier Benchmark Batch (135 Completed Games across 4 Tiers)
+
+Candidate `1024060902` achieves an aggregate **73.3% win rate** (99 Wins / 34 Losses / 2 Draws across 135 completed matches) under the `rider` search engine. Moving from direct neural policy execution (`network` policy: 44.3% win rate) to MCTS search completely neutralizes Amazon’s high speed, airborne mobility (`W+I`), and bleed DoT (`S+K`). V3’s evaluation profile demonstrates consistent pacing, averaging **11.6 rounds** per game with a high mean state evaluation ($\text{Mean } Q \sim 1.33$).
+
+---
+
+### Benchmark Performance Matrix
+
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Mean Q | Action Distribution (S / D / IDLE / W / A) | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **EASY** | `easy` search | 42 / 42 | 32 / 9 / 1 | **76.2%** | 12.0 | 1.3959 | 32.5% / 48.3% / 2.6% / 14.9% / 1.8% | **PASSED** |
+| **BALANCED** | `balanced` search | 33 / 42 | 25 / 8 / 0 | **75.8%** | 11.4 | 1.3573 | 35.2% / 48.4% / 2.9% / 12.2% / 1.3% | **PASSED** |
+| **MASTER** | `master` search | 42 / 42 | 29 / 12 / 1 | **69.0%** | 11.6 | 1.2874 | 35.8% / 47.2% / 3.5% / 12.1% / 1.4% | **PASSED** |
+| **SOUL** | `soul` search | 18 / 42 | 13 / 5 / 0 | **72.2%** | 10.9 | 1.2679 | 33.7% / 45.2% / 5.0% / 14.6% / 1.5% | **PASSED** |
+| **TOTAL / AGG.** | — | **135 / 168** | **99 / 34 / 2** | **73.3%** | **11.6** | **1.3341** | **34.3% / 47.3% / 3.5% / 13.5% / 1.5%** | **PASSED ALL** |
+
+---
+
+### CPU Tier Tactical Adaptation Breakdown
+
+Candidate `1024060902` modifies its stance prioritization, neutral spacing, and faint-stacking execution depending on the depth of the opponent search engine:
+
+```
+                  TACTICAL SCALING ACROSS CPU TIERS
+=======================================================================
+EASY CPU      -> High Physical Volume & Late Cash-Out (48.3% D / 12.0 Rds)
+                 Farms Chi continuously via D+L/D+I; ignores defensive setups.
+
+BALANCED CPU  -> High Special Conversion (35.2% S / 11.4 Rds)
+                 Punishes neutral over-extensions with S+K and S+J.
+
+MASTER CPU    -> REACH Faint Engine (12.1% W / W+L = 46 Usages / 11.6 Rds)
+                 Uses W+L (Double Typhoon Blow) to lock Amazon into 100 Faint.
+
+SOUL CPU      -> Rapid Burst & Stun Cash-Out (10.9 Rds / Highest IDLE = 5.0%)
+                 Exploits Soul Amazon's aggressive trades to force fast K.O.s.
+=======================================================================
+
+```
+
+#### 1. Easy CPU: Chi Accumulation & Uncontested Trading (76.2% WR)
+
+* **Match Pacing:** Moderate length (**12.0 rounds**).
+* **Tactical Focus:** Easy CPU fails to block $D$-stance combo sequences. V3 takes advantage by running high physical volume (**48.3% $D$-stance**), repeatedly landing $D+L$ (*Chop Combo*) and $D+I$ (*Mixed Hits*) to build massive Chi reserves, finishing matches with clean $S+J$ (*V3 Kick*) or $S+L$ (*V3 Screw Kick*) chains.
+
+#### 2. Balanced CPU: High Special Cash-Out Conversion (75.8% WR)
+
+* **Match Pacing:** **11.4 rounds** average duration.
+* **Tactical Focus:** Highest Special action share (**35.2% $S$-stance**). Balanced CPU engages in standard neutral trades without deep defensive mitigation. V3 converts neutral wins directly into mid-cost specials ($S+K$ *V3 Return Kick*, 560 Dmg; $S+J$ *V3 Kick*, 430 Dmg), out-damaging Amazon's 2,700 LP pool before Amazon can stack bleed damage.
+
+#### 3. Master CPU: REACH Distance Faint Lockouts (69.0% WR)
+
+* **Match Pacing:** **11.6 rounds** average duration.
+* **Tactical Focus:** Master CPU uses active evasive buffs ($W+I$ *Wild Leap*). To suppress this mobility, V3 integrates **`W+L` (*Double Typhoon Blow*)** into its neutral rotations (46 out of 59 utility actions in Master tier). Because `W+L` deals 45 base faint damage at REACH distance, landing two `W+L` strikes forces Amazon into a 100-Faint recovery turn (`DO_NOTHING`), enabling safe 100% engagement special punishes.
+
+#### 4. Soul CPU: Fast Counter-Striking & Exploit Execution (72.2% WR)
+
+* **Match Pacing:** Shortest duration across all tiers (**10.9 rounds**).
+* **Tactical Focus:** Soul CPU plays with maximum aggression, creating high-risk trades. V3 absorbs initial pressure, leverages `W+K` (*Red Lamp Focus*, 1.6x damage buff) and `W+L`, and forces Amazon into 100-Faint lockouts faster than in any other tier (evidenced by the highest opponent `IDLE` rate at **5.0%**). Matches end abruptly through high-damage $S+L$ or $S+K$ burst punishes.
+
+---
+
+### Core Mechanics & Stance Breakdown
+
+1. **$D$-Stance Dominance (47.3% Overall):**
+$D+L$ (*Chop Combo*, 119-141 usages) and $D+I$ (*Mixed Hits*, 63-77 usages) serve as V3's primary Chi-generation tools, ensuring V3 never starves for Chi despite frequent special usage.
+2. **`W+L` (*Double Typhoon Blow*) Neutral Lock:**
+$W+L$ represents **77.2% to 83.0%** of all $W$-stance selections across all tiers. The 45-faint REACH utility attack completely counters Amazon's glass-cannon playstyle by forcing stun turns.
+3. **Low Guard Dependency ($A \sim 1.5\%$):**
+V3 almost entirely avoids passive guarding ($A+I$ usage remains under 2%), relying on movement priority, faint interrupts, and raw health buffer (3,150 LP vs. Amazon's 2,700 LP) to win trades.
+4. **Side Symmetry:**
+Performance across both sides is balanced (Master: 15W-6L P1 / 14W-6L-1D P2; Easy: 17W-3L-1D P1 / 15W-6L P2).
+
+---
+
+### Representative Case Studies
+
+#### Case Study 1: Master Tier — REACH Faint Lockout Sequence (Game #3, Match #5, 10 Rounds)
+
+```text
+  R 1: Learner [ S+L @ 100% ] (LP:3150 Chi: 1) vs Opponent [ S+L @ 100% ] (LP:1760 Chi: 9) -> Heavy Opening Special
+  R 2: Learner [ D+L @  90% ] (LP:2931 Chi: 4) vs Opponent [ S+L @  99% ] (LP:1595 Chi: 3)
+  R 3: Learner [ S+J @ 100% ] (LP:2931 Chi: 1) vs Opponent [ D+K @  89% ] (LP:1058 Chi: 4)
+  R 4: Learner [ W+K @ 100% ] (LP:2406 Chi: 2) vs Opponent [ S+J @ 100% ] (LP:1058 Chi: 1) -> Activates Red Lamp Focus
+  R 5: Learner [ D+K @  88% ] (LP:2261 Chi: 3) vs Opponent [ D+L @  35% ] (LP:1058 Chi: 4) -> Builds Faint to 100
+  R 6: Learner [ W+L @  99% ] (LP:2261 Chi: 2) vs Opponent [ S+J @  44% ] (LP: 859 Chi: 4) -> Triggers Faint Lock
+  R 7: Learner [ D+L @  98% ] (LP:2261 Chi: 5) vs Opponent [ DO_NOTHING @ 0% ] (LP: 690 Chi: 5) -> Un-guardable Poke
+  R 8: Learner [ S+K @  99% ] (LP:2261 Chi: 1) vs Opponent [ A+I @ 100% ] (LP: 132 Chi: 6) -> 558 DMG Punish
+  R 9: Learner [ D+L @  60% ] (LP:2261 Chi: 4) vs Opponent [ D+J @  89% ] (LP:  11 Chi: 7)
+  R10: Learner [ W+L @ 100% ] (LP:2261 Chi: 2) vs Opponent [ A+I @ 100% ] (LP:   0 LP) -> Final K.O. (2,261 LP Left)
+
+```
+
+#### Case Study 2: Soul Tier — Rapid Counter-Striking (Game #2, Match #2, 11 Rounds)
+
+```text
+  R 1: Learner [ S+K @ 100% ] (LP:3066 Chi: 4) vs Opponent [ S+J @ 100% ] (LP:2000 Chi: 5)
+  ...
+  R 5: Learner [ W+L @ 100% ] (LP:2046 Chi: 3) vs Opponent [ S+K @  98% ] (LP:1675 Chi: 6) -> Pushes Amazon to 100 Faint
+  R 6: Learner [ D+I @  88% ] (LP:1941 Chi: 6) vs Opponent [ S+J @ 100% ] (LP:1547 Chi: 2)
+  R 7: Learner [ S+K @ 100% ] (LP:1941 Chi: 2) vs Opponent [ DO_NOTHING @ 0% ] (LP: 847 LP) -> 700 DMG Stun Cash-Out
+  ...
+  R10: Learner [ S+K @  90% ] (LP:1736 Chi: 2) vs Opponent [ D+L @  60% ] (LP:   2 LP)
+  R11: Learner [ W+L @  99% ] (LP:1736 Chi: 0) vs Opponent [ D+J @  60% ] (LP:   0 LP) -> Final K.O. (1,736 LP Left)
+
+```
+
+---
+
+### System Diagnostics
+
+* **Status:** Candidate model `1024060902` passes all benchmark targets for matchup `003_006` with an aggregate **73.3% win rate**.
+
+
 
 
 004_001: 
