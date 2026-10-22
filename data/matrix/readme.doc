@@ -5,7 +5,7 @@ x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
 002	 Y   Y   Y   Y   Y   Y						
 003	 Y   Y   Y   Y   Y   Y								
-004	 Y   n   n   n   n   n								
+004	 Y   Y   n   n   n   n								
 005	 ?   n   n   n   Y   n								
 006	 n   n   n   n   Y   n		
 007								
@@ -2154,6 +2154,7 @@ Candidate `973776488` performs symmetrically across both P1 and P2 starting posi
 
 * **Checkpoint Fingerprint (`973776488`):** Loaded and verified in RAM.
 * **Status:** Candidate model `973776488` passes evaluation targets for matchup `004_002` with an aggregate **63.1% win rate**.
+
 
 
 
