@@ -2,12 +2,14 @@
  * Search dispatcher.
  * Pure Foresee: NOVICE / BALANCED / MASTER / SOUL.
  * Neural-evaluated Foresee: RIDER.
- * Build: v5-state256-action17
+ * Build: v5-state256-action17-charge1-reset1
  */
 (function (g) {
   "use strict";
 
-  const VERSION = "v5-state256-action17";
+  const VERSION =
+    g.SoulAgent?.VERSION ||
+    "v5-state256-action17-charge1-reset1";
   const C = g.CombatCore;
   const K = g.KF;
 
@@ -123,7 +125,7 @@
 
     const searchContext = {
       ...context,
-      state: C.copyState(state),
+      state: C.copyState ? C.copyState(state) : C.cloneState(state),
       slot,
       history: context.history || [],
       difficulty: searchDifficulty,
