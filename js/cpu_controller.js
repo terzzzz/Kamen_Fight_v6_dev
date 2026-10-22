@@ -161,81 +161,123 @@
     }
   }
 
- function verifyDecision(context, result) {
-  if (!result?.action) {
-    throw new Error(
-      "CPU planner returned no action."
-    );
-  }
-
-  function requirePositiveMoveCharge(action) {
-    // Explicit idle is separate from all sixteen moves.
-    if (action.key === "DO_NOTHING") return;
-
-    if (
-      !Number.isFinite(action.charge) ||
-      action.charge < 1 ||
-      action.charge > 100
-    ) {
+  function verifyDecision(context, result) {
+    if (!result?.action) {
       throw new Error(
-        "CPU planner returned an invalid move charge. " +
-        "Playable moves require 1–100% charge."
+        "CPU planner returned no action."
       );
     }
-  }
 
-  // Validate before normalization so an invalid proposal
-  // cannot silently be converted into a different action.
-  requirePositiveMoveCharge(result.action);
+    function requirePositiveMoveCharge(action) {
+      // Explicit idle is separate from all sixteen moves.
+      if (action.key === "DO_NOTHING") return;
 
-  if (
-    !C.isLegal(
+      if (
+        !Number.isFinite(action.charge) ||
+        action.charge < 1 ||
+        action.charge > 100
+      ) {
+        throw new Error(
+          "CPU planner returned an invalid move charge. " +
+          "Playable moves require 1–100% charge."
+        );
+      }
+    }
+
+    // Validate before normalization so an invalid proposal
+    // cannot silently be converted into a different action.
+    requirePositiveMoveCharge(result.action);
+
+    if (
+      !C.isLegal(
+        context.state,
+        context.slot,
+        result.action
+      )
+    ) {
+      throw new Error(
+        "CPU planner returned an illegal action."
+      );
+    }
+
+    const action = C.normalizeAction(
       context.state,
       context.slot,
       result.action
-    )
-  ) {
-    throw new Error(
-      "CPU planner returned an illegal action."
-    );
-  }
-
-  const action = C.normalizeAction(
-    context.state,
-    context.slot,
-    result.action
-  );
-
-  requirePositiveMoveCharge(action);
-
-  if (action.key !== "DO_NOTHING") {
-    const move =
-      context.state.moves[context.slot][action.key];
-
-    if (!move) {
-      throw new Error(
-        "CPU planner returned an unknown move."
-      );
-    }
-
-    const chargeLimit = C.maxCharge(
-      context.state[context.slot],
-      move.direction
     );
 
-    if (action.charge > chargeLimit) {
-      throw new Error(
-        "CPU planner returned an unreachable charge level."
+    requirePositiveMoveCharge(action);
+
+    if (action.key !== "DO_NOTHING") {
+      const move =
+        context.state.moves[context.slot][action.key];
+
+      if (!move) {
+        throw new Error(
+          "CPU planner returned an unknown move."
+        );
+      }
+
+      const chargeLimit = C.maxCharge(
+        context.state[context.slot],
+        move.direction
       );
+
+      if (action.charge > chargeLimit) {
+        throw new Error(
+          "CPU planner returned an unreachable charge level."
+        );
+      }
     }
-  }
+
     return {
       ...result,
       action
     };
   }
 
-  if (!g.SoulAgent) {
+  async function prepareContext(context) {
+    const difficulty = K.difficulty(context.difficulty);
+    const opponentDifficulty = K.difficulty(
+      context.opponentDifficulty ??
+      (difficulty === "easy" ? "balanced" : "master")
+    );
+
+    const prepared = {
+      ...context,
+      difficulty,
+      opponentDifficulty,
+      state: C.cloneState(context.state),
+      history: cloneJSON(context.history || [])
+    };
+
+    if (hasOwn(context, "policyWeights")) {
+      prepared.policyWeights = cloneJSON(
+        context.policyWeights
+      );
+      prepared.disableAgent = true;
+      return prepared;
+    }
+
+    if (context.disableAgent) {
+      delete prepared.policyWeights;
+      prepared.disableAgent = true;
+      return prepared;
+    }
+
+    const usesCheckpoint =
+      difficulty === "soul" ||
+      difficulty === "rider" ||
+      opponentDifficulty === "soul" ||
+      opponentDifficulty === "rider";
+
+    if (!usesCheckpoint) {
+      delete prepared.policyWeights;
+      prepared.disableAgent = true;
+      return prepared;
+    }
+
+    if (!g.SoulAgent) {
       delete prepared.policyWeights;
       prepared.disableAgent = false;
       return prepared;
@@ -263,6 +305,7 @@
     prepared.disableAgent = true;
 
     return prepared;
+  }
 
   async function mainThread(context) {
     if (!mainThreadWarningShown) {
