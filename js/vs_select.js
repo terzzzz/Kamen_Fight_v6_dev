@@ -28,8 +28,11 @@
    * Add more IDs here when their RIDER models are ready.
    * This controls selection availability, not checkpoint validation.
    */
-  const RIDER_READY_IDS = new Set([
-    'ichigo'
+const RIDER_READY_IDS = new Set([
+    'ichigo',
+    'nigo',
+    'v3',
+    'riderman'
   ]);
 
   function riderLevelAvailable(rider) {
