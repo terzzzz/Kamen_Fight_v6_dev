@@ -117,7 +117,7 @@
     );
   }
 
-/** Transitions view back to character selection screen from Game Over state. */
+  /** Transitions view back to character selection screen from Game Over state. */
   function returnToSelection(event) {
     const gs = g.gameState;
 
