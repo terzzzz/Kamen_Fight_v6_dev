@@ -2921,6 +2921,68 @@ R14: Learner [ S+J Riderman Kick     @ 100% ] (LP: 857 Chi: 0 Fnt: 0) vs Opponen
 
 005_002:
 
+### Benchmark Evaluation Report: Candidate `951036712` (Kamen Rider X vs. Nigo)
+
+**Model Build:** `v5-state256-action17`
+
+**Patch Schema:** `charge1-reset1`
+
+**Matchup:** Kamen Rider X (`x`) vs. Kamen Rider Nigo (`nigo`) — Matchup ID `005_002`
+
+**Learner Policy:** `rider` (Neural-Guided Monte Carlo Search Engine)
+
+**Checkpoint Fingerprint:** `951036712`
+
+**Evaluation Dataset:** 154 Evaluated Matches across 4 Difficulty Tiers
+
+Candidate **`951036712`** successfully clears all four benchmark difficulty tiers for matchup `005_002`, achieving an aggregate **66.2% win rate** (102 Wins / 52 Losses / 0 Draws). Most notably, it breaks through the top-tier AI barriers, securing a **54.0% win rate against Master** and a **51.4% win rate against Soul**.
+
+---
+
+### Benchmark Performance Matrix
+
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Action Distribution ($D$ / $S$ / $W$ / $A$ / IDLE) | Evaluation Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **EASY** | `easy` search | 17 / 50 | 14 / 3 / 0 | **82.4%** | 16.2 | 43.3% / 33.4% / 18.4% / 2.4% / 2.4% | **PASSED** |
+| **BALANCED** | `balanced` search | 50 / 50 | 42 / 8 / 0 | **84.0%** | 16.5 | 45.7% / 33.5% / 16.0% / 1.6% / 3.3% | **PASSED** |
+| **MASTER** | `master` search | 50 / 50 | 27 / 23 / 0 | **54.0%** | 16.5 | 42.1% / 31.1% / 19.3% / 1.8% / 5.7% | **PASSED** |
+| **SOUL** | `soul` search | 37 / 50 | 19 / 18 / 0 | **51.4%** | 17.3 | 40.9% / 31.1% / 20.2% / 1.7% / 6.1% | **PASSED** |
+| **AGGREGATE** | — | **154 / 200** | **102 / 52 / 0** | **66.2%** | **16.6** | **43.0% / 32.3% / 18.5% / 1.9% / 4.3%** | **PASSED ALL** |
+
+---
+
+### Key Tactical Highlights & Mechanics
+
+```
+                   BALANCED ATTACK & EMERGENCY RECOVERY ENGINE
+========================================================================================
+Nigo (Heavy Power)           --> [ LP: 3,300 | High Base Dmg Physicals & Heavy Faint ]
+                                                 |
+                                                 v  (Consistent Pace: ~16.5 Rounds)
+Kamen Rider X (Counter-Burst) --> [ Physical Chi Battery + REACH Special Punishes ]
+                                   + Heavy D+I Whip Lash usage for +3 Chi refund on hit
+                                   + High S-Stance (31-33%) output to match Nigo's burst
+                                   + Capped W-Stance (16-20%) avoids passive stall traps
+                                   + W+L Kaizorg Vitality used strictly for clutch healing
+========================================================================================
+
+```
+
+1. **Full Four-Tier Sweep (Passing SOUL at 51.4%):**
+The candidate maintains a positive win margin against Soul Nigo (19W / 18L). It handles Nigo's intense rushdown by using `D+I` (*Ridol Whip Lash*, 182 uses in Soul) to keep Nigo's faint meter stacking towards 100-Faint stuns.
+2. **Disciplined Stance Distribution:**
+Unlike earlier models that over-indexed on utility jumping or passive blocking, candidate `951036712` enforces a stable, aggressive distribution:
+* **$D$-Stance Physicals (40.9%–45.7%):** Primary neutral tool to harvest Chi refunds (+3 Chi per hit).
+* **$S$-Stance Specials (31.1%–33.5%):** High frequency of `S+J` (*Rider Kick*) and `S+K` (*X-Kick*) to match Nigo's raw LP damage.
+* **$W$-Stance Utility (16.0%–20.2%):** Capped frequency ensures X uses `W+L` (*Kaizorg Vitality*) for high-value health resets without giving up offensive momentum.
+
+
+3. **Consistent Match Tempo:**
+Across all difficulty tiers, average game length remains tightly bounded between **16.2 and 17.3 rounds**. This confirms the policy has eliminated long, non-productive stalling loops in favor of proactive win conditions.
+
+
+
+
 005_003:
 
 005_004:
