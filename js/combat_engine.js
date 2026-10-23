@@ -499,6 +499,13 @@
       )
     ];
 
+    /*
+     * Guard Ready plays the A move video once via playAction() above.
+     * If an opponent S/D/W attack follows, the attack event will play
+     * the S/D/W move video and then play "GUARD" (if blocked) or "HIT"
+     * (if guard failed). If the opponent used a non-damaging move, no
+     * extra reaction video is played.
+     */
     if (event.type === "guardReady") {
       popup(slot, "GUARD READY");
 
@@ -507,7 +514,7 @@
         notes
       );
 
-      await playReaction(context, slot, "GUARD");
+      await readableDelay(context);
       return;
     }
 
