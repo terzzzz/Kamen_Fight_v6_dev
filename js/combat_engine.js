@@ -2,7 +2,7 @@
  * Sequential combat playback, including periodic status events.
  *
  * Compatibility: live-ui-2
- * Patch: complete-status-playback-2
+ * Patch: complete-status-playback-3
  *
  * CombatCore.resolve() remains the sole combat authority.
  * This file never calculates damage, recovery or status duration.
@@ -11,7 +11,7 @@
   "use strict";
 
   const VERSION = "live-ui-2";
-  const PATCH = "complete-status-playback-2";
+  const PATCH = "complete-status-playback-3";
 
   const SLOTS = ["p1", "p2"];
   const C = g.CombatCore;
@@ -88,6 +88,57 @@
     return typeof g.UI.statusName === "function"
       ? g.UI.statusName(id)
       : String(id || "Status");
+  }
+
+  function resolveMoveData(gs, slot, event) {
+    const key = event?.key;
+    const coreMove = gs?.core?.moves?.[slot]?.[key];
+    const slotMove = gs?.[slot]?.moves?.[key];
+    const eventMove = event?.move;
+
+    const riderId = String(
+      gs?.[slot]?.id ||
+      gs?.core?.[slot]?.id ||
+      (slot === "p1" ? "ichigo" : "nigo")
+    ).toLowerCase();
+
+    const rosterMove =
+      g.ROSTER?.[riderId]?.moves?.[key] ||
+      g.RIDERS?.[riderId]?.moves?.[key] ||
+      g.CHARACTERS?.[riderId]?.moves?.[key] ||
+      g.MOVES?.[riderId]?.[key] ||
+      g.MOVES?.[slot]?.[key] ||
+      g.MOVES?.[key] ||
+      null;
+
+    const merged = Object.assign(
+      {},
+      C.IDLE || {},
+      rosterMove || {},
+      slotMove || {},
+      coreMove || {},
+      eventMove || {}
+    );
+
+    const videoFile =
+      merged.video ||
+      merged.videoFile ||
+      merged.clip ||
+      merged.src ||
+      rosterMove?.video ||
+      slotMove?.video ||
+      coreMove?.video ||
+      null;
+
+    if (videoFile) {
+      merged.video = videoFile;
+    }
+
+    if (!merged.key && key) {
+      merged.key = key;
+    }
+
+    return merged;
   }
 
   function cancellationLines(gs, cancellations) {
@@ -223,7 +274,7 @@
 
   /*
    * Missing/stalled clips do not alter resolved combat.
-   * Ownership cancellation stops this presentation.
+   * Only real turn-ownership loss stops this presentation.
    */
   async function awaitClip(context, startClip) {
     if (!context.current()) return false;
@@ -231,12 +282,10 @@
     try {
       const result = await startClip();
 
-      if (result?.status === "cancelled") {
+      if (!context.current()) {
         context.controller.abort();
         return false;
       }
-
-      if (!context.current()) return false;
 
       if (result?.status !== "ended") {
         console.warn(
@@ -247,10 +296,7 @@
         await readableDelay(context, 250);
       }
     } catch (error) {
-      if (
-        error?.name === "AbortError" ||
-        !context.current()
-      ) {
+      if (!context.current()) {
         context.controller.abort();
         return false;
       }
@@ -268,6 +314,11 @@
 
   async function playAction(context, slot, move) {
     if (!move?.video) {
+      console.warn(
+        "[CombatPlayback] Move has no video configured:",
+        slot,
+        move
+      );
       return context.current();
     }
 
@@ -389,8 +440,7 @@
       return;
     }
 
-    const move =
-      gs.core.moves[slot]?.[event.key] || C.IDLE;
+    const move = resolveMoveData(gs, slot, event);
 
     if (event.type === "interrupted") {
       paintSnapshot(gs, event);
