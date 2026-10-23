@@ -33,6 +33,31 @@
     return K.difficulty(value);
   }
 
+  function clampReachableAction(state, slot, action) {
+    if (!action || typeof action.key !== "string") {
+      return null;
+    }
+
+    if (action.key === "DO_NOTHING") {
+      return { key: "DO_NOTHING", charge: 0 };
+    }
+
+    const move = state?.moves?.[slot]?.[action.key];
+    if (!move) return null;
+
+    const reachable = C.maxCharge(state[slot], move.direction);
+    if (reachable < 1) return null;
+
+    return {
+      key: action.key,
+      charge: K.clamp(
+        Math.floor(Number(action.charge) || 1),
+        1,
+        reachable
+      )
+    };
+  }
+
   function choose(context) {
     const safeContext = context || {};
     const state = safeContext.state;
@@ -159,9 +184,15 @@
 
     const rawRows = result && Array.isArray(result.rows) ? result.rows : [];
     const rows = rawRows
-      .filter(function (row) {
-        return Number.isFinite(row.score) && C.isLegal(state, slot, row.action);
+      .map(function (row) {
+        if (!row || !Number.isFinite(row.score)) return null;
+        const clampedAction = clampReachableAction(state, slot, row.action);
+        if (!clampedAction || !C.isLegal(state, slot, clampedAction)) {
+          return null;
+        }
+        return Object.assign({}, row, { action: clampedAction });
       })
+      .filter(Boolean)
       .sort(function (a, b) {
         return b.score - a.score;
       });
