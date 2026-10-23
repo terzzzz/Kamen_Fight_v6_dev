@@ -85,7 +85,7 @@
   }
 
   function playerFor(slot) {
-    return g.gameState?.[slot] || null;
+    return g.gameState?.[slot] || g.gameState?.core?.[slot] || null;
   }
 
   function riderFor(slot) {
@@ -169,15 +169,25 @@
     const candidates = [];
 
     for (const item of files) {
-      const file = String(item || "");
+      const file = String(item || "").trim();
       if (!file) continue;
 
-      // Preserve explicitly supplied paths/URLs.
-      if (
-        file.includes("/") ||
-        /^(blob:|data:)/i.test(file)
-      ) {
+      // Preserve explicitly supplied paths/URLs, but also add fallbacks if relative.
+      if (/^(blob:|data:|https?:)/i.test(file)) {
         candidates.push(file);
+        continue;
+      }
+
+      if (file.includes("/")) {
+        candidates.push(file);
+        const base = file.split("/").pop();
+        if (base) {
+          candidates.push(
+            `assets/videos/${rider}/${base}`,
+            `assets/videos/${rider}_${base}`,
+            `assets/videos/${base}`
+          );
+        }
         continue;
       }
 
@@ -185,11 +195,21 @@
         ? file
         : `${file}.mp4`;
 
+      const lower = filename.toLowerCase();
+
       candidates.push(
         `assets/videos/${rider}/${filename}`,
         `assets/videos/${rider}_${filename}`,
         `assets/videos/${filename}`
       );
+
+      if (lower !== filename) {
+        candidates.push(
+          `assets/videos/${rider}/${lower}`,
+          `assets/videos/${rider}_${lower}`,
+          `assets/videos/${lower}`
+        );
+      }
     }
 
     return [...new Set(candidates)];
@@ -234,11 +254,8 @@
   }
 
   /*
-   * Fresh element for every attempt:
-   * an old media event cannot accidentally trigger the new element's
-   * callbacks after a fallback or request replacement.
-   *
-   * IDs, classes and inline styling are preserved.
+   * Re-initializes the channel video element cleanly so old callbacks
+   * cannot fire on the new attempt.
    */
   function freshVideo(task) {
     const id = task.channel === "center"
@@ -261,12 +278,12 @@
     video.dataset.mediaRequest = String(task.id);
     video.dataset.mediaAttempt = String(task.attempt);
 
-    oldVideo.replaceWith(video);
-
-    // Release the previous element and its pending media operation.
+    // Release the previous element before replacing it in the DOM.
     oldVideo.onplaying = null;
     oldVideo.onended = null;
     oldVideo.onerror = null;
+    oldVideo.onloadeddata = null;
+    oldVideo.oncanplay = null;
 
     pause(oldVideo);
 
@@ -274,6 +291,8 @@
       oldVideo.removeAttribute("src");
       oldVideo.load();
     } catch (_) {}
+
+    oldVideo.replaceWith(video);
 
     task.video = video;
 
@@ -288,8 +307,6 @@
 
   /*
    * A single candidate attempt has exactly one completion path.
-   * Both onerror and play().catch() may fire, but only the first
-   * completion is accepted.
    */
   function attemptVideo(task, src) {
     task.attempt += 1;
@@ -301,6 +318,7 @@
       let finished = false;
       let watchdog = null;
       let started = false;
+      let playRequested = false;
       let lastTime = 0;
       let lastProgress = performance.now();
 
@@ -325,6 +343,8 @@
           video.onplaying = null;
           video.onended = null;
           video.onerror = null;
+          video.onloadeddata = null;
+          video.oncanplay = null;
           pause(video);
         }
 
@@ -343,13 +363,40 @@
           return;
         }
 
-        // Cancellation is not evidence of a missing video.
+        // Only treat AbortError as "cancelled" if our task/signal was actually aborted.
+        // Otherwise, browser play() interruption on a missing/unready candidate is a candidate error.
         if (error?.name === "AbortError") {
-          complete("cancelled", error);
+          if (!task.valid() || signal.aborted) {
+            complete("cancelled", error);
+          } else {
+            complete("error", error);
+          }
         } else if (error?.name === "NotAllowedError") {
           complete("blocked", error);
         } else {
           complete("error", error);
+        }
+      }
+
+      function requestPlay() {
+        if (!ownsAttempt() || playRequested || started) return;
+        playRequested = true;
+
+        try {
+          const playPromise = video.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(err => {
+              if (!ownsAttempt()) {
+                if (!task.valid()) complete("cancelled");
+                return;
+              }
+              // If already playing despite promise rejection, ignore.
+              if (started && !video.paused) return;
+              failed(err);
+            });
+          }
+        } catch (err) {
+          failed(err);
         }
       }
 
@@ -367,6 +414,16 @@
           complete("unavailable");
           return;
         }
+
+        video.onloadeddata = () => {
+          if (!ownsAttempt()) return;
+          requestPlay();
+        };
+
+        video.oncanplay = () => {
+          if (!ownsAttempt()) return;
+          requestPlay();
+        };
 
         video.onplaying = () => {
           if (!ownsAttempt()) {
@@ -394,7 +451,7 @@
             return;
           }
 
-          if (!task.background && video.ended) {
+          if (!task.background) {
             complete("ended");
           }
         };
@@ -423,6 +480,15 @@
             lastProgress = now;
           }
 
+          if (
+            started &&
+            !task.background &&
+            video.ended
+          ) {
+            complete("ended");
+            return;
+          }
+
           const limit = started
             ? task.stallMs
             : positive(CONFIG.LOAD_TIMEOUT_MS, 12000);
@@ -432,8 +498,6 @@
               started ? "Video playback stalled." : "Video loading timed out."
             );
 
-            // A started one-shot is skipped rather than replayed
-            // through another fallback after a long stall.
             complete(
               started && !task.background ? "timeout" : "error",
               error
@@ -444,15 +508,12 @@
         video.src = src;
         video.load();
 
-        const playPromise = video.play();
-
-        if (playPromise && typeof playPromise.catch === "function") {
-          playPromise.catch(failed);
+        if (video.readyState >= 2) {
+          requestPlay();
         }
       } catch (error) {
         failed(error);
 
-        // Handles failures before a video element could be installed.
         if (!finished && !video) complete("error", error);
       }
     });
@@ -867,8 +928,28 @@
   }
 
   function hideCenterScreen() {
-    // Used by game navigation. No hidden videos are restarted.
-    cancelAll();
+    // Only close the center channel when no foreground action owns it,
+    // or abort only the center task without nuking the entire epoch queue.
+    if (pendingForeground > 0 && g.gameState?.roundPhase === "RESOLUTION") {
+      return;
+    }
+
+    const centerTask = tasks.get("center");
+    if (centerTask) {
+      centerTask.controller.abort();
+    }
+
+    const video = el("center-video");
+    if (video) {
+      pause(video);
+      try {
+        video.removeAttribute("src");
+        video.load();
+      } catch (_) {}
+    }
+
+    centerOwner = null;
+    centerVisible(false);
   }
 
   function unlockMobileVideos() {
