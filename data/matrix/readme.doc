@@ -5,7 +5,7 @@ x\y	001	002	003	004	005	006	007	008
 001	 Y   Y   Y   Y   Y   Y	   
 002	 Y   Y   Y   Y   Y   Y						
 003	 Y   Y   Y   Y   Y   Y								
-004	 Y   Y   Y   n   n   n								
+004	 Y   Y   Y   Y   n   n								
 005	 ?   n   n   n   Y   n								
 006	 n   n   n   n   Y   Y		
 007								
@@ -2379,6 +2379,210 @@ R15: Learner [ D+I Rope Arm Hook     @ 100% ] (LP: 850 Chi: 3 Fnt:18) vs Opponen
 * **Overall Status:** Candidate model `187673433` successfully meets all benchmark performance standards for matchup `004_003` with an aggregate **66.3% win rate**.
 
 004_004: 
+
+### Benchmark Evaluation Report: Candidate `3090059566` (Riderman vs. Riderman — Mirror Matchup)
+
+**Model Build:** `v5-state256-action17`
+
+**Patch Schema:** `charge1-reset1`
+
+**Matchup:** Riderman (`riderman`) vs. Riderman (`riderman`) — Matchup ID `004_004`
+
+**Learner Engine:** `rider` (Neural-Guided Monte Carlo Search Engine)
+
+**Checkpoint Fingerprint:** `3090059566`
+
+**Evaluation Dataset:** 235 Completed Benchmark Matches across 4 Difficulty Tiers
+
+Candidate **`3090059566`** secures an aggregate **70.6% win rate** (166 Wins / 69 Losses / 0 Draws) across 235 evaluated mirror games. In this mirror matchup, where both combatants share an identical 2,800 LP pool, Candidate `3090059566` dominates neutral play by exploiting the engine's **REACH priority hierarchy**—using `D+I` (*Rope Arm Hook*), `S+K` (*Drill Arm Break*), and `S+L` (*Power Arm Strike*) to out-prioritize standard melee attacks before contact.
+
+---
+
+### Benchmark Performance Matrix
+
+| Difficulty Tier | Opponent Policy | Completed Games | W / L / D | Win Rate | Avg. Rounds | Mean Q Value | Action Distribution ($D$ / $S$ / $W$ / $A$ / IDLE) | Evaluation Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **EASY** | `easy` search | 84 / 100 | 71 / 13 / 0 | **84.5%** | 13.8 | 1.3495 | 52.6% / 39.3% / 2.8% / 1.3% / 4.0% | **PASSED**<br> |
+| **BALANCED** | `balanced` search | 33 / 100 | 24 / 9 / 0 | **72.7%** | 14.9 | 1.2479 | 52.4% / 37.9% / 4.5% / 1.2% / 4.0% | **PASSED**<br> |
+| **MASTER** | `master` search | 25 / 100 | 16 / 9 / 0 | **64.0%** | 13.4 | 1.3021 | 50.3% / 39.3% / 3.0% / 1.5% / 6.0% | **PASSED**<br> |
+| **SOUL** | `soul` search | 93 / 100 | 55 / 38 / 0 | **59.1%** | 14.2 | 1.3170 | 53.6% / 34.9% / 4.1% / 1.6% / 5.8% | **PASSED**<br> |
+| **AGGREGATE** | — | **235 / 400** | **166 / 69 / 0** | **70.6%** | **14.1** | **1.3155** | **52.6% / 37.3% / 3.6% / 1.5% / 5.0%** | **PASSED ALL**<br> |
+
+---
+
+### Kinetic Mechanics & Mirror Advantage Mechanics
+
+```
+                  REACH SUPREMACY & CHI BATTERY ENGINE
+========================================================================================
+Opponent (Melee Move)   --> [ D+L Cassette Combo (Chi:1, Dmg:125, Range: MELEE) ]
+                                          |  (Interrupted by Priority Engine)
+                                          v  
+Learner (REACH Intercept)--> [ D+I Rope Arm Hook (Chi:2, Dmg:130, Range: REACH) ]
+                                    + Out-Prioritizes Melee Attacks Before Impact!
+                                    + Net +1 Chi Profit (+3 Chi Refund on Hit)
+                                    + Inflicts +28 Faint Damage
+========================================================================================
+
+```
+
+#### 1. Inherent REACH Skill Priority Over Melee
+
+In the game engine, any skill tagged as `rangeType: REACH` holds **absolute priority over standard MELEE attacks**. When both combatants execute attacks on the same frame:
+
+* **REACH skills** (`D+I`, `W+L`, `S+K`, `S+L`, `S+I`) resolve **first**.
+
+
+* The REACH strike hits the opponent from outside their attack distance, inflicting full LP/Faint damage and interrupting non-REACH melee attacks (such as `D+L` *Cassette Combo* or `D+J` *Standard Punch*) before they can register a hit.
+
+
+
+#### 2. Chi-Positive Battery Loop (`D+I` Rope Arm Hook)
+
+* **Property:** REACH physical move costing 2 Chi, dealing 130 Base Damage, inflicting 28 Base Faint Damage, and featuring a **`chiRefundOnHit: 3`** override.
+
+
+* **Net Value:** Landing `D+I` results in a **net gain of +1 Chi** while keeping the opponent at arm's length. Candidate `3090059566` uses `D+I` (177 uses in Easy, 213 in Soul) as an infinite Chi battery to fund heavy special attacks.
+
+
+
+#### 3. 100-Faint Stun Lockout & Execution
+
+* **Mechanic:** Riderman's REACH specials carry high base faint values (`S+K`: 35 Faint, `W+L`: 28 Faint). When a player's faint meter reaches **100**, they are locked into a forced `DO_NOTHING @ 0%` recovery turn.
+
+
+* **Execution:** Candidate `3090059566` tracks the opponent's faint accumulation and unleashes high-yield REACH punishment—such as **`S+L` (*Power Arm Strike*, 688 Dmg)** or **`S+I` (*Hook Finisher*, 999 Dmg)**—during the opponent's stunned `DO_NOTHING` turn.
+
+
+
+---
+
+### Tier Strategic Adaptation Breakdown
+
+```
+                  POLICY TACTICAL PROFILE ACROSS TIERS
+========================================================================================
+EASY TIER     -> 84.5% WR | 52.6% D-Stance / 39.3% S-Stance / 2.8% W-Stance
+                 Aggressive execution; exploits opponent missed charge clocks with S+J/S+K.
+
+BALANCED TIER -> 72.7% WR | 52.4% D-Stance / 37.9% S-Stance / 4.5% W-Stance
+                 Steady D+I Chi harvesting; converts full meters into un-guardable S+I stuns.
+
+MASTER TIER   -> 64.0% WR | 50.3% D-Stance / 39.3% S-Stance / 3.0% W-Stance / 6.0% IDLE
+                 Controlled spacing; uses REACH priority to interrupt Master's tight D+L strings.
+
+SOUL TIER     -> 59.1% WR | 53.6% D-Stance / 34.9% S-Stance / 4.1% W-Stance / 5.8% IDLE
+                 Counter-burst focus; trades REACH pokes to force 100-Faint stun lockouts.
+========================================================================================
+
+```
+
+---
+
+### Step-by-Step Play-by-Play Walkthrough of Highlight Winning Matches
+
+#### Highlight Match 1: Master Tier — Game #1 (Match #1, 8 Rounds)
+
+**Key Demonstration:** Faint stacking into a forced 100-Faint `DO_NOTHING` stun, followed by an un-guardable `S+L` (*Power Arm Strike*) execution.
+
+```text
+========================================================================================================================
+ROUND-BY-ROUND WALKTHROUGH — MASTER TIER (GAME #1, 8 ROUNDS)
+========================================================================================================================
+R 1: Learner [ S+J Riderman Kick     @ 100% ] (LP:2800 Chi: 5 Fnt: 0) vs Opponent [ S+J Riderman Kick     @ 100% ] (LP:2275 Chi: 5 Fnt:31)
+     --> Opening Special Clash. Learner's S+J lands cleanly, dealing 525 Dmg (2800 -> 2275 LP) and building 31 Faint on opponent.
+
+R 2: Learner [ D+L Cassette Combo    @  90% ] (LP:2800 Chi: 8 Fnt: 0) vs Opponent [ S+J Riderman Kick     @ 100% ] (LP:2123 Chi: 2 Fnt:62)
+     --> Neutral Poke. Learner chips opponent down to 2,123 LP while pushing opponent's faint to 62.
+
+R 3: Learner [ S+J Riderman Kick     @ 100% ] (LP:2775 Chi: 5 Fnt:10) vs Opponent [ D+I Rope Arm Hook     @  89% ] (LP:1598 Chi: 1 Fnt:93)
+     --> Heavy Special Trade. Learner unloads S+J (420 Base Dmg), dropping opponent to 1,598 LP and stacking faint to 93!
+
+R 4: Learner [ D+L Cassette Combo    @  88% ] (LP:2775 Chi: 8 Fnt: 0) vs Opponent [ D+L Cassette Combo    @  89% ] (LP:1447 Chi: 1 Fnt:100)
+     --> [100-FAINT STUN TRIGGER] 
+         Learner's D+L lands, dealing 151 Dmg (1598 -> 1447 LP) and pushing opponent faint to exactly 100. 
+         Opponent enters forced stun recovery for Round 5!
+
+R 5: Learner [ S+L Power Arm Strike  @  99% ] (LP:2775 Chi: 2 Fnt: 0) vs Opponent [ DO_NOTHING            @   0% ] (LP: 590 Chi: 2 Fnt: 0)
+     --> [UN-GUARDABLE STUN PUNISHMENT] 
+         Opponent is immobilized in DO_NOTHING. Learner executes S+L Power Arm Strike (REACH, 688 Base Dmg).
+         The strike deals a massive 857 ACTUAL DAMAGE (1447 -> 590 LP) with zero possibility of defense or counter!
+
+R 6: Learner [ D+I Rope Arm Hook     @  88% ] (LP:2630 Chi: 3 Fnt:35) vs Opponent [ D+I Rope Arm Hook     @  60% ] (LP: 590 Chi: 4 Fnt: 0)
+     --> Dual REACH Trade. Both players trade D+I pokes at REACH range; Learner maintains massive LP lead (2630 vs 590).
+
+R 7: Learner [ D+L Cassette Combo    @  88% ] (LP:2630 Chi: 6 Fnt:22) vs Opponent [ S+J Riderman Kick     @  87% ] (LP: 439 Chi: 1 Fnt:31)
+     --> Neutral Setup. Learner chips opponent down to 439 LP.
+
+R 8: Learner [ S+K Drill Arm Break  @ 100% ] (LP:2630 Chi: 0 Fnt: 9) vs Opponent [ D+L Cassette Combo    @  60% ] (LP:   0 Chi: 1 Fnt:18)
+     --> [REACH PRIORITY K.O. INTERCEPTION] 
+         Opponent attempts close-range D+L Cassette Combo (Melee). Learner selects S+K Drill Arm Break (REACH, 608 Dmg).
+         Because REACH out-prioritizes Melee, Learner's S+K strikes FIRST, dealing 439 Dmg and securing K.O. 
+         before opponent's D+L can make contact! Learner wins with 2,630 LP remaining!
+========================================================================================================================
+
+```
+
+---
+
+#### Highlight Match 2: Soul Tier — Game #3 (Match #5, 12 Rounds)
+
+**Key Demonstration:** Using `S+K` (*Drill Arm Break*) REACH priority to interrupt melee attacks and execute a 1,765 LP victory.
+
+```text
+========================================================================================================================
+ROUND-BY-ROUND WALKTHROUGH — SOUL TIER (GAME #3, 12 ROUNDS)
+========================================================================================================================
+R 1: Learner [ S+J Riderman Kick     @ 100% ] (LP:2275 Chi: 5 Fnt:31) vs Opponent [ S+J Riderman Kick     @ 100% ] (LP:2800 Chi: 5 Fnt: 0)
+R 2: Learner [ D+L Cassette Combo    @  90% ] (LP:2175 Chi: 6 Fnt:56) vs Opponent [ D+L Cassette Combo    @  30% ] (LP:2800 Chi: 8 Fnt: 0)
+R 3: Learner [ D+L Cassette Combo    @  90% ] (LP:2054 Chi: 9 Fnt:66) vs Opponent [ S+K Drill Arm Break  @  99% ] (LP:2648 Chi: 3 Fnt:31)
+
+R 4: Learner [ S+K Drill Arm Break  @ 100% ] (LP:2054 Chi: 4 Fnt:53) vs Opponent [ D+L Cassette Combo    @  89% ] (LP:1888 Chi: 4 Fnt:74)
+     --> [REACH PRIORITY INTERCEPTION] 
+         Opponent attempts D+L Cassette Combo (Melee). Learner executes S+K Drill Arm Break (REACH, 608 Base Dmg, +35 Faint).
+         Learner's REACH move strikes first, dealing 760 actual Dmg (2648 -> 1888 LP) and +43 Faint (reaching 74 Faint),
+         completely cancelling opponent's incoming D+L!
+
+R 5: Learner [ D+I Rope Arm Hook     @  88% ] (LP:1916 Chi: 5 Fnt:88) vs Opponent [ D+I Rope Arm Hook     @  45% ] (LP:1888 Chi: 6 Fnt:61)
+     --> Dual REACH Trade. Learner gains +3 Chi refund on hit.
+
+R 6: Learner [ D+L Cassette Combo    @  98% ] (LP:1916 Chi: 5 Fnt:75) vs Opponent [ S+J Riderman Kick     @  99% ] (LP:1857 Chi: 3 Fnt:73)
+     --> Trade phase. Both players stack faint meters above 70.
+
+R 7: Learner [ D+L Cassette Combo    @  88% ] (LP:1916 Chi: 8 Fnt:62) vs Opponent [ D+I Rope Arm Hook     @  97% ] (LP:1706 Chi: 1 Fnt:100)
+     --> [100-FAINT STUN TRIGGER] Learner's D+L deals 151 Dmg and drives opponent faint to 100!
+
+R 8: Learner [ S+L Power Arm Strike  @ 100% ] (LP:1916 Chi: 2 Fnt:49) vs Opponent [ DO_NOTHING            @   0% ] (LP: 846 Chi: 2 Fnt: 0)
+     --> [UN-GUARDABLE STUN PUNISHMENT] Opponent forced DO_NOTHING. Learner lands S+L Power Arm Strike (REACH), 
+         dealing 860 actual Dmg (1706 -> 846 LP) completely uncontested!
+
+R 9: Learner [ D+I Rope Arm Hook     @  90% ] (LP:1765 Chi: 1 Fnt:80) vs Opponent [ D+L Cassette Combo    @  87% ] (LP: 815 Chi: 5 Fnt:12)
+     --> REACH Interception. D+I (REACH) interrupts D+L (Melee); refunds +3 Chi.
+
+R10: Learner [ D+L Cassette Combo    @  86% ] (LP:1765 Chi: 4 Fnt:67) vs Opponent [ D+J Standard Punch   @  87% ] (LP: 695 Chi: 3 Fnt:37)
+     --> Learner chips opponent down to 695 LP.
+
+R11: Learner [ D+I Rope Arm Hook     @  86% ] (LP:1765 Chi: 6 Fnt:54) vs Opponent [ S+K Drill Arm Break  @ 100% ] (LP: 539 Chi: 1 Fnt:72)
+     --> REACH trade phase. Opponent drops to 539 LP.
+
+R12: Learner [ S+K Drill Arm Break  @ 100% ] (LP:1765 Chi: 0 Fnt:41) vs Opponent [ D+J Standard Punch   @  85% ] (LP:   0 Chi: 1 Fnt:59)
+     --> [FINAL K.O.] Opponent attempts D+J Standard Punch (Melee). Learner executes S+K Drill Arm Break (REACH).
+         REACH priority triggers, dealing 539 Dmg and securing K.O. with 1,765 LP remaining!
+========================================================================================================================
+
+```
+
+---
+
+### Technical System Diagnostics & Verification
+
+* **Checkpoint Fingerprint:** `3090059566` (Verified active in RAM).
+
+
+* **Side Symmetry Check:** Performance is balanced across starting player slots (Easy: 38W-4L P1 / 33W-9L P2; Balanced: 14W-3L P1 / 10W-6L P2; Master: 9W-4L P1 / 7W-5L P2; Soul: 28W-19L P1 / 27W-19L P2).
+
+
+* **Overall Status:** Candidate model `3090059566` successfully passes all benchmark targets for mirror matchup `004_004` with an aggregate **70.6% win rate**.
 
 
 004_005: 
