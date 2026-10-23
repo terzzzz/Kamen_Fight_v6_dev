@@ -454,7 +454,6 @@ body {
   box-shadow: 0 0 10px rgba(161, 0, 255, 0.4) !important;
 }
 
-
 .vs-divider {
   font-family: 'Impact', 'Arial Black', sans-serif;
   font-size: clamp(1.6rem, 4.5vw, 3rem);
@@ -501,31 +500,6 @@ body {
   max-width: 100%;
   flex-shrink: 0;
   padding: 4px 4px max(6px, env(safe-area-inset-bottom, 2px));
-}
-
-.sim-controls {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-#sim-count-select {
-  padding: 6px 8px;
-  background: #000;
-  color: #00ffcc;
-  border: 1px solid #00ffcc;
-  font-family: monospace;
-  font-size: 13px;
-  border-radius: 4px;
-  max-width: 42vw;
-}
-
-.sim-btn {
-  background: #ffaa00 !important;
-  color: #000 !important;
-  font-weight: bold;
 }
 
 .nav-btn,
@@ -607,8 +581,7 @@ body {
   }
 
   .nav-btn,
-  .action-btn,
-  #sim-count-select {
+  .action-btn {
     padding: 7px 10px;
     font-size: 12px;
   }
