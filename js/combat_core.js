@@ -479,15 +479,30 @@
     ) * CHARGE_STEP_MS;
   }
 
+  /**
+   * Calculates charge progress (1% to 100%) for a held WSAD direction,
+   * tallying strictly with common.js calculateChargeProgress and fighter speed.
+   */
   function chargePercent(player, direction, elapsedMs) {
+    const key = String(direction || "").toUpperCase();
+
     if (
-      !["W", "A", "S", "D"].includes(direction) ||
+      !["W", "A", "S", "D"].includes(key) ||
       !Number.isFinite(elapsedMs)
     ) {
       throw new Error("Invalid charge-clock input.");
     }
 
-    const duration = chargeMs(player, direction);
+    const speed = player ? modifiers(player).speed : 1;
+
+    if (typeof g.calculateChargeProgress === "function") {
+      return g.calculateChargeProgress(
+        key,
+        Math.max(0, elapsedMs) * speed
+      );
+    }
+
+    const duration = chargeMs(player, key);
 
     if (!Number.isFinite(duration) || duration <= 0) {
       throw new Error("Invalid full-charge duration.");
@@ -500,6 +515,53 @@
       1,
       100
     );
+  }
+
+  /**
+   * Creates a live or simulated direction-charge tracker.
+   * Switching from any letter of WSAD to another letter of WSAD resets
+   * elapsedMs to 0 and restarts charge at 1%.
+   */
+  function createChargeTracker() {
+    return {
+      direction: "",
+      elapsedMs: 0,
+      charge: 0
+    };
+  }
+
+  function updateChargeTracker(
+    tracker,
+    player,
+    nextDirection,
+    deltaMs = 0
+  ) {
+    const state = tracker || createChargeTracker();
+    const key = String(nextDirection || "").toUpperCase();
+
+    if (!["W", "A", "S", "D"].includes(key)) {
+      state.direction = "";
+      state.elapsedMs = 0;
+      state.charge = 0;
+      return state;
+    }
+
+    const dt = Math.max(0, Number(deltaMs) || 0);
+
+    if (state.direction !== key) {
+      state.direction = key;
+      state.elapsedMs = 0;
+      state.charge = chargePercent(player, key, 0);
+      return state;
+    }
+
+    state.elapsedMs += dt;
+    state.charge = chargePercent(
+      player,
+      key,
+      state.elapsedMs
+    );
+    return state;
   }
 
   function maxCharge(player, direction, availableMs) {
@@ -1527,6 +1589,8 @@
     cpuReadyAtMs,
     lastInputMs,
     chargePercent,
+    createChargeTracker,
+    updateChargeTracker,
     other
   };
 })(globalThis);
