@@ -159,8 +159,7 @@ self.onmessage = async function (event) {
       modelSource,
       chargingPatch: PATCH,
       schema: EXPECTED_SCHEMA
-    };
-
+    };  
     self.postMessage({
       id,
       result,
