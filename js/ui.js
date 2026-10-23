@@ -207,7 +207,7 @@
       );
 
       details.push(
-        "Bleeding resolves before regeneration. " +
+        "Regeneration resolves before bleeding. " +
         "Regeneration cannot revive a fighter at zero LP."
       );
     }
