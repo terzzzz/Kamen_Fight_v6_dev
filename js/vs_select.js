@@ -17,18 +17,18 @@
   ];
 
   const DIFF_LABELS = {
-    easy: 'NOVICE',
-    balanced: 'BALANCED',
-    master: 'MASTER',
-    soul: 'SOUL',
-    rider: 'RIDER'
+    easy: 'Rugrat',
+    balanced: 'All-rounder',
+    master: 'Geek',
+    soul: 'Monomaniac',
+    rider: 'Rider'
   };
 
   /*
    * Add more IDs here when their RIDER models are ready.
    * This controls selection availability, not checkpoint validation.
    */
-const RIDER_READY_IDS = new Set([
+  const RIDER_READY_IDS = new Set([
     'ichigo',
     'nigo',
     'v3',
@@ -186,7 +186,7 @@ const RIDER_READY_IDS = new Set([
     if (name === 'rider') {
       const label = document.createElement('span');
       label.className = 'kf-rider-rainbow';
-      label.textContent = 'RIDER';
+      label.textContent = DIFF_LABELS.rider;
 
       el.replaceChildren(label);
     }
@@ -415,7 +415,7 @@ const RIDER_READY_IDS = new Set([
       if (!state.p1IsCPU) {
         p1DiffDisplay.textContent = 'N/A';
       } else {
-        p1DiffDisplay.textContent = DIFF_LABELS[state.p1Difficulty] || 'BALANCED';
+        p1DiffDisplay.textContent = DIFF_LABELS[state.p1Difficulty] || 'Zoomer';
       }
       setDiffBadgeClasses(p1DiffDisplay, state.p1Difficulty, state.p1IsCPU);
     }
@@ -438,7 +438,7 @@ const RIDER_READY_IDS = new Set([
       if (!state.p2IsCPU) {
         p2DiffDisplay.textContent = 'N/A';
       } else {
-        p2DiffDisplay.textContent = DIFF_LABELS[state.p2Difficulty] || 'BALANCED';
+        p2DiffDisplay.textContent = DIFF_LABELS[state.p2Difficulty] || 'Zoomer';
       }
       setDiffBadgeClasses(p2DiffDisplay, state.p2Difficulty, state.p2IsCPU);
     }
