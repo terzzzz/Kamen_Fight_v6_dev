@@ -1,10 +1,7 @@
 /* js/ui.js
  * Battle HUD and status presentation.
  *
- * Patch: numeric-status-hud-1
- *
- * Status numbers come from normalized combat effects,
- * not potentially outdated descriptive move labels.
+ * Patch: numeric-status-hud-1 + lp-bar-subtext-2
  */
 (function (g) {
   "use strict";
@@ -32,16 +29,21 @@
     airborne_boost: "Airborne Boost"
   });
 
+  const DIFF_LABELS = Object.freeze({
+    easy: "Rugrat",
+    balanced: "All-rounder",
+    master: "Geek",
+    soul: "Monomaniac",
+    rider: "Rider"
+  });
+
   const renderedTags = new WeakMap();
 
   const byId = id => document.getElementById(id);
 
   function number(value, fallback = 0) {
     const result = Number(value);
-
-    return Number.isFinite(result)
-      ? result
-      : fallback;
+    return Number.isFinite(result) ? result : fallback;
   }
 
   function clamp(value, min, max) {
@@ -49,22 +51,17 @@
   }
 
   function pretty(value) {
-    return String(
-      Math.round(number(value) * 100) / 100
-    );
+    return String(Math.round(number(value) * 100) / 100);
   }
 
   function signed(value) {
-    const rounded =
-      Math.round(number(value) * 100) / 100;
-
+    const rounded = Math.round(number(value) * 100) / 100;
     return (rounded > 0 ? "+" : "") + rounded;
   }
 
   function currentRound() {
     return number(
-      g.gameState?.presentationRound ??
-      g.gameState?.core?.round,
+      g.gameState?.presentationRound ?? g.gameState?.core?.round,
       1
     );
   }
@@ -73,7 +70,6 @@
     if (STATUS_NAMES[id]) {
       return STATUS_NAMES[id];
     }
-
     return String(id || "Status")
       .replace(/_/g, " ")
       .replace(/\b\w/g, letter => letter.toUpperCase());
@@ -86,17 +82,9 @@
     );
   }
 
-  /*
-   * Exposed for presentation checks.
-   * This function does not modify the fighter or buff.
-   */
   function describeStatus(buff, round = currentRound()) {
     const effects = buff?.effects || {};
-    const remaining = Math.max(
-      0,
-      number(buff?.roundsLeft)
-    );
-
+    const remaining = Math.max(0, number(buff?.roundsLeft));
     const parts = [];
     let harmful = false;
 
@@ -118,72 +106,41 @@
 
       parts.push(`${label} ${signed(percent)}%`);
 
-      if (
-        field === "armor"
-          ? multiplier > 1
-          : multiplier < 1
-      ) {
+      if (field === "armor" ? multiplier > 1 : multiplier < 1) {
         harmful = true;
       }
     }
 
-    if (
-      effects.accuracy !== undefined &&
-      number(effects.accuracy) !== 0
-    ) {
+    if (effects.accuracy !== undefined && number(effects.accuracy) !== 0) {
       const value = number(effects.accuracy);
       parts.push(`HIT ${signed(value)}pp`);
-
       if (value < 0) harmful = true;
     }
 
-    if (
-      effects.evasion !== undefined &&
-      number(effects.evasion) !== 0
-    ) {
+    if (effects.evasion !== undefined && number(effects.evasion) !== 0) {
       const value = 100 * number(effects.evasion);
       parts.push(`EVS ${signed(value)}pp`);
-
       if (value < 0) harmful = true;
     }
 
-    const regeneration =
-      periodicAmount(buff, "lpRegen");
+    const regeneration = periodicAmount(buff, "lpRegen");
+    const bleeding = periodicAmount(buff, "lpBleed");
 
-    const bleeding =
-      periodicAmount(buff, "lpBleed");
-
-    if (regeneration > 0) {
-      parts.push(`+${pretty(regeneration)} LP/turn`);
-    }
-
+    if (regeneration > 0) parts.push(`+${pretty(regeneration)} LP/turn`);
     if (bleeding > 0) {
       parts.push(`-${pretty(bleeding)} LP/turn`);
       harmful = true;
     }
 
     const fragile = Boolean(
-      buff?.cancelOnLpDamage ??
-      effects.cancelOnLpDamage ??
-      false
+      buff?.cancelOnLpDamage ?? effects.cancelOnLpDamage ?? false
     );
+    if (fragile) parts.push("breaks on LP damage");
 
-    if (fragile) {
-      parts.push("breaks on LP damage");
-    }
-
-    const periodic =
-      regeneration > 0 || bleeding > 0;
-
+    const periodic = regeneration > 0 || bleeding > 0;
     const firstApplied =
-      buff?.periodicAppliedRound ??
-      buff?.appliedRound ??
-      round - 1;
-
-    const paymentDue =
-      periodic &&
-      remaining > 0 &&
-      firstApplied < round;
+      buff?.periodicAppliedRound ?? buff?.appliedRound ?? round - 1;
+    const paymentDue = periodic && remaining > 0 && firstApplied < round;
 
     const name = statusName(buff?.id);
 
@@ -205,7 +162,6 @@
           ? "Eligible for this turn's periodic payment."
           : "No periodic payment on the initial application turn."
       );
-
       details.push(
         "Regeneration resolves before bleeding. " +
         "Regeneration cannot revive a fighter at zero LP."
@@ -231,27 +187,17 @@
     if (!tray) return;
 
     const signature = JSON.stringify(tags);
-
-    if (renderedTags.get(tray) === signature) {
-      return;
-    }
+    if (renderedTags.get(tray) === signature) return;
 
     renderedTags.set(tray, signature);
-
     const fragment = document.createDocumentFragment();
 
     for (const tag of tags) {
       const element = document.createElement("span");
-
       element.className = "buff-tag";
-
-      if (tag.className) {
-        element.classList.add(tag.className);
-      }
-
+      if (tag.className) element.classList.add(tag.className);
       element.textContent = tag.text;
       element.title = tag.title || tag.text;
-
       fragment.appendChild(element);
     }
 
@@ -261,126 +207,99 @@
   function updatePlayerHUD(slot, player) {
     if (!player) return;
 
-    const maxLp = Math.max(
-      1,
-      number(player.maxLp, 2300)
-    );
-
-    const lp = clamp(
-      number(player.lp),
-      0,
-      maxLp
-    );
+    const maxLp = Math.max(1, number(player.maxLp, 2300));
+    const lp = clamp(number(player.lp), 0, maxLp);
 
     const maxChi = Math.max(
       1,
-      number(
-        player.maxChi,
-        g.COMBAT_RULES?.MAX_CHI || 16
-      )
+      number(player.maxChi, g.COMBAT_RULES?.MAX_CHI || 16)
     );
-
-    const chi = clamp(
-      number(player.chi),
-      0,
-      maxChi
-    );
+    const chi = clamp(number(player.chi), 0, maxChi);
 
     const faintThreshold = Math.max(
       1,
       number(g.COMBAT_RULES?.FAINT_THRESHOLD, 100)
     );
+    const faint = clamp(number(player.faintMeter), 0, faintThreshold);
 
-    const faint = clamp(
-      number(player.faintMeter),
-      0,
-      faintThreshold
-    );
-
-    const lpPercent = 100 * lp / maxLp;
-    const chiPercent = 100 * chi / maxChi;
-    const faintPercent = 100 * faint / faintThreshold;
+    const lpPercent = (100 * lp) / maxLp;
+    const chiPercent = (100 * chi) / maxChi;
+    const faintPercent = (100 * faint) / faintThreshold;
 
     const nameElement = byId(`${slot}-name`);
+    const subtextElement = byId(`${slot}-subtext`);
     const lpElement = byId(`${slot}-lp`);
     const chiElement = byId(`${slot}-chi`);
     const chiFill = byId(`${slot}-chi-bar-fill`);
 
     if (nameElement) {
-      nameElement.textContent =
-        player.name || slot.toUpperCase();
+      nameElement.textContent = player.name || slot.toUpperCase();
+    }
+
+    // Dynamic Subtext (HUMAN or Difficulty)
+    if (subtextElement) {
+      if (player.isCPU) {
+        const diffKey = String(player.difficulty || "balanced").toLowerCase();
+        const label = DIFF_LABELS[diffKey] || diffKey.toUpperCase();
+        subtextElement.textContent = label;
+        subtextElement.classList.add("cpu-subtext");
+        subtextElement.classList.remove("human-subtext");
+      } else {
+        subtextElement.textContent = "HUMAN";
+        subtextElement.classList.add("human-subtext");
+        subtextElement.classList.remove("cpu-subtext");
+      }
     }
 
     if (lpElement) {
-      lpElement.textContent =
-        `LP: ${pretty(lp)} / ${pretty(maxLp)}`;
+      lpElement.textContent = `LP: ${pretty(lp)} / ${pretty(maxLp)}`;
     }
 
-    document.querySelectorAll(
-      `#${slot}-lp-fill, .${slot}-lp-fill`
-    ).forEach(element => {
-      element.style.width = `${lpPercent}%`;
+    // Dynamic Stylish LP Bar Filling & Color Transitions
+    document.querySelectorAll(`#${slot}-lp-bar-fill, .${slot}-lp-fill`).forEach(fill => {
+      fill.style.width = `${lpPercent}%`;
+
+      if (lpPercent > 60) {
+        // Green Phase (60% - 100%)
+        fill.style.background = "linear-gradient(90deg, #008833, #00ff66)";
+        fill.style.boxShadow = "0 0 8px rgba(0, 255, 102, 0.6)";
+      } else if (lpPercent >= 40) {
+        // Pure Yellow Phase (40% - 60%)
+        fill.style.background = "linear-gradient(90deg, #aa8800, #ffcc00)";
+        fill.style.boxShadow = "0 0 8px rgba(255, 204, 0, 0.6)";
+      } else {
+        // Blood Red Phase (0% - 40%)
+        fill.style.background = "linear-gradient(90deg, #880011, #ff0033)";
+        fill.style.boxShadow = "0 0 10px rgba(255, 0, 51, 0.8)";
+      }
     });
 
     if (chiElement) {
-      chiElement.textContent =
-        `CHI: ${pretty(chi)} / ${pretty(maxChi)}`;
+      chiElement.textContent = `CHI: ${pretty(chi)} / ${pretty(maxChi)}`;
 
-      chiElement.classList.toggle(
-        "chi-text-low",
-        chi < 5
-      );
+      chiElement.classList.toggle("chi-text-low", chi < 5);
+      chiElement.classList.toggle("chi-text-full", chi > 14);
 
-      chiElement.classList.toggle(
-        "chi-text-full",
-        chi > 14
-      );
-
-      chiElement.style.color = chi < 5
-        ? "#ff3333"
-        : chi > 14
-          ? "#ffcc00"
-          : "#00ffcc";
+      chiElement.style.color = chi < 5 ? "#ff3333" : chi > 14 ? "#ffcc00" : "#00ffcc";
     }
 
     if (chiFill) {
       chiFill.style.width = `${chiPercent}%`;
 
-      chiFill.classList.toggle(
-        "chi-bar-low",
-        chi < 5
-      );
+      chiFill.classList.toggle("chi-bar-low", chi < 5);
+      chiFill.classList.toggle("chi-bar-full", chi > 14);
 
-      chiFill.classList.toggle(
-        "chi-bar-full",
-        chi > 14
-      );
-
-      chiFill.style.background = chi < 5
-        ? "#ff3333"
-        : chi > 14
-          ? "#ffcc00"
-          : "#00ffcc";
+      chiFill.style.background = chi < 5 ? "#ff3333" : chi > 14 ? "#ffcc00" : "#00ffcc";
     }
 
-    const faintText =
-      byId(`${slot}-faint-text`) ||
-      byId(`${slot}-faint`);
-
+    const faintText = byId(`${slot}-faint-text`) || byId(`${slot}-faint`);
     if (faintText) {
-      faintText.textContent =
-        `FAINT: ${pretty(faint)} / ${pretty(faintThreshold)}`;
+      faintText.textContent = `FAINT: ${pretty(faint)} / ${pretty(faintThreshold)}`;
     }
 
     document.querySelectorAll(
-      `#${slot}-faint-fill, ` +
-      `.${slot}-faint-fill, ` +
-      `#${slot}-faint-bar-fill`
+      `#${slot}-faint-fill, .${slot}-faint-fill, #${slot}-faint-bar-fill`
     ).forEach(element => {
-      /*
-       * The supplied HTML uses a vertical .faint-track.
-       * Do not shrink its width while filling its height.
-       */
       if (element.closest(".faint-track")) {
         element.style.width = "100%";
         element.style.height = `${faintPercent}%`;
@@ -391,25 +310,17 @@
 
       element.setAttribute("role", "progressbar");
       element.setAttribute("aria-valuemin", "0");
-      element.setAttribute(
-        "aria-valuemax",
-        String(faintThreshold)
-      );
-      element.setAttribute(
-        "aria-valuenow",
-        String(faint)
-      );
+      element.setAttribute("aria-valuemax", String(faintThreshold));
+      element.setAttribute("aria-valuenow", String(faint));
       element.setAttribute("aria-label", "Faint buildup");
     });
 
     const faintOverlay = byId(`${slot}-stun-overlay`);
-
     if (faintOverlay) {
       faintOverlay.hidden = !player.isFainted;
     }
 
     const stateLabels = [];
-
     if (lp <= 0) {
       stateLabels.push("KO");
     } else if (player.isFainted) {
@@ -417,20 +328,16 @@
     }
 
     if (number(player.airborneTicks) > 0) {
-      stateLabels.push(
-        `AIRBORNE · ${pretty(player.airborneTicks)}t`
-      );
+      stateLabels.push(`AIRBORNE · ${pretty(player.airborneTicks)}t`);
     }
 
     const statusElement = byId(`${slot}-status`);
-
     if (statusElement) {
       statusElement.textContent = stateLabels.join(" / ");
       statusElement.hidden = stateLabels.length === 0;
     }
 
     const tags = [];
-
     for (const buff of player.activeBuffs || []) {
       if (!(buff.roundsLeft > 0)) continue;
 
@@ -439,30 +346,22 @@
       tags.push({
         text: description.text,
         title: description.title,
-        className: description.harmful
-          ? "combat-debuff"
-          : "combat-buff"
+        className: description.harmful ? "combat-debuff" : "combat-buff"
       });
     }
 
     if (chi < 5) {
       tags.push({
-        text:
-          "LOW CHI · damage taken +25% · EVS -25pp",
+        text: "LOW CHI · damage taken +25% · EVS -25pp",
         title:
-          "Below 5 CHI: incoming LP damage is multiplied " +
-          "by 1.25, evasion is reduced by 25 percentage " +
-          "points, and faint buildup is increased.",
+          "Below 5 CHI: incoming LP damage is multiplied by 1.25, evasion is reduced by 25 percentage points, and faint buildup is increased.",
         className: "debuff-low-power"
       });
     } else if (chi > 14) {
       tags.push({
-        text:
-          "HIGH CHI · ATK +20% · HIT +20pp",
+        text: "HIGH CHI · ATK +20% · HIT +20pp",
         title:
-          "Above 14 CHI: the attack resolver can apply " +
-          "+20% damage and +20 percentage points of accuracy. " +
-          "The attack's CHI cost is paid before these checks.",
+          "Above 14 CHI: the attack resolver can apply +20% damage and +20 percentage points of accuracy. The attack's CHI cost is paid before these checks.",
         className: "buff-full-power"
       });
     }
@@ -470,11 +369,7 @@
     renderTags(byId(`${slot}-buff-tray`), tags);
   }
 
-  function showDamagePopup(
-    boxId,
-    text,
-    type = "damage"
-  ) {
+  function showDamagePopup(boxId, text, type = "damage") {
     const box = byId(boxId);
     if (!box) return;
 
@@ -525,6 +420,42 @@
     style.id = "kf-status-hud-styles";
 
     style.textContent = `
+      .rider-subtext {
+        font-size: clamp(0.6rem, 1.8vw, 0.75rem);
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        margin-top: -1px;
+        margin-bottom: 2px;
+        text-transform: uppercase;
+      }
+
+      .rider-subtext.human-subtext {
+        color: #00ffcc;
+        text-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
+      }
+
+      .rider-subtext.cpu-subtext {
+        color: #ffcc00;
+        text-shadow: 0 0 6px rgba(255, 204, 0, 0.6);
+      }
+
+      .lp-bar-wrapper {
+        width: 100%;
+        height: 12px;
+        background: #090c12;
+        border: 1px solid #00ffcc;
+        margin: 2px 0 4px 0;
+        border-radius: 2px;
+        overflow: hidden;
+        box-shadow: inset 0 0 4px #000;
+      }
+
+      .lp-bar-fill {
+        width: 100%;
+        height: 100%;
+        transition: width 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+      }
+
       .buff-tray .buff-tag {
         max-width: 100%;
         white-space: normal;
@@ -549,8 +480,7 @@
       }
     `;
 
-    (document.head || document.documentElement)
-      .appendChild(style);
+    (document.head || document.documentElement).appendChild(style);
   }
 
   installStyles();
