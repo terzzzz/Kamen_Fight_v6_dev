@@ -103,6 +103,7 @@ Riders: Include all showga riders + shadow moon (portrait only)
 14-16/10/26: Upgraded the matrix and bug fixing on learning for better performance. Re-training RIDER from ichigo.
 18/10/26: Upgrated the matrix to recognize usage of status buff properly.
 21/10/26: Matrix sophistication and training.
+24/10/26: Migrate the training game logic to actual gameplay flow, so that guard can be selected always.
 
 
 
