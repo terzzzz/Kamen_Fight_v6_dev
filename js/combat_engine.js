@@ -2,7 +2,7 @@
  * Sequential combat playback, including periodic status events.
  *
  * Compatibility: live-ui-2
- * Patch: complete-status-playback-3
+ * Patch: complete-status-playback-3-hit-reaction-fix
  *
  * CombatCore.resolve() remains the sole combat authority.
  * This file never calculates damage, recovery or status duration.
@@ -11,7 +11,7 @@
   "use strict";
 
   const VERSION = "live-ui-2";
-  const PATCH = "complete-status-playback-3";
+  const PATCH = "complete-status-playback-3-hit-reaction-fix";
 
   const SLOTS = ["p1", "p2"];
   const C = g.CombatCore;
@@ -238,10 +238,6 @@
   }
 
   function reactionFor(gs, event) {
-    const target = gs[event.target];
-
-    if (target.lp <= 0) return "KO";
-    if (target.isFainted) return "FAINT";
     if (event.outcome === "miss") return "DODGE";
 
     if (
@@ -272,10 +268,6 @@
     return context.current();
   }
 
-  /*
-   * Missing/stalled clips do not alter resolved combat.
-   * Only real turn-ownership loss stops this presentation.
-   */
   async function awaitClip(context, startClip) {
     if (!context.current()) return false;
 
@@ -405,13 +397,7 @@
     );
 
     if (damage > 0) {
-      const reaction = gs[slot].lp <= 0
-        ? "KO"
-        : gs[slot].isFainted
-          ? "FAINT"
-          : "HIT";
-
-      await playReaction(context, slot, reaction);
+      await playReaction(context, slot, "HIT");
     } else {
       await readableDelay(context);
     }
@@ -478,10 +464,6 @@
       `${move.name || event.key}`
     );
 
-    /*
-     * The move clip finishes before its resulting snapshot
-     * is painted. No damage is recalculated.
-     */
     if (!await playAction(context, slot, move)) {
       return;
     }
@@ -499,13 +481,6 @@
       )
     ];
 
-    /*
-     * Guard Ready plays the A move video once via playAction() above.
-     * If an opponent S/D/W attack follows, the attack event will play
-     * the S/D/W move video and then play "GUARD" (if blocked) or "HIT"
-     * (if guard failed). If the opponent used a non-damaging move, no
-     * extra reaction video is played.
-     */
     if (event.type === "guardReady") {
       popup(slot, "GUARD READY");
 
@@ -591,7 +566,6 @@
 
     if (!ownsTurn(gs, token)) return false;
 
-    // Prevent duplicate resolution of the same turn.
     if (gs.playbackToken === token) return false;
 
     if (!gs.actions?.p1 || !gs.actions?.p2) {
@@ -632,10 +606,6 @@
       const before = C.copyState(gs.core);
       gs.presentationRound = before.round;
 
-      /*
-       * Exactly one combat resolution.
-       * Media never consumes the combat RNG.
-       */
       const result = C.resolve(
         before,
         gs.actions.p1,
@@ -663,13 +633,6 @@
       for (const event of result.events) {
         if (!context.current()) return false;
 
-        /*
-         * Cancellation snapshots may already include LP
-         * damage whose attack clip has not played yet.
-         *
-         * Keep the notice, but do not paint that intermediate
-         * snapshot ahead of the corresponding visible event.
-         */
         if (event.type === "statusCancelled") {
           pendingCancellations.push(event);
           continue;
@@ -710,11 +673,6 @@
       gs.liveReplay.final =
         C.copyState(result.state);
 
-      /*
-       * Commit the authoritative end-of-turn state.
-       * This includes status expiration, faint recovery,
-       * next-turn CHI and final winner determination.
-       */
       gs.core = result.state;
       gs.actions = result.actions;
       gs.history = nextHistory;
@@ -725,10 +683,6 @@
       paintSnapshot(gs, result.state);
       g.UI.showActionBanner("");
 
-      /*
-       * A fragile buff can be cancelled during end-of-turn
-       * cleanup without a subsequent attack/periodic event.
-       */
       if (pendingCancellations.length) {
         setBanner(
           "STATUS UPDATE",
